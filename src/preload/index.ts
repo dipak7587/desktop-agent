@@ -1,0 +1,63 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { WorkspaceAPI } from '../shared/api';
+const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
+const api: WorkspaceAPI = {
+  settings: {
+    get: () => invoke('settings:get'),
+    save: (v) => invoke('settings:save', v),
+    dataPath: () => invoke('settings:path'),
+  },
+  models: { list: () => invoke('models:list'), info: (n) => invoke('models:info', n) },
+  chat: {
+    list: (q) => invoke('chat:list', q),
+    create: (m) => invoke('chat:create', m),
+    rename: (id, t) => invoke('chat:rename', id, t),
+    remove: (id) => invoke('chat:remove', id),
+    messages: (id) => invoke('chat:messages', id),
+    send: (i) => invoke('chat:send', i),
+    stop: (id) => invoke('chat:stop', id),
+  },
+  library: {
+    list: (k) => invoke('library:list', k),
+    save: (k, i) => invoke('library:save', k, i),
+    remove: (k, id) => invoke('library:remove', k, id),
+    import: (k) => invoke('library:import', k),
+    export: (k, id) => invoke('library:export', k, id),
+  },
+  knowledge: {
+    list: () => invoke('knowledge:list'),
+    add: (i) => invoke('knowledge:add', i),
+    sync: (id) => invoke('knowledge:sync', id),
+    stop: (id) => invoke('knowledge:stop', id),
+    remove: (id) => invoke('knowledge:remove', id),
+    preview: (id) => invoke('knowledge:preview', id),
+    search: (q, m, s) => invoke('knowledge:search', q, m, s),
+  },
+  mcp: { states: () => invoke('mcp:states'), action: (id, a) => invoke('mcp:action', id, a) },
+  agents: {
+    project: () => invoke('agents:project'),
+    run: (i) => invoke('agents:run', i),
+    stop: (id) => invoke('agents:stop', id),
+    approve: (id, a) => invoke('agents:approve', id, a),
+    runs: () => invoke('agents:runs'),
+  },
+  secrets: {
+    importEnv: () => invoke('secrets:import-env'),
+    clearEnv: () => invoke('secrets:clear-env'),
+    list: () => invoke('secrets:list'),
+    set: (n, v) => invoke('secrets:set', n, v),
+    remove: (n) => invoke('secrets:remove', n),
+  },
+  system: {
+    openOllamaDocs: () => invoke('system:ollama-docs'),
+    exportSettings: () => invoke('system:export-settings'),
+    importSettings: () => invoke('system:import-settings'),
+  },
+  onEvent: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]) =>
+      callback(payload);
+    ipcRenderer.on('workspace:event', listener);
+    return () => ipcRenderer.removeListener('workspace:event', listener);
+  },
+};
+contextBridge.exposeInMainWorld('workspace', api);

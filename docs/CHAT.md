@@ -1,0 +1,61 @@
+# Chat
+
+Chat with an installed Ollama model and optionally use your indexed knowledge as reference material.
+
+## Ask questions about Saved Text
+
+1. Create and save a note in **Saved Text**.
+2. Open **Knowledge Base** and wait for the **Saved Text** source to become ready.
+3. Open **Chat** and select a chat model.
+4. In **Knowledge context**, choose **Collection: Saved Text** or **All knowledge**.
+5. Ask your question. Expand **Sources used** below the response to inspect retrieved excerpts.
+
+The feature is implemented. Saving a note automatically schedules indexing, but Chat defaults
+to **No knowledge context**. With that option selected, the question does not search RAG.
+Selecting a source supplies matching excerpts to the model; it does not enforce answers exclusively
+from those excerpts. The model is instructed to cite source names and acknowledge insufficient context.
+
+Ollama must be available, with a chat model and an embedding model configured in Settings.
+Only ready sources are retrieved. If a source fails to index, correct the reported problem and
+use **Sync / Re-index** in Knowledge Base.
+
+## Conversation controls
+
+## Slash commands
+
+Type `/` for command types, then `/mcp `, `/agent `, or `/skills ` for a searchable list of
+enabled items. Use Up/Down and Enter, or click an item. Escape dismisses suggestions.
+Selection creates a removable chip that applies to the next message only. Enter your query
+and send with the arrow or Cmd/Ctrl+Enter. Names with spaces can also be entered explicitly:
+
+```text
+/mcp "My server" "Find the requested information"
+/agent "Code reviewer" "Review authentication"
+/skills "Documentation" "Explain this API"
+```
+
+- **Skills:** applies the selected skill's instructions to the current chat model's response.
+  Uses conversation history and the selected knowledge context. It does not grant tools.
+- **Agent:** asks for a project folder, then runs the saved agent's model (or the default chat
+  model), skills, tools, and knowledge sources. The Chat knowledge selector does not override
+  the agent's configured sources. Cancelling the folder picker leaves the message unsent.
+- **MCP:** uses the current chat model to choose tools from the selected connected server only.
+  Start the server in MCP first. The selected Chat knowledge context is available to this run.
+  No built-in filesystem or shell tools are granted by this command.
+
+Agent and MCP commands start a fresh task using the submitted query; they do not inherit the
+whole conversation. Progress, tool results, and approval controls appear inline. Every MCP
+tool call requires approval. Agent file changes follow the existing approval settings and
+hash checks. Stop generation cancels the associated run, including pending approvals.
+
+Results, command names, and the latest 100 activity events persist with the conversation.
+Historical approval controls cannot execute again. Commands cannot use Regenerate; send a
+new command to repeat a task deliberately. Ordinary messages still use normal chat.
+
+## Conversation history
+
+Create, search, rename, delete, and reopen conversations. Send with the arrow button or
+Cmd/Ctrl+Enter. Stop an active response, regenerate a response, or copy message text.
+Conversation history and retrieved source excerpts are stored locally in SQLite.
+
+See [Saved Text](SAVED_TEXT.md), [Knowledge Base](KNOWLEDGE_BASE.md), and [Settings](SETTINGS.md).
