@@ -33,13 +33,13 @@ Each sidebar menu has a dedicated guide:
 
 | Sidebar menu | Guide |
 | --- | --- |
-| Chat | [CHAT.md](CHAT.md) |
-| MCP | [MCP.md](MCP.md) |
-| Skills | [SKILLS.md](SKILLS.md) |
-| Saved Text | [SAVED_TEXT.md](SAVED_TEXT.md) |
-| Agents | [AGENTS.md](AGENTS.md) |
-| Knowledge Base | [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) |
-| Settings | [SETTINGS.md](SETTINGS.md) |
+| Chat | [CHAT.md](docs/CHAT.md) |
+| MCP | [MCP.md](docs/MCP.md) |
+| Skills | [SKILLS.md](docs/SKILLS.md) |
+| Saved Text | [SAVED_TEXT.md](docs/SAVED_TEXT.md) |
+| Agents | [AGENTS.md](docs/AGENTS.md) |
+| Knowledge Base | [KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) |
+| Settings | [SETTINGS.md](docs/SETTINGS.md) |
 
 Saved Text is automatically indexed into RAG. To answer questions using it, choose
 **Collection: Saved Text** or **All knowledge** in Chat. The default **No knowledge context**
@@ -48,7 +48,7 @@ does not retrieve saved notes.
 - **Chat:** select a model, send with the arrow or Cmd/Ctrl+Enter, stop, regenerate, copy,
   search history, rename, delete and continue conversations after restarting.
   Type `/skills `, `/agent `, or `/mcp ` to select an enabled item and run it from Chat;
-  inspect activity and approve operations inline. See [CHAT.md](CHAT.md).
+  inspect activity and approve operations inline. See [CHAT.md](docs/CHAT.md).
 - **Saved Text:** create a title and Markdown/plain-text body; edit, copy, export,
   import or send it to a new chat. Notes automatically update the Saved Text RAG collection.
 - **Skills:** create reusable Markdown instructions; expand the accordion to inspect them.
@@ -109,6 +109,6 @@ iteration limit. These are explicit errors/limits rather than silently indexing 
 repositories. Narrow the source or add ignore patterns for larger projects. Chat context
 uses a bounded recent-history window, not automatic conversation summarization.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md),
-[RAG.md](RAG.md), [AGENTS.md](AGENTS.md), [MCP.md](MCP.md), [SKILLS.md](SKILLS.md),
-[SECURITY.md](SECURITY.md), and [IMPLEMENTATION.md](IMPLEMENTATION.md).
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEVELOPMENT.md](docs/DEVELOPMENT.md),
+[RAG.md](docs/RAG.md), [AGENTS.md](docs/AGENTS.md), [MCP.md](docs/MCP.md), [SKILLS.md](docs/SKILLS.md),
+[SECURITY.md](docs/SECURITY.md), and [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
