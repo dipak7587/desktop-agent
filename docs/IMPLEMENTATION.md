@@ -99,3 +99,17 @@ semantic search and RAG Chat passed with real local Ollama and embeddings: the r
 the document's private codename and showed one retrieved source. This does not guarantee every
 model relevance judgment; the regression tests additionally cover source/collection/all scopes,
 follow-up context and skipped, empty and unavailable knowledge.
+
+## Selected-KB query scope correction verified on 2026-09-21
+
+Reproduced the reported `give me chat details` failure: a ready `agent-desktop` source was
+skipped by the relevance decision, and the response interpreted the query as personal chat
+history. A read-only search confirmed that the index contained relevant CHAT.md passages.
+Normal Chat now supplies its selected knowledge scope as the subject for ambiguous topical
+queries to both the relevance check and response prompt. Explicit restrictions and unrelated
+general questions retain their previous behavior.
+
+Typecheck, lint, build and 71 tests passed. A new live Electron regression test with real Ollama
+and embeddings selects a folder named `agent-desktop`, submits the exact reported wording,
+and verifies a retrieved source and an answer about documented Chat features. The test passed;
+its setup waits for automatic model discovery before indexing the fixture.

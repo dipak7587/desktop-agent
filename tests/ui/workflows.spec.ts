@@ -232,3 +232,55 @@ test('agent UI creates a worker, reviews a real diff and applies approved change
   await expect(page.locator('.run>summary .badge')).toHaveText('Completed', { timeout: 90000 });
   expect(await readFile(join(project, 'greeting.txt'), 'utf8')).toBe('hello local workspace\n');
 });
+
+test('selected agent-desktop KB scopes give me chat details to project documentation', async () => {
+  test.skip(!process.env.LOCALAI_LIVE_TEST, 'Requires local embedding and chat models');
+  await expect(page.getByLabel('Chat model')).not.toHaveValue('', { timeout: 20000 });
+  await expect
+    .poll(() => page.evaluate(async () => (await window.workspace.settings.get()).embeddingModel))
+    .not.toBe('');
+  const folder = join(root, 'agent-desktop');
+  await mkdir(folder);
+  await writeFile(
+    join(folder, 'CHAT.md'),
+    '# Chat in agent-desktop\nThe Chat section supports streaming responses, a Knowledge context selector, and saved conversations. The project-specific Chat recovery code is CHAT-CEDAR-472. Sources used expands the retrieved document excerpts.',
+  );
+  await app.evaluate(({ dialog }, selected) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+  }, folder);
+  await page.evaluate(async () => {
+    await window.workspace.knowledge.add({ type: 'folder' });
+    const source = (await window.workspace.knowledge.list()).find(
+      (s) => s.name === 'agent-desktop',
+    )!;
+    await window.workspace.knowledge.sync(source.id);
+  });
+  const sourceId = await page.evaluate(
+    async () =>
+      (await window.workspace.knowledge.list()).find((s) => s.name === 'agent-desktop')!.id,
+  );
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          async (id) => (await window.workspace.knowledge.list()).find((s) => s.id === id)?.status,
+          sourceId,
+        ),
+      { timeout: 60000 },
+    )
+    .toBe('ready');
+  // Refresh the renderer's sources through its normal navigation/load path.
+  await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await page.getByLabel('Knowledge context').selectOption(sourceId);
+  await page.getByLabel('Message', { exact: true }).fill('give me chat details');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByRole('button', { name: 'Regenerate' })).toBeVisible({ timeout: 90000 });
+  await expect(page.getByText('Sources used: 1')).toBeVisible();
+  await expect(page.locator('.message.assistant')).toContainText(
+    /Knowledge context|streaming responses|saved conversations/i,
+  );
+  await expect(page.locator('.message.assistant')).not.toContainText(
+    /don't have access to (?:any |your )?chat history/i,
+  );
+});

@@ -96,3 +96,7 @@ Normal Chat supplies source metadata and recent conversation to knowledge releva
 The response prompt distinguishes retrieved, empty, unavailable and skipped knowledge; a
 model-only response must not be represented as an answer from the KB. Retrieval activity reports
 the passage count, and retrieved excerpts remain available under Sources used.
+
+In normal Chat, a selected knowledge scope disambiguates topical queries before relevance is
+judged. The user need not repeat the project's name in every question. This does not force
+retrieval for unrelated general questions or override explicit capability restrictions.

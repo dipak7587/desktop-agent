@@ -357,18 +357,16 @@ it.each(['general', 'restricted', 'project'] as const)(
 it.each(['carbon', 'collection:Engineering', 'all'])(
   'passes source metadata and follow-up context into the decision for %s',
   async (scope) => {
-    const search = vi
-      .fn()
-      .mockResolvedValue([
-        {
-          id: 'c1',
-          sourceId: 'carbon',
-          name: 'Carbon architecture',
-          content: 'Carbon uses a dedicated identity service.',
-          score: 1,
-          location: '',
-        },
-      ]);
+    const search = vi.fn().mockResolvedValue([
+      {
+        id: 'c1',
+        sourceId: 'carbon',
+        name: 'Carbon architecture',
+        content: 'Carbon uses a dedicated identity service.',
+        score: 1,
+        location: '',
+      },
+    ]);
     const source = {
       id: 'carbon',
       type: 'file' as const,
@@ -396,6 +394,7 @@ it.each(['carbon', 'collection:Engineering', 'all'])(
       if (request.messages[0].content.includes('CAPABILITY_RELEVANCE_CHECK')) {
         const context = JSON.parse(request.messages[1].content);
         expect(context.capability.description).toContain('Carbon architecture');
+        expect(context.selectedKnowledge).toBe(scope);
         expect(context.conversation).toContain('Explain our Carbon platform');
         yield {
           message: {
