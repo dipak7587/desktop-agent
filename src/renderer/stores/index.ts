@@ -101,6 +101,7 @@ export const useChat = create<{
   load: (q?: string) => Promise<void>;
   open: (id: string) => Promise<void>;
   newChat: () => Promise<void>;
+  clear: () => Promise<void>;
   event: (event: AppEvent) => void;
 }>((set, get) => ({
   conversations: [],
@@ -124,6 +125,12 @@ export const useChat = create<{
     const c = await window.workspace.chat.create(useSettings.getState().settings?.chatModel ?? '');
     useUI.setState({ chatCommand: null });
     set({ current: c.id, messages: [], stream: '' });
+    await get().load();
+  },
+  clear: async () => {
+    await window.workspace.chat.clear();
+    useUI.setState({ chatCommand: null });
+    set({ current: null, messages: [], stream: '', generating: null, activity: [], conversations: [] });
     await get().load();
   },
   event: (e) => {

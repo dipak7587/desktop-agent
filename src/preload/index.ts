@@ -13,6 +13,7 @@ const api: WorkspaceAPI = {
     create: (m) => invoke('chat:create', m),
     rename: (id, t) => invoke('chat:rename', id, t),
     remove: (id) => invoke('chat:remove', id),
+    clear: () => invoke('chat:clear'),
     messages: (id) => invoke('chat:messages', id),
     send: (i) => invoke('chat:send', i),
     stop: (id) => invoke('chat:stop', id),

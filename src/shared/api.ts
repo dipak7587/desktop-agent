@@ -24,6 +24,7 @@ export interface WorkspaceAPI {
     create(model: string): Promise<Conversation>;
     rename(id: string, title: string): Promise<void>;
     remove(id: string): Promise<void>;
+    clear(): Promise<void>;
     messages(id: string): Promise<Message[]>;
     send(input: ChatInput): Promise<void>;
     stop(id: string): Promise<void>;

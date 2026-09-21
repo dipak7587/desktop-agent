@@ -74,9 +74,11 @@ new command to repeat a task deliberately. Ordinary messages still use normal ch
 
 ## Conversation history
 
-Create, search, rename, delete, and reopen conversations. Send with the arrow button or
-Enter (or Cmd/Ctrl+Enter). Use Shift+Enter for a new line. Enter confirms an open slash-command
-suggestion first, and does not send while an IME is composing text. Stop an active response, regenerate a response, or copy message text.
+Create, search, rename, delete, and reopen conversations. Use the trash button in the
+history header to remove all local chat history at once, or delete a single conversation from
+the row actions. Send with the arrow button or Enter (or Cmd/Ctrl+Enter). Use Shift+Enter
+for a new line. Enter confirms an open slash-command suggestion first, and does not send while
+an IME is composing text. Stop an active response, regenerate a response, or copy message text.
 Conversation history and retrieved source excerpts are stored locally in SQLite.
 
 See [Agents](AGENTS.md), [Tools](TOOLS.md), [Saved Text](SAVED_TEXT.md), [Knowledge Base](KNOWLEDGE_BASE.md), and [Settings](SETTINGS.md).

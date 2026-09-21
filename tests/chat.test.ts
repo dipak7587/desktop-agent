@@ -22,3 +22,19 @@ it('persists, searches, continues and cascade-deletes a conversation across rest
   db.close();
   await rm(root, { recursive: true, force: true });
 });
+
+it('clears every stored conversation and message', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'chat-test-'));
+  const file = join(root, 'app.sqlite');
+  const db = new ChatDatabase(file);
+  const one = db.create('local-model');
+  const two = db.create('local-model');
+  db.add(one.id, 'user', 'First question');
+  db.add(two.id, 'assistant', 'Second answer', { sources: [] });
+
+  db.clear();
+
+  expect(db.list()).toHaveLength(0);
+  db.close();
+  await rm(root, { recursive: true, force: true });
+});

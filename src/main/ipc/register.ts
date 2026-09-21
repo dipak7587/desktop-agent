@@ -76,6 +76,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     if (s.chat.isActive(id)) throw new Error('Stop generation before deleting this conversation');
     s.db.remove(id);
   });
+  handle('chat:clear', none, async () => {
+    await s.chat.stopAll();
+    s.db.clear();
+  });
   handle('chat:messages', id, (id) => s.db.messages(id));
   handle('chat:send', z.tuple([sendSchema]), (input) => {
     if (

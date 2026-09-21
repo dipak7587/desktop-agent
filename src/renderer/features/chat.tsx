@@ -30,6 +30,7 @@ export function Chat() {
   }, [chat.current]);
   const [knowledge, setKnowledge] = useState('none');
   const [remove, setRemove] = useState<string | null>(null);
+  const [removeAll, setRemoveAll] = useState(false);
   const [rename, setRename] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -85,9 +86,19 @@ export function Chat() {
       <section className="history">
         <div className="history-heading">
           <span>Conversations</span>
-          <button className="icon" aria-label="New chat" onClick={() => void attempt(chat.newChat)}>
-            <Plus size={17} />
-          </button>
+          <div className="actions">
+            <button
+              className="icon"
+              aria-label="Delete all chats"
+              title="Delete all chats"
+              onClick={() => setRemoveAll(true)}
+            >
+              <Trash2 size={16} />
+            </button>
+            <button className="icon" aria-label="New chat" onClick={() => void attempt(chat.newChat)}>
+              <Plus size={17} />
+            </button>
+          </div>
         </div>
         <div className="search-input">
           <Search size={15} />
@@ -374,6 +385,17 @@ export function Chat() {
           </div>
         </div>
       </section>
+      {removeAll && (
+        <Confirm
+          title="Delete all chat history?"
+          detail="This permanently removes every conversation and message from this device."
+          onClose={() => setRemoveAll(false)}
+          onConfirm={async () => {
+            await chat.clear();
+            setRemoveAll(false);
+          }}
+        />
+      )}
       {remove && (
         <Confirm
           title="Delete conversation?"

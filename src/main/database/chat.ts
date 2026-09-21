@@ -49,6 +49,9 @@ export class ChatDatabase {
   remove(id: string) {
     this.db.prepare('DELETE FROM conversations WHERE id=?').run(id);
   }
+  clear() {
+    this.db.exec('BEGIN IMMEDIATE; DELETE FROM messages; DELETE FROM conversations; COMMIT;');
+  }
   messages(id: string): Message[] {
     this.get(id);
     return this.db
