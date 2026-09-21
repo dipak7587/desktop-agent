@@ -113,3 +113,7 @@ Read [SECURITY.md](SECURITY.md) before enabling automatic approvals, custom Tool
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+In **Capability permissions**, Selected mode shows dropdowns only for checked capabilities of
+allowed types. Unchecking a capability hides its dropdown without clearing its permission.
+Auto shows all listed capabilities of allowed types; None hides permission dropdowns.

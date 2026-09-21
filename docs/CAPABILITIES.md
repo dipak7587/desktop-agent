@@ -27,6 +27,10 @@ model also checks differently worded user restrictions. Restrictions can only re
 project tools and knowledge access; MCP/custom code remains subject to its own type restriction.
 
 Expand **Capability permissions** to choose Default, Always allow, Ask or Deny per capability.
+In Selected mode, a permission dropdown appears only after that capability's checkbox is selected
+and its type is allowed. Unchecking it hides the dropdown while retaining its saved permission
+for reselection. Auto shows permissions for all listed capabilities of allowed types; None hides
+all permission dropdowns.
 Deny blocks execution before model evaluation. Ask requires approval; rejection and cancellation
 prevent execution. Always allow skips the capability's approval, but still requires a positive
 relevance decision and preserves built-in path/hash/command restrictions. Defaults retain the

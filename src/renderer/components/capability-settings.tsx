@@ -40,12 +40,23 @@ export function CapabilitySettings({
       options: knowledge,
     },
   ] as const;
-  const permissions = [
-    ...skills.map((s) => ({ ...s, id: `skill:${s.id}` })),
-    ...servers.map((s) => ({ ...s, id: `mcp:${s.id}` })),
-    ...tools,
-    ...knowledge.map((s) => ({ ...s, id: `knowledge:${s.id}` })),
-  ];
+  const permissions = groups.flatMap((group) =>
+    config.mode === 'none' || !config[group.flag]
+      ? []
+      : group.options
+          .filter((option) => config.mode === 'auto' || config[group.key].includes(option.id))
+          .map((option) => ({
+            ...option,
+            id:
+              group.key === 'skills'
+                ? `skill:${option.id}`
+                : group.key === 'mcpServers'
+                  ? `mcp:${option.id}`
+                  : group.key === 'knowledgeBases'
+                    ? `knowledge:${option.id}`
+                    : option.id,
+          })),
+  );
   return (
     <fieldset>
       <legend>Agent Capabilities</legend>
@@ -69,7 +80,7 @@ export function CapabilitySettings({
         without capabilities. Selection never triggers execution.
       </p>
       {groups.map((group) => (
-        <fieldset key={group.key} disabled={config.mode === 'none'}>
+        <fieldset key={group.title} disabled={config.mode === 'none'}>
           <legend>{group.title}</legend>
           <label className="check">
             <input
@@ -106,6 +117,13 @@ export function CapabilitySettings({
           Defaults: MCP and custom tools ask; local tools follow Settings and show change previews.
           Always allow skips approval for that capability. Deny always blocks it.
         </p>
+        {!permissions.length && (
+          <p className="small muted">
+            {config.mode === 'none'
+              ? 'Capabilities are disabled in None mode.'
+              : 'Select a capability to configure its permission.'}
+          </p>
+        )}
         {permissions.map((option) => (
           <label key={option.id}>
             Permission: {option.name}

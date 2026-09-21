@@ -46,7 +46,22 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       await page.getByLabel('Allow Tools', { exact: true }).check();
       await page.getByLabel('Show capability decisions in history and Chat').check();
       await page.getByText('Capability permissions', { exact: true }).click();
+      await expect(page.getByLabel('Permission: shell.execute', { exact: true })).toHaveCount(0);
+      await page.getByLabel('shell.execute', { exact: true }).check();
       await page.getByLabel('Permission: shell.execute', { exact: true }).selectOption('deny');
+      await page.getByLabel('shell.execute', { exact: true }).uncheck();
+      await expect(page.getByLabel('Permission: shell.execute', { exact: true })).toHaveCount(0);
+      await page.getByLabel('shell.execute', { exact: true }).check();
+      await expect(page.getByLabel('Permission: shell.execute', { exact: true })).toHaveValue(
+        'deny',
+      );
+      await page.getByLabel('filesystem.read', { exact: true }).uncheck();
+      await page.getByRole('radio', { name: 'None', exact: true }).check();
+      await expect(page.getByLabel('Permission: shell.execute', { exact: true })).toHaveCount(0);
+      await page.getByRole('radio', { name: 'Auto', exact: true }).check();
+      await expect(page.getByLabel('Permission: filesystem.read', { exact: true })).toBeVisible();
+      await page.getByRole('radio', { name: 'Selected', exact: true }).check();
+      await expect(page.getByLabel('Permission: filesystem.read', { exact: true })).toHaveCount(0);
       await page.getByText('Capability permissions', { exact: true }).click();
       await page.getByLabel('Double', { exact: true }).check();
       if (name === 'Reviewer') {
