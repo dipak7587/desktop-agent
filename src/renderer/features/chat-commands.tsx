@@ -75,7 +75,8 @@ export function useChatCommands(draft: string) {
       options.length &&
       ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key) &&
       !e.metaKey &&
-      !e.ctrlKey
+      !e.ctrlKey &&
+      !(e.key === 'Enter' && (e.shiftKey || e.altKey))
     ) {
       e.preventDefault();
       if (e.key === 'Enter') choose(options[activeIndex]);

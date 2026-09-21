@@ -309,9 +309,9 @@ export function Chat() {
               onChange={(e) => commands.updateDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.nativeEvent.isComposing || commands.onKeyDown(e)) return;
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
                   e.preventDefault();
-                  void attempt(() => send());
+                  if (!e.repeat) void attempt(() => send());
                 }
               }}
             />
@@ -369,7 +369,7 @@ export function Chat() {
                 Regenerate
               </button>
             ) : (
-              <span>⌘ / Ctrl + Enter to send</span>
+              <span>Enter to send · Shift + Enter for a new line</span>
             )}
           </div>
         </div>

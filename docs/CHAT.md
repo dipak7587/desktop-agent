@@ -26,7 +26,7 @@ use **Sync / Re-index** in Knowledge Base.
 Type `/` for command types, then `/mcp `, `/agent `, or `/skills ` for a searchable list of
 enabled items. Use Up/Down and Enter, or click an item. Escape dismisses suggestions.
 Selection creates a removable chip that applies to the next message only. Enter your query
-and send with the arrow or Cmd/Ctrl+Enter. Names with spaces can also be entered explicitly:
+and send with Enter or the arrow. Shift+Enter inserts a new line; Cmd/Ctrl+Enter also sends. Names with spaces can also be entered explicitly:
 
 ```text
 /mcp "My server" "Find the requested information"
@@ -75,7 +75,8 @@ new command to repeat a task deliberately. Ordinary messages still use normal ch
 ## Conversation history
 
 Create, search, rename, delete, and reopen conversations. Send with the arrow button or
-Cmd/Ctrl+Enter. Stop an active response, regenerate a response, or copy message text.
+Enter (or Cmd/Ctrl+Enter). Use Shift+Enter for a new line. Enter confirms an open slash-command
+suggestion first, and does not send while an IME is composing text. Stop an active response, regenerate a response, or copy message text.
 Conversation history and retrieved source excerpts are stored locally in SQLite.
 
 See [Agents](AGENTS.md), [Tools](TOOLS.md), [Saved Text](SAVED_TEXT.md), [Knowledge Base](KNOWLEDGE_BASE.md), and [Settings](SETTINGS.md).

@@ -126,7 +126,9 @@ test('real Ollama chat streams, persists across relaunch and continues', async (
   await page
     .getByLabel('Message', { exact: true })
     .fill('Remember the word cedar. Reply briefly to confirm.');
-  await page.getByRole('button', { name: 'Send message' }).click();
+  await page.getByLabel('Message', { exact: true }).press('Shift+Enter');
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue(/\n$/);
+  await page.getByLabel('Message', { exact: true }).press('Enter');
   await expect(page.getByRole('button', { name: 'Regenerate' })).toBeVisible({ timeout: 90000 });
   const answer = await page.locator('.message.assistant .markdown').innerText();
   expect(answer.length).toBeGreaterThan(0);
