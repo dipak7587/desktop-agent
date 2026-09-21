@@ -12,7 +12,8 @@ it('rejects malformed IPC requests before they reach a service', () => {
   expect(() =>
     sendSchema.parse({ id: 'valid', text: 'hello', model: '', knowledge: 'none' }),
   ).toThrow();
-  expect(() => runInputSchema.parse({ agentId: 'a', task: 'x', project: '' })).toThrow();
+  expect(runInputSchema.parse({ agentId: 'a', task: 'x' }).project).toBeUndefined();
+  expect(() => runInputSchema.parse({ agentId: 'a', task: 'x', project: 42 })).toThrow();
   expect(() =>
     sourceInputSchema.parse({ type: 'executable', url: 'file:///etc/passwd' }),
   ).toThrow();

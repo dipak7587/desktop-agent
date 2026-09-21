@@ -1,3 +1,4 @@
+import { FolderSelection } from '../components/folder-selection';
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -23,6 +24,10 @@ export function Chat() {
   const commands = useChatCommands(draft);
   const submitting = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [project, setProject] = useState('');
+  useEffect(() => {
+    setProject('');
+  }, [chat.current]);
   const [knowledge, setKnowledge] = useState('none');
   const [remove, setRemove] = useState<string | null>(null);
   const [rename, setRename] = useState<string | null>(null);
@@ -44,9 +49,6 @@ export function Chat() {
           : settings?.chatModel;
       if (!model) throw new Error('Select an installed chat model in Settings');
       if (!regenerate && !request.query.trim()) throw new Error('Enter a query');
-      const project =
-        request.command?.kind === 'agent' ? await window.workspace.agents.project() : undefined;
-      if (project === null) return;
       let id = chat.current;
       if (!id) {
         await chat.newChat();
@@ -60,10 +62,16 @@ export function Chat() {
         model,
         knowledge,
         regenerate,
-        command: request.command ? { ...request.command, project } : undefined,
+        command: request.command
+          ? {
+              ...request.command,
+              project: request.command.kind === 'agent' ? project || undefined : undefined,
+            }
+          : undefined,
       });
       useUI.setState({ draft: '' });
       commands.clear();
+      setProject('');
       await chat.open(id);
       await chat.load();
     } finally {
@@ -219,6 +227,9 @@ export function Chat() {
                   {m.metadata?.command && (
                     <p className="badge">
                       /{m.metadata.command.kind} · {m.metadata.command.name}
+                      {m.metadata.command.project && (
+                        <span className="folder-path">📁 {m.metadata.command.project}</span>
+                      )}
                     </p>
                   )}
                   {!!m.metadata?.activity?.length && <ChatActivity events={m.metadata.activity} />}
@@ -268,10 +279,21 @@ export function Chat() {
                 <span>
                   /{commands.selected.kind} · {commands.selected.name} · this message
                 </span>
-                <button type="button" aria-label="Remove chat command" onClick={commands.clear}>
-                  ×
-                </button>
+                <div className="command-chip-actions">
+                  {commands.selected.kind === 'agent' && (
+                    <FolderSelection value={project} onChange={setProject} controlsOnly />
+                  )}
+                  <button type="button" aria-label="Remove chat command" onClick={commands.clear}>
+                    ×
+                  </button>
+                </div>
               </div>
+            )}
+            {commands.selected?.kind === 'agent' && (
+              <p className="folder-path command-folder-path">{project || 'No folder selected'}</p>
+            )}
+            {!commands.selected && draft.startsWith('/agent ') && (
+              <FolderSelection value={project} onChange={setProject} />
             )}
             {commands.picker}
             <textarea
@@ -331,7 +353,7 @@ export function Chat() {
                   type="submit"
                   className="send"
                   aria-label="Send message"
-                  disabled={!draft.trim() || busy}
+                  disabled={(!draft.trim() && commands.selected?.kind !== 'agent') || busy}
                 >
                   <ArrowUp size={20} />
                 </button>

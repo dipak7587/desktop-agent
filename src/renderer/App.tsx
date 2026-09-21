@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   MessageSquare,
   Plug,
+  Wrench,
   Zap,
   FileText,
   Bot,
@@ -33,6 +34,7 @@ import { Modal } from './components/common';
 const nav = [
   { name: 'Chat', icon: MessageSquare },
   { name: 'MCP', icon: Plug },
+  { name: 'Tools', icon: Wrench },
   { name: 'Skills', icon: Zap },
   { name: 'Saved Text', icon: FileText },
   { name: 'Agents', icon: Bot },
@@ -86,7 +88,11 @@ export function App() {
         const id = useChat.getState().generating;
         if (id) void attempt(() => window.workspace.chat.stop(id));
         for (const r of useRuns.getState().runs)
-          if (!['Completed', 'Stopped', 'Failed'].includes(r.status))
+          if (
+            !['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
+              r.status,
+            )
+          )
             void attempt(() => window.workspace.agents.stop(r.id));
       }
     };
@@ -215,7 +221,9 @@ export function App() {
                   ? 'saved-text'
                   : section === 'MCP'
                     ? 'mcp'
-                    : 'agents'
+                    : section === 'Tools'
+                      ? 'tools'
+                      : 'agents'
             }
           />
         )}
@@ -274,6 +282,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       skills: 'Skills',
                       agents: 'Agents',
                       mcp: 'MCP',
+                      tools: 'Tools',
                       'saved-text': 'Saved Text',
                     } as Record<string, Section>
                   )[kind],

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { X, ArrowUpRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -74,6 +74,7 @@ export function Confirm({
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
+  const [busy, setBusy] = useState(false);
   return (
     <Modal title={title} onClose={onClose}>
       <p className="muted">{detail}</p>
@@ -81,14 +82,20 @@ export function Confirm({
         <button onClick={onClose}>Cancel</button>
         <button
           className="danger"
+          disabled={busy}
           onClick={() =>
             void attempt(async () => {
-              await onConfirm();
-              onClose();
+              setBusy(true);
+              try {
+                await onConfirm();
+                onClose();
+              } finally {
+                setBusy(false);
+              }
             })
           }
         >
-          Delete
+          {busy ? 'Deleting…' : 'Delete'}
         </button>
       </div>
     </Modal>

@@ -153,11 +153,13 @@ export const useSkills = libraryStore('skills');
 export const useAgents = libraryStore('agents');
 export const useSavedText = libraryStore('saved-text');
 export const useMCP = libraryStore('mcp');
+export const useTools = libraryStore('tools');
 export const libraryStores = {
   skills: useSkills,
   agents: useAgents,
   'saved-text': useSavedText,
   mcp: useMCP,
+  tools: useTools,
 };
 export const useKnowledge = create<{
   sources: KnowledgeSource[];

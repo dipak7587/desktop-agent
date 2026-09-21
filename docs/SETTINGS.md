@@ -15,17 +15,26 @@ on disk even when its background indexing fails.
 ## Preferences and agents
 
 Choose the appearance and general preferences. Configure agent execution limits and approval
-behavior. Agents operate within the selected project folder using the tools enabled in their
-definition. Read [Security](SECURITY.md) before enabling automatic approvals or external tools.
+behavior. The global maximum-iteration setting is the initial value for new agents and the
+fallback for saved definitions without `maxIterations`. Each agent can save its own **Maximum
+execution iterations** (1–50); that value takes precedence. Iterations count model turns,
+including a final report. Generation iterations are not a separate setting in this release.
+
+The command timeout also bounds custom Tool execution. Custom Tool and MCP calls always ask
+for approval, even with automatic approval enabled. Built-in project tools operate within a
+folder explicitly selected for that run; folder selection is optional for other agent work. Read [Security](SECURITY.md) before enabling automatic approvals or external tools.
 
 ## Credentials and local data
 
 Store supported credentials using OS encryption or explicitly select a `.env` file. MCP
-definitions reference environment variable names rather than containing secret values.
+definitions reference environment variable names rather than containing secret values. Custom
+API Tool headers can use `${NAME}` references resolved at execution time. Keep literal credentials
+out of custom code, URLs and headers, since those definition fields are portable.
 Secure credential storage is rejected when a supported encryption backend is unavailable.
 
 The Local data section shows the app's data directory. Settings are stored locally; notes,
-skills, agents, and MCP definitions remain portable files, while chat history and RAG vectors
-use their respective local databases.
+skills, agents, custom Tools and MCP definitions remain portable files. Chat and agent run
+history use SQLite; RAG vectors use LanceDB. MCP auto-start is configured per server in the
+MCP editor, separately from the preference to launch the application at login.
 
-See [Chat](CHAT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [Agents](AGENTS.md), and [MCP](MCP.md).
+See [Chat](CHAT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [Agents](AGENTS.md), [MCP](MCP.md), and [Tools](TOOLS.md).

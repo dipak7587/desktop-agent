@@ -1,7 +1,7 @@
 # LocalAI Workspace
 
 A runnable local-first Electron workspace for Ollama chat, documentation, reusable skills,
-MCP servers, and project agents. Core features use local files, SQLite and LanceDB; no cloud
+MCP servers, custom Tools, and agents. Core features use local files, SQLite and LanceDB; no cloud
 account or backend is required.
 
 ## Run
@@ -31,15 +31,16 @@ is offline. This build was exercised with the machine's installed `qwen3-coder:l
 
 Each sidebar menu has a dedicated guide:
 
-| Sidebar menu | Guide |
-| --- | --- |
-| Chat | [CHAT.md](docs/CHAT.md) |
-| MCP | [MCP.md](docs/MCP.md) |
-| Skills | [SKILLS.md](docs/SKILLS.md) |
-| Saved Text | [SAVED_TEXT.md](docs/SAVED_TEXT.md) |
-| Agents | [AGENTS.md](docs/AGENTS.md) |
+| Sidebar menu   | Guide                                       |
+| -------------- | ------------------------------------------- |
+| Chat           | [CHAT.md](docs/CHAT.md)                     |
+| MCP            | [MCP.md](docs/MCP.md)                       |
+| Tools          | [TOOLS.md](docs/TOOLS.md)                   |
+| Skills         | [SKILLS.md](docs/SKILLS.md)                 |
+| Saved Text     | [SAVED_TEXT.md](docs/SAVED_TEXT.md)         |
+| Agents         | [AGENTS.md](docs/AGENTS.md)                 |
 | Knowledge Base | [KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) |
-| Settings | [SETTINGS.md](docs/SETTINGS.md) |
+| Settings       | [SETTINGS.md](docs/SETTINGS.md)             |
 
 Saved Text is automatically indexed into RAG. To answer questions using it, choose
 **Collection: Saved Text** or **All knowledge** in Chat. The default **No knowledge context**
@@ -54,13 +55,17 @@ does not retrieve saved notes.
 - **Skills:** create reusable Markdown instructions; expand the accordion to inspect them.
   Enable/disable in the editor, and select skills when configuring an agent.
 - **MCP:** define an executable, arguments and environment references. Start, stop,
-  restart or test a server; inspect discovered tools and redacted logs.
+  restart or test a server; inspect discovered tools and redacted logs. Enable auto-start per
+  server. Deletion is blocked while any agent references it.
+- **Tools:** create reusable JavaScript/Node.js logic or API calls with input parameters, test
+  them, and select them in agents. Referenced Tools cannot be deleted.
 - **Knowledge Base:** add .md/.txt files, a folder containing .md/.txt files, or a URL, then click Sync / Re-index.
   Preview normalized content, perform semantic or keyword search, or select sources and
   collections in Chat. Changes replace old vectors; unchanged local documents skip embedding.
-- **Agents:** configure a model, skills, tools and knowledge sources; select a project folder
-  and run a task. Read the proposed diff and approve or reject changes. Results include
-  tool output and verification. Model capability determines task quality.
+- **Agents:** configure a model, skills, tools, knowledge sources and maximum iterations;
+  optionally select a project folder and run a task, or use `/agent <name>` in Chat. Read the proposed diff and approve or reject changes. Results include
+  tool output and verification. Persistent accordion history shows timing, iteration usage,
+  tools, results and status. Agents support confirmed bulk deletion. Model capability determines task quality.
 - **Settings:** configure models, chunking, ignore patterns, theme, execution bounds,
   OS-encrypted credentials, and an explicitly selected `.env` file.
 
@@ -90,9 +95,11 @@ If an IDE exports `ELECTRON_RUN_AS_NODE=1`, clear that variable when launching E
 
 The exact data directory is shown at the bottom of Settings. It is Electron's `userData`
 directory, never the project repository. Definitions are portable Markdown/JSON files.
-Chat uses SQLite; vectors use local LanceDB. Export does not include credential values.
+Chat and agent run history use SQLite; vectors use local LanceDB. Exports do not resolve
+credential references. Avoid literal secrets in custom Tool code, headers and URLs.
 OS-encrypted keys are rejected when a secure encryption backend is unavailable.
-MCP starts programs you configure: use trusted servers. URL sources fetch only the selected
+MCP starts programs you configure, including opted-in auto-start servers. Custom Tools execute
+local code or API requests: use trusted definitions. URL sources fetch only the selected
 page; there is no automatic crawler or JavaScript browser execution.
 
 ## Release status and practical limits
@@ -101,7 +108,9 @@ This is a functional initial desktop implementation, not a signed public release
 the verified platform; Windows/Linux packaging targets are configured but need native QA.
 English is the current UI language. MCP supports stdio transports. Agents use a bounded
 JSON-action loop, approve changes individually, and do literal content search rather than
-AST/symbol indexing. Destructive commands are blocked, not exposed behind a confirmation.
+AST/symbol indexing. Built-in tools restrict commands; user-authored Tools and MCP servers
+are trusted code with the current user’s privileges, not an OS sandbox. Custom code runs as
+JavaScript, without TypeScript transpilation. There is no separate agent-generation workflow.
 
 Text files are capped at 2 MB, URLs at 5 MB, folder traversal at 10,000 eligible files,
 previews at 600 KB, agent reads at 200 KB, and runs at 15 minutes plus the configured
@@ -110,5 +119,5 @@ repositories. Narrow the source or add ignore patterns for larger projects. Chat
 uses a bounded recent-history window, not automatic conversation summarization.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEVELOPMENT.md](docs/DEVELOPMENT.md),
-[RAG.md](docs/RAG.md), [AGENTS.md](docs/AGENTS.md), [MCP.md](docs/MCP.md), [SKILLS.md](docs/SKILLS.md),
+[RAG.md](docs/RAG.md), [TOOLS.md](docs/TOOLS.md), [AGENTS.md](docs/AGENTS.md), [MCP.md](docs/MCP.md), [SKILLS.md](docs/SKILLS.md),
 [SECURITY.md](docs/SECURITY.md), and [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).

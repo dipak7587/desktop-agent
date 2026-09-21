@@ -1009,6 +1009,30 @@ legend {
   border-bottom: 1px solid var(--border);
   font-size: 12px;
 }
+.command-chip {
+  flex-wrap: wrap;
+}
+.command-chip > span {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  flex: 1 1 180px;
+}
+.command-chip-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+.command-chip-actions .actions {
+  margin: 0;
+}
+.command-folder-path {
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
 .chat-activity {
   margin-block: 12px;
 }
@@ -1417,4 +1441,13 @@ legend {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+.folder-path {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.folder-selection {
+  margin: 8px 0;
+  min-width: 0;
 }

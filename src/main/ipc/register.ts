@@ -1,3 +1,5 @@
+import type { CustomToolService } from '../services/tools/custom';
+import type { AgentRunDatabase } from '../database/agent-runs';
 import { readText } from '../services/filesystem/walk';
 import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron';
 import { z } from 'zod';
@@ -31,6 +33,8 @@ export interface Services {
   mcp: MCPService;
   agents: AgentService;
   secrets: SecretStore;
+  customTools: CustomToolService;
+  runDb: AgentRunDatabase;
 }
 export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) {
   const projects = new Set<string>();
@@ -74,7 +78,11 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   });
   handle('chat:messages', id, (id) => s.db.messages(id));
   handle('chat:send', z.tuple([sendSchema]), (input) => {
-    if (input.command?.kind === 'agent' && !projects.has(input.command.project ?? ''))
+    if (
+      input.command?.kind === 'agent' &&
+      input.command.project &&
+      !projects.has(input.command.project)
+    )
       throw new Error('Select a project using the folder picker first');
     return s.chat.send(input);
   });
@@ -85,6 +93,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     return s.library.save(kind, item);
   });
   handle('library:remove', z.tuple([kindSchema, idSchema]), async (kind, id) => {
+    await s.library.assertRemovable(kind, id);
     if (kind === 'mcp') await s.mcp.stop(id);
     return s.library.remove(kind, id);
   });
@@ -153,13 +162,18 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     return path;
   });
   handle('agents:run', z.tuple([runInputSchema]), (input) => {
-    if (!projects.has(input.project))
+    if (input.project && !projects.has(input.project))
       throw new Error('Select a project using the folder picker first');
     return s.agents.run(input);
   });
   handle('agents:stop', id, (id) => s.agents.stop(id));
   handle('agents:approve', z.tuple([idSchema, z.boolean()]), (id, approved) =>
     s.agents.approve(id, approved),
+  );
+  handle(
+    'tools:run',
+    z.tuple([idSchema, z.record(z.string().max(200), z.unknown())]),
+    (id, input) => s.customTools.run(id, input),
   );
   handle('agents:runs', none, () => s.agents.runs());
   const secretName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,99}$/);

@@ -34,6 +34,7 @@ const api: WorkspaceAPI = {
     search: (q, m, s) => invoke('knowledge:search', q, m, s),
   },
   mcp: { states: () => invoke('mcp:states'), action: (id, a) => invoke('mcp:action', id, a) },
+  tools: { run: (id, input) => invoke('tools:run', id, input) },
   agents: {
     project: () => invoke('agents:project'),
     run: (i) => invoke('agents:run', i),

@@ -38,6 +38,7 @@ export function resolveSlash(text: string, items: LibraryItem[]) {
       /* Keep ordinary quoted prose. */
     }
   }
+  if (!query.trim() && prefix.kind === 'agent') query = 'Run your configured instructions.';
   if (!query.trim()) throw new Error('Enter a query after the selected name.');
   return { command: { kind: prefix.kind, id: matching[0].id }, name: matching[0].name, query };
 }

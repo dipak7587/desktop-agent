@@ -1,7 +1,7 @@
 # LocalAI Workspace architecture
 
-The Electron main process owns application data, SQLite chat history, Ollama requests,
-LanceDB, MCP subprocesses, credentials, and the controlled agent runtime. The React
+The Electron main process owns application data, SQLite chat/run history, Ollama requests,
+LanceDB, custom Tool execution, MCP subprocesses, credentials, and the controlled agent runtime. The React
 renderer has no Node access. A sandboxed CommonJS preload exposes an explicit,
 validated IPC API and filtered progress events. Remote navigation is disabled.
 
@@ -18,6 +18,8 @@ validated IPC API and filtered progress events. Remote navigation is disabled.
 9. File-backed agents and bounded model/tool loop.
 10. Workspace-constrained tools, hash checks, diffs and approvals.
 11. Credentials, settings, import/export, tests, documentation and packaging.
+12. Custom Tools, optional run folders, per-agent iteration limits, persistent run history,
+    MCP auto-start/dependency checks, and bulk agent deletion.
 
 Each phase is checked before the next. No simulated application data or model replies.
 
@@ -25,19 +27,37 @@ Each phase is checked before the next. No simulated application data or model re
 
 All runtime data lives beneath Electron `app.getPath('userData')` (a test-only
 environment override permits isolated smoke tests). `database/app.sqlite` stores
-conversations and messages. `saved-text/*.md`, `skills/*/SKILL.md`, `agents/*.md`,
-and `mcp/*.json` remain portable files. Knowledge metadata and previews are files;
+conversations and messages. `database/agent-runs.sqlite` stores execution history. `saved-text/*.md`, `skills/*/SKILL.md`, `agents/*.md`,
+`tools/*.md`, and `mcp/*.json` remain portable files. Knowledge metadata and previews are files;
 vectors live in `rag/lancedb`. Settings and OS-encrypted credentials are separate.
 
 ## Boundaries
 
 Zod validates IPC inputs. Native dialogs grant local source and project paths.
-Agent tools resolve real paths inside the chosen workspace, reject symlinks and
+Built-in agent tools resolve real paths inside the chosen workspace, reject symlinks and
 sensitive/ignored paths, limit reads and search, and never use a shell interpreter.
 Writes require an original-content hash, a reviewable diff, and approval by default.
-Commands use a fixed executable/argument allowlist, timeouts and bounded output.
+Built-in commands use a fixed executable/argument allowlist, timeouts and bounded output.
 MCP tools require approval because external tools can have arbitrary side effects.
-Secrets resolve only in main and never appear in API responses or logs.
+Custom Tool calls also require approval when initiated by agents. Their main-process service
+validates input and executes either an HTTP(S) request or a separate Node.js process with
+bounded output, timeout and cancellation. These user-authored programs are not constrained by
+the built-in command allowlist or workspace paths. API header secrets resolve only in main;
+known secret values are redacted from results/errors and persisted run activity.
+
+Folder context is optional and temporary in the renderer. Supplied paths still require native
+picker authorization at the IPC boundary; folderless runs cannot use built-in project tools.
+The same `FolderSelection` component serves Chat and Run Agent. The run stores the selected
+path for history without turning it into a default for future requests.
+
+The agent runtime snapshots the configured iteration maximum, counts model turns, and persists
+status, timestamps, request, tool/MCP activity and results through `AgentRunDatabase`. It emits
+safe progress labels rather than model planning fields. Interrupted persisted runs become
+Cancelled when loaded. Native `details` elements provide the history accordion.
+
+At startup `MCPService.autoStart` starts enabled opted-in definitions and records individual
+failures. `LibraryService.assertRemovable` checks agent references before Tool/MCP deletion;
+the IPC handler checks before stopping an MCP. These checks also cover disabled agents.
 
 ## Providers and UI
 

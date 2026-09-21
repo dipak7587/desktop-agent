@@ -114,9 +114,32 @@ export class MCPService {
       signal,
       timeout: 60000,
     });
+    if (result.isError)
+      throw new Error(
+        (this.redactors.get(id) ?? ((text) => this.secrets.redact(text)))(
+          JSON.stringify(result),
+        ).slice(0, 30000),
+      );
     return (this.redactors.get(id) ?? ((text: string) => this.secrets.redact(text)))(
       JSON.stringify(result),
     ).slice(0, 30000);
+  }
+  async autoStart() {
+    const configs = await this.library.list('mcp');
+    await Promise.allSettled(
+      configs
+        .filter((c) => c.enabled && c.autoStart)
+        .map(async (c) => {
+          try {
+            await this.start(c.id);
+          } catch (error) {
+            const state = this.state(c.id);
+            state.status = 'error';
+            state.logs.push(this.secrets.redact((error as Error).message));
+            this.emit({ type: 'mcp', id: c.id, status: 'error' });
+          }
+        }),
+    );
   }
   async stopAll() {
     await Promise.allSettled([...this.clients.keys()].map((id) => this.stop(id)));

@@ -1,3 +1,5 @@
+import { CustomToolService } from './services/tools/custom';
+import { AgentRunDatabase } from './database/agent-runs';
 import { app, BrowserWindow, session, dialog } from 'electron';
 import { join } from 'node:path';
 import { mkdir, appendFile, readdir } from 'node:fs/promises';
@@ -53,7 +55,16 @@ function createWindow() {
 app
   .whenReady()
   .then(async () => {
-    for (const dir of ['database', 'skills', 'agents', 'mcp', 'saved-text', 'cache', 'logs'])
+    for (const dir of [
+      'database',
+      'skills',
+      'agents',
+      'tools',
+      'mcp',
+      'saved-text',
+      'cache',
+      'logs',
+    ])
       await mkdir(join(root, dir), { recursive: true });
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) =>
       callback(false),
@@ -85,7 +96,20 @@ app
     )
       await knowledge.syncSavedText();
     const mcp = new MCPService(library, secrets, emit);
-    const agents = new AgentService(library, ollama, knowledge, mcp, getSettings, emit);
+    const customTools = new CustomToolService(library, secrets, () => getSettings().commandTimeout);
+    const runDb = new AgentRunDatabase(join(root, 'database', 'agent-runs.sqlite'));
+    const agents = new AgentService(
+      library,
+      ollama,
+      knowledge,
+      mcp,
+      getSettings,
+      emit,
+      undefined,
+      customTools,
+      runDb,
+      (text) => secrets.redact(text),
+    );
     const chat = new ChatService(
       db,
       ollama,
@@ -95,9 +119,22 @@ app
       new ChatCommands(library, mcp, agents),
       (text) => secrets.redact(text),
     );
-    services = { settings, ollama, db, chat, library, knowledge, mcp, agents, secrets };
+    services = {
+      settings,
+      ollama,
+      db,
+      chat,
+      library,
+      knowledge,
+      mcp,
+      agents,
+      secrets,
+      customTools,
+      runDb,
+    };
     registerIPC(services, () => window);
     createWindow();
+    void mcp.autoStart().catch(log);
     app.on('activate', () => {
       if (!window) createWindow();
     });
@@ -122,6 +159,8 @@ app.on('before-quit', (event) => {
         services.agents.stopAll(),
         services.mcp.stopAll(),
       ]);
+      services.customTools.stopAll();
+      services.runDb.close();
       services.db.close();
     }
     app.exit();

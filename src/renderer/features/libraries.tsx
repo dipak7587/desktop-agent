@@ -1,3 +1,4 @@
+import { FolderSelection } from '../components/folder-selection';
 import { useState } from 'react';
 import {
   Plus,
@@ -8,7 +9,7 @@ import {
   Plug,
   Upload,
   Play,
-  FolderOpen,
+  Wrench,
   Square,
   ChevronDown,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ import {
   libraryStores,
   useSettings,
   useSkills,
+  useTools,
   useKnowledge,
   useMCPStatus,
   useRuns,
@@ -28,13 +30,20 @@ import {
 } from '../stores';
 import { PageHeader, Empty, Modal, Confirm, Markdown, CopyButton } from '../components/common';
 const descriptions = {
+  tools: 'Reusable API calls and custom Node.js logic for your agents.',
   skills: 'Reusable instructions that make your models work your way.',
   'saved-text': 'Notes and prompts, automatically indexed in your local knowledge base.',
   agents: 'Purpose-built workers for your local projects.',
   mcp: 'Connect local tools through the Model Context Protocol.',
 };
-const titles = { skills: 'Skills', 'saved-text': 'Saved Text', agents: 'Agents', mcp: 'MCP' };
-const icons = { skills: Zap, 'saved-text': FileText, agents: Bot, mcp: Plug };
+const titles = {
+  tools: 'Tools',
+  skills: 'Skills',
+  'saved-text': 'Saved Text',
+  agents: 'Agents',
+  mcp: 'MCP',
+};
+const icons = { tools: Wrench, skills: Zap, 'saved-text': FileText, agents: Bot, mcp: Plug };
 const builtinTools = [
   'filesystem.read',
   'filesystem.write',
@@ -51,6 +60,9 @@ const builtinTools = [
 export function Library({ kind }: { kind: LibraryKind }) {
   const { items, load } = libraryStores[kind]();
   const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkDelete, setBulkDelete] = useState(false);
+  const [testTool, setTestTool] = useState<LibraryItem | null>(null);
   const [editing, setEditing] = useState<LibraryItem | null>(null);
   const [remove, setRemove] = useState<LibraryItem | null>(null);
   const [run, setRun] = useState<LibraryItem | null>(null);
@@ -60,6 +72,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
     setEditing({
       ...librarySchema.parse({ id: crypto.randomUUID(), name: 'Untitled' }),
       name: '',
+      maxIterations: useSettings.getState().settings?.maxIterations ?? 15,
+      toolConfig:
+        kind === 'tools'
+          ? { type: 'javascript', parameters: [], url: '', method: 'GET', headers: {} }
+          : undefined,
       model: useSettings.getState().settings?.chatModel ?? '',
       tools:
         kind === 'agents'
@@ -94,7 +111,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
                   ? 'server'
                   : kind === 'skills'
                     ? 'skill'
-                    : 'agent'}
+                    : kind === 'tools'
+                      ? 'tool'
+                      : 'agent'}
             </button>
           </>
         }
@@ -114,6 +133,26 @@ export function Library({ kind }: { kind: LibraryKind }) {
           {kind === 'mcp' ? 'JSON' : 'Markdown'}
         </span>
       </div>
+      {kind === 'agents' && !!items.length && (
+        <div className="section-toolbar">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={items.every((i) => selected.includes(i.id))}
+              onChange={(e) => setSelected(e.target.checked ? items.map((i) => i.id) : [])}
+            />
+            Select all Agents
+          </label>
+          <span>{selected.length} Agents selected</span>
+          <button
+            className="danger"
+            disabled={!selected.length}
+            onClick={() => setBulkDelete(true)}
+          >
+            Delete Selected
+          </button>
+        </div>
+      )}
       {!items.length ? (
         <Empty
           icon={<Icon size={30} />}
@@ -129,7 +168,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
                   ? 'agent'
                   : kind === 'mcp'
                     ? 'server'
-                    : 'note'}
+                    : kind === 'tools'
+                      ? 'tool'
+                      : 'note'}
             </button>
           }
         />
@@ -146,6 +187,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
               const actions = (
                 <div className="card-actions">
                   <button onClick={() => setEditing(item)}>Edit</button>
+                  {kind === 'tools' && (
+                    <button onClick={() => setTestTool(item)}>Test / Run</button>
+                  )}
                   {kind === 'agents' && (
                     <button className="primary" onClick={() => setRun(item)}>
                       <Play size={13} />
@@ -203,6 +247,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                   )}
                   {kind === 'mcp' && (
                     <>
+                      <p className="small muted">Auto start: {item.autoStart ? 'On' : 'Off'}</p>
                       <code className="command-line">
                         {item.command} {item.args.join(' ')}
                       </code>
@@ -265,12 +310,31 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     </div>
                     <span className="badge">
                       {kind === 'mcp'
-                        ? (state?.status ?? 'stopped')
+                        ? state?.status === 'connected'
+                          ? 'Running'
+                          : (state?.status ?? 'stopped')
                         : item.enabled
                           ? 'Local'
                           : 'Disabled'}
                     </span>
                   </div>
+                  {kind === 'agents' && (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${item.name}`}
+                        checked={selected.includes(item.id)}
+                        onChange={(e) =>
+                          setSelected((ids) =>
+                            e.target.checked
+                              ? [...ids, item.id]
+                              : ids.filter((id) => id !== item.id),
+                          )
+                        }
+                      />
+                      Select
+                    </label>
+                  )}
                   <h2>{item.name}</h2>
                   {details}
                 </article>
@@ -301,6 +365,24 @@ export function Library({ kind }: { kind: LibraryKind }) {
           }}
         />
       )}
+      {testTool && <TestTool tool={testTool} onClose={() => setTestTool(null)} />}
+      {bulkDelete && (
+        <Confirm
+          title={`Delete ${selected.length} agents?`}
+          detail="This action cannot be undone."
+          onClose={() => setBulkDelete(false)}
+          onConfirm={async () => {
+            try {
+              for (const id of selected) {
+                await window.workspace.library.remove('agents', id);
+                setSelected((ids) => ids.filter((value) => value !== id));
+              }
+            } finally {
+              await load();
+            }
+          }}
+        />
+      )}
       {run && <RunAgent agent={run} onClose={() => setRun(null)} />}
       {kind === 'agents' && <AgentRuns />}
     </div>
@@ -318,6 +400,13 @@ function LibraryEditor({
   onSave: (item: LibraryItem) => Promise<void>;
 }) {
   const [item, setItem] = useState(initial);
+  const [parameters, setParameters] = useState(
+    JSON.stringify(initial.toolConfig?.parameters ?? [], null, 2),
+  );
+  const [headers, setHeaders] = useState(
+    JSON.stringify(initial.toolConfig?.headers ?? {}, null, 2),
+  );
+  const { items: customTools } = useTools();
   const [args, setArgs] = useState(initial.args.join('\n'));
   const [env, setEnv] = useState(JSON.stringify(initial.env, null, 2));
   const [fromJSON, setFromJSON] = useState(false);
@@ -331,6 +420,8 @@ function LibraryEditor({
   const { states } = useMCPStatus();
   const tools = [
     ...builtinTools,
+    ...customTools.map((t) => `custom:${t.id}`),
+    ...item.tools,
     ...states.flatMap((s) => s.tools.map((t) => `mcp:${s.id}:${t.name}`)),
   ];
   const update = (key: keyof LibraryItem, value: unknown) =>
@@ -364,7 +455,7 @@ function LibraryEditor({
   return (
     <Modal
       wide
-      title={`${initial.createdAt ? 'Edit' : 'Create'} ${kind === 'saved-text' ? 'saved text' : kind === 'skills' ? 'skill' : kind === 'agents' ? 'agent' : 'MCP server'}`}
+      title={`${initial.createdAt ? 'Edit' : 'Create'} ${kind === 'saved-text' ? 'saved text' : kind === 'skills' ? 'skill' : kind === 'agents' ? 'agent' : kind === 'tools' ? 'tool' : 'MCP server'}`}
       onClose={onClose}
     >
       <form
@@ -376,6 +467,15 @@ function LibraryEditor({
               await onSave(
                 librarySchema.parse({
                   ...item,
+                  ...(kind === 'tools'
+                    ? {
+                        toolConfig: {
+                          ...item.toolConfig,
+                          parameters: JSON.parse(parameters),
+                          headers: JSON.parse(headers),
+                        },
+                      }
+                    : {}),
                   ...(kind === 'mcp' && fromJSON
                     ? parseMCPConfig(configJSON)
                     : { args: args.split('\n').filter(Boolean), env: JSON.parse(env) }),
@@ -417,6 +517,17 @@ function LibraryEditor({
         {kind === 'agents' && (
           <>
             <label>
+              Maximum execution iterations
+              <input
+                type="number"
+                min={1}
+                max={50}
+                required
+                value={item.maxIterations ?? 15}
+                onChange={(e) => update('maxIterations', e.target.valueAsNumber)}
+              />
+            </label>
+            <label>
               Model
               <select value={item.model} onChange={(e) => update('model', e.target.value)}>
                 <option value="">Use default chat model</option>
@@ -438,7 +549,10 @@ function LibraryEditor({
               <legend>Tools</legend>
               {checks(
                 'tools',
-                tools.map((t) => ({ id: t, name: t })),
+                [...new Set(tools)].map((t) => ({
+                  id: t,
+                  name: customTools.find((c) => t === `custom:${c.id}`)?.name ?? t,
+                })),
               )}
             </fieldset>
             <fieldset>
@@ -450,8 +564,81 @@ function LibraryEditor({
             </fieldset>
           </>
         )}
+        {kind === 'tools' && (
+          <>
+            <p className="small muted">
+              Custom tools run trusted local code or make API calls. Agent calls require approval.
+            </p>
+            <label>
+              Execution type
+              <select
+                value={item.toolConfig?.type ?? 'javascript'}
+                onChange={(e) => update('toolConfig', { ...item.toolConfig, type: e.target.value })}
+              >
+                <option value="javascript">Node.js / JavaScript</option>
+                <option value="api">API call</option>
+              </select>
+            </label>
+            <label>
+              Input parameters · JSON
+              <textarea
+                rows={5}
+                value={parameters}
+                onChange={(e) => setParameters(e.target.value)}
+                placeholder={'[{"name":"query","type":"string","required":true}]'}
+              />
+            </label>
+            <p className="small muted">
+              Parameters have name, type (string, number, boolean, object, array), and required.
+            </p>
+            {item.toolConfig?.type === 'api' && (
+              <>
+                <label>
+                  API URL
+                  <input
+                    type="url"
+                    required
+                    value={item.toolConfig.url}
+                    onChange={(e) =>
+                      update('toolConfig', { ...item.toolConfig, url: e.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  HTTP method
+                  <select
+                    value={item.toolConfig.method}
+                    onChange={(e) =>
+                      update('toolConfig', { ...item.toolConfig, method: e.target.value })
+                    }
+                  >
+                    {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => (
+                      <option key={method}>{method}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Headers · JSON
+                  <textarea rows={4} value={headers} onChange={(e) => setHeaders(e.target.value)} />
+                </label>
+                <p className="small muted">
+                  Use Settings secret references such as {'${API_TOKEN}'} in headers. GET sends
+                  inputs as query parameters; other methods send JSON.
+                </p>
+              </>
+            )}
+          </>
+        )}
         {kind === 'mcp' ? (
           <>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={item.autoStart}
+                onChange={(e) => update('autoStart', e.target.checked)}
+              />
+              Start automatically when application starts
+            </label>
             <div className="callout mcp-config-heading">
               <span>
                 Starting a server executes this program on your machine. Add only servers you trust.
@@ -513,7 +700,11 @@ function LibraryEditor({
           </>
         ) : (
           <label>
-            {kind === 'saved-text' ? 'Text' : 'Instructions'}
+            {kind === 'saved-text'
+              ? 'Text'
+              : kind === 'tools'
+                ? 'JavaScript logic · use input, return the result (Node.js require available)'
+                : 'Instructions'}
             <textarea
               className="editor"
               rows={10}
@@ -548,44 +739,32 @@ function LibraryEditor({
 function RunAgent({ agent, onClose }: { agent: LibraryItem; onClose: () => void }) {
   const [project, setProject] = useState('');
   const [task, setTask] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
     <Modal title={`Run ${agent.name}`} onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void attempt(async () => {
-            await window.workspace.agents.run({ agentId: agent.id, project, task });
-            await useRuns.getState().load();
-            onClose();
+            setBusy(true);
+            try {
+              await window.workspace.agents.run({
+                agentId: agent.id,
+                project: project || undefined,
+                task: task.trim() || 'Run your configured instructions.',
+              });
+              await useRuns.getState().load();
+              onClose();
+            } finally {
+              setBusy(false);
+            }
           });
         }}
       >
+        <FolderSelection value={project} onChange={setProject} />
         <label>
-          Project folder
-          <div className="inline-field">
-            <input
-              readOnly
-              value={project}
-              placeholder="Choose the project this agent can access"
-            />
-            <button
-              type="button"
-              aria-label="Select project folder"
-              onClick={() =>
-                void attempt(async () => {
-                  const selected = await window.workspace.agents.project();
-                  if (selected) setProject(selected);
-                })
-              }
-            >
-              <FolderOpen size={18} />
-            </button>
-          </div>
-        </label>
-        <label>
-          Task
+          Task (optional)
           <textarea
-            required
             rows={5}
             value={task}
             onChange={(e) => setTask(e.target.value)}
@@ -597,9 +776,9 @@ function RunAgent({ agent, onClose }: { agent: LibraryItem; onClose: () => void 
           any time.
         </p>
         <div className="actions">
-          <button className="primary" disabled={!project || !task.trim()}>
+          <button className="primary" disabled={busy}>
             <Play size={16} />
-            Start agent
+            {busy ? 'Starting…' : 'Start agent'}
           </button>
         </div>
       </form>
@@ -614,17 +793,62 @@ function AgentRuns() {
     <section className="runs">
       <h2>Execution history</h2>
       {[...runs].reverse().map((run) => (
-        <details key={run.id} open className="run">
+        <details key={run.id} className="run">
           <summary>
-            <strong>Agent run</strong>
+            <strong>
+              {run.agentName} · {new Date(run.startedAt).toLocaleString()}
+            </strong>
+            <span>
+              Iterations: {run.iterationsUsed} / {run.maxIterations}
+            </span>
             <span className="badge">{run.status}</span>
           </summary>
-          {!['Completed', 'Stopped', 'Failed'].includes(run.status) && (
+          {!['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
+            run.status,
+          ) && (
             <button onClick={() => void attempt(() => window.workspace.agents.stop(run.id))}>
               <Square size={13} />
               Stop run
             </button>
           )}
+          <p>
+            Started: {new Date(run.startedAt).toLocaleString()} · Ended:{' '}
+            {run.completedAt ? new Date(run.completedAt).toLocaleString() : 'Running'}
+          </p>
+          <p>
+            Duration:{' '}
+            {Math.max(
+              0,
+              Math.round(
+                ((run.completedAt ? Date.parse(run.completedAt) : Date.now()) -
+                  Date.parse(run.startedAt)) /
+                  1000,
+              ),
+            )}
+            s
+          </p>
+          <p className="folder-path">Folder: {run.folderPath || 'No folder selected'}</p>
+          <p>Request: {run.userPrompt}</p>
+          <p>MCPs: {run.mcps.map((m) => m.mcpName).join(', ') || 'None'}</p>
+          <p>Tools: {run.tools.map((t) => `${t.toolName} (${t.status})`).join(', ') || 'None'}</p>
+          {run.tools.map((tool, index) => (
+            <details key={index}>
+              <summary>
+                {tool.toolName} · {tool.status}
+              </summary>
+              <p className="small muted">Input</p>
+              <pre className="log">{JSON.stringify(tool.input, null, 2)}</pre>
+              <p className="small muted">Output</p>
+              <pre className="log">
+                {typeof tool.output === 'string'
+                  ? tool.output
+                  : JSON.stringify(tool.output, null, 2)}
+              </pre>
+              {tool.error && <p className="error-text">{tool.error}</p>}
+            </details>
+          ))}
+          {run.result && <Markdown text={run.result} />}
+          {run.error && <p className="error-text">{run.error}</p>}
           {run.events.map((e, index) => (
             <div className="run-event" key={index}>
               <span className="small muted">{e.status}</span>
@@ -634,7 +858,9 @@ function AgentRuns() {
                 <div className="approval">
                   <h3>{e.approval.description}</h3>
                   {e.approval.diff && <pre className="diff">{e.approval.diff}</pre>}
-                  {!resolved.includes(e.approval.id) && run.status === 'Waiting for approval' ? (
+                  {!resolved.includes(e.approval.id) &&
+                  run.phase === 'Waiting for approval' &&
+                  run.status === 'Running' ? (
                     <div className="actions">
                       <button
                         onClick={() =>
@@ -670,5 +896,51 @@ function AgentRuns() {
         </details>
       ))}
     </section>
+  );
+}
+
+function TestTool({ tool, onClose }: { tool: LibraryItem; onClose: () => void }) {
+  const [input, setInput] = useState('{}');
+  const [result, setResult] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title={`Test ${tool.name}`} onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError('');
+          setResult('');
+          void (async () => {
+            try {
+              setResult(await window.workspace.tools.run(tool.id, JSON.parse(input)));
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+      >
+        <label>
+          Input · JSON
+          <textarea rows={6} value={input} onChange={(e) => setInput(e.target.value)} />
+        </label>
+        <button className="primary" disabled={busy}>
+          {busy ? 'Running…' : 'Run tool'}
+        </button>
+        {result && (
+          <pre className="log" role="status">
+            {result}
+          </pre>
+        )}
+        {error && (
+          <p className="error-text" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </Modal>
   );
 }

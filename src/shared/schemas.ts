@@ -1,6 +1,6 @@
 import { z } from 'zod';
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
-export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp']);
+export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools']);
 const text = z.string().max(2_000_000);
 export const settingsSchema = z
   .object({
@@ -48,6 +48,29 @@ export const librarySchema = z.object({
   skills: z.array(idSchema).max(100).default([]),
   tools: z.array(z.string().max(300)).max(200).default([]),
   knowledgeSources: z.array(z.string().max(200)).max(100).default([]),
+  autoStart: z.boolean().default(false),
+  maxIterations: z.number().int().min(1).max(50).optional(),
+  toolConfig: z
+    .object({
+      type: z.enum(['javascript', 'api']),
+      parameters: z
+        .array(
+          z.object({
+            name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+            type: z.enum(['string', 'number', 'boolean', 'object', 'array']),
+            required: z.boolean().default(false),
+          }),
+        )
+        .max(100)
+        .refine(
+          (p) => new Set(p.map((v) => v.name)).size === p.length,
+          'Parameter names must be unique',
+        ),
+      url: z.string().max(4096).default(''),
+      method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+      headers: z.record(z.string().max(200), z.string().max(2000)).default({}),
+    })
+    .optional(),
   command: z.string().max(500).default(''),
   args: z.array(z.string().max(2000)).max(100).default([]),
   env: z
@@ -84,5 +107,5 @@ export const sourceInputSchema = z.object({
 export const runInputSchema = z.object({
   agentId: idSchema,
   task: z.string().min(1).max(50000),
-  project: z.string().min(1).max(4096),
+  project: z.string().max(4096).optional(),
 });

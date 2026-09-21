@@ -28,7 +28,11 @@ providers/content in the repository. The MCP integration test starts a real SDK 
 
 The UI tests use Playwright's Electron driver. They verify renderer isolation, the OS sandbox,
 file-backed editors, settings, real streaming, history across application restart, RAG source
-retrieval, and a real agent diff approval. Traces and screenshots are written to `test-results/`.
+retrieval, and a real agent diff approval. Non-live feature coverage also includes custom Tool
+creation/testing, deletion dependency errors, temporary folder selection, bulk agent deletion
+and MCP auto-start configuration. Service tests in `tests/new-features.test.ts` cover Node.js
+and HTTP Tool execution/limits, dependency checks, startup failures, iteration counts, safe
+progress, persisted runs and optional-field serialization. Traces and screenshots are written to `test-results/`.
 
 `LOCALAI_DATA_DIR` overrides the data directory only in unpackaged development builds. This
 is used for isolation in tests; do not point concurrent processes at the same database.
@@ -51,6 +55,14 @@ Add a new provider through `LLMProvider` / `EmbeddingProvider`, a controlled too
 `AgentTools`, or a named IPC method through the shared API, preload and validated main
 handler. Never expose generic invoke, shell, filesystem or process handles to the renderer.
 New tool capabilities need boundary and approval tests.
+
+Custom user-authored Tools are handled by `services/tools/custom.ts`; their portable definitions
+reuse the library service and shared `toolConfig` schema. Agent history has its own SQLite
+adapter in `database/agent-runs.ts`, injected into `AgentService`. Keep runtime history separate
+from file-backed definitions. Reuse `components/folder-selection.tsx` for temporary project
+selection, and preserve native-picker authorization for any supplied IPC project path.
+MCP auto-start belongs in the main startup lifecycle; dependency checks belong in the library
+service, before any destructive IPC side effects.
 
 The Chromium version shipped by Electron 44 is the browser support target. Native dialog,
 `color-scheme`, `light-dark()` and modern CSS are supported; no legacy browser fallbacks

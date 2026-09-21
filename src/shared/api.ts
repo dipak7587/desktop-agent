@@ -52,9 +52,10 @@ export interface WorkspaceAPI {
     states(): Promise<MCPState[]>;
     action(id: string, action: 'start' | 'stop' | 'restart' | 'test'): Promise<void>;
   };
+  tools: { run(id: string, input: Record<string, unknown>): Promise<string> };
   agents: {
     project(): Promise<string | null>;
-    run(input: { agentId: string; task: string; project: string }): Promise<string>;
+    run(input: { agentId: string; task: string; project?: string }): Promise<string>;
     stop(id: string): Promise<void>;
     approve(id: string, approved: boolean): Promise<void>;
     runs(): Promise<RunState[]>;

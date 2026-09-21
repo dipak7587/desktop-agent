@@ -69,6 +69,54 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByText('Your saved text start here')).toBeVisible();
 });
+test('chat slash commands offer searchable selections, keyboard navigation and removable chips', async () => {
+  for (const entry of [
+    { section: 'Skills', create: 'New skill', name: 'Writing helper', command: 'skills' },
+    { section: 'Agents', create: 'New agent', name: 'Project reviewer', command: 'agent' },
+    { section: 'MCP', create: 'New server', name: 'Local tools', command: 'mcp' },
+  ]) {
+    await page.getByRole('button', { name: entry.section, exact: true }).click();
+    await page.getByRole('button', { name: entry.create, exact: true }).click();
+    const modal = page.getByRole('dialog');
+    await modal
+      .getByLabel(entry.command === 'mcp' ? 'Name (required)' : 'Name', { exact: true })
+      .fill(entry.name);
+    await modal
+      .getByLabel(entry.command === 'mcp' ? 'Description (required)' : 'Description', {
+        exact: true,
+      })
+      .fill('Slash command test');
+    await modal.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(modal).not.toBeVisible();
+    await page.getByRole('button', { name: 'Chat', exact: true }).click();
+    const input = page.getByLabel('Message', { exact: true });
+    await input.fill(`/${entry.command} `);
+    await expect(
+      page.getByRole('listbox').getByRole('option').filter({ hasText: entry.name }),
+    ).toBeVisible();
+    await input.fill(`/${entry.command} ${entry.name.slice(0, 4)}`);
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
+    await input.press('Enter');
+    await expect(page.locator('.command-chip')).toContainText(entry.name);
+    await expect(input).toHaveValue('');
+    await input.fill('Keep this query');
+    await page.getByRole('button', { name: 'Remove chat command' }).click();
+    await expect(page.locator('.command-chip')).toHaveCount(0);
+    await expect(input).toHaveValue('Keep this query');
+  }
+  const input = page.getByLabel('Message', { exact: true });
+  await input.fill('/');
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(3);
+  await input.press('ArrowDown');
+  await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toContainText(
+    '/agent',
+  );
+  await input.press('Enter');
+  await expect(input).toHaveValue('/agent ');
+  await input.press('Escape');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+});
+
 test('real Ollama chat streams, persists across relaunch and continues', async () => {
   test.skip(
     !process.env.LOCALAI_LIVE_TEST,
@@ -166,13 +214,14 @@ test('agent UI creates a worker, reviews a real diff and applies approved change
   await page.getByRole('checkbox', { name: 'filesystem.write', exact: true }).check();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await page.getByRole('button', { name: 'Select project folder' }).click();
+  await page.getByRole('button', { name: 'Select Folder' }).click();
   await page
     .getByLabel('Task', { exact: true })
     .fill(
       'Change greeting.txt to exactly "hello local workspace" followed by a newline. Read first, write using the hash, verify by reading, then finish.',
     );
   await page.getByRole('button', { name: 'Start agent' }).click();
+  await page.locator('.run > summary').click();
   await expect(page.getByRole('button', { name: 'Approve change' })).toBeVisible({
     timeout: 90000,
   });

@@ -1,6 +1,6 @@
 export type Section =
-  'Chat' | 'MCP' | 'Skills' | 'Saved Text' | 'Agents' | 'Knowledge Base' | 'Settings';
-export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp';
+  'Chat' | 'Tools' | 'MCP' | 'Skills' | 'Saved Text' | 'Agents' | 'Knowledge Base' | 'Settings';
+export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
 export interface Settings {
   appName: string;
   theme: 'system' | 'dark' | 'light';
@@ -72,6 +72,9 @@ export interface LibraryItem {
   skills: string[];
   tools: string[];
   knowledgeSources: string[];
+  autoStart: boolean;
+  maxIterations?: number;
+  toolConfig?: ToolConfig;
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -117,6 +120,38 @@ export interface MCPState {
 }
 export interface RunState {
   id: string;
-  status: string;
+  status: 'Running' | 'Completed' | 'Failed' | 'Cancelled' | 'Max iterations reached';
+  phase?: string;
   events: AppEvent[];
+  agentId: string;
+  agentName: string;
+  userPrompt: string;
+  folderPath?: string;
+  maxIterations: number;
+  iterationsUsed: number;
+  startedAt: string;
+  completedAt?: string;
+  tools: {
+    toolId: string;
+    toolName: string;
+    status: 'running' | 'completed' | 'failed';
+    input?: unknown;
+    output?: unknown;
+    error?: string;
+  }[];
+  mcps: { mcpId: string; mcpName: string }[];
+  result?: string;
+  error?: string;
+}
+
+export interface ToolConfig {
+  type: 'javascript' | 'api';
+  parameters: {
+    name: string;
+    type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+    required: boolean;
+  }[];
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers: Record<string, string>;
 }

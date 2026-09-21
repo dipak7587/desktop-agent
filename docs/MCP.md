@@ -22,7 +22,8 @@ Definitions live in `<userData>/mcp/<id>.json`; no database is involved.
 The app uses the official MCP SDK Client and StdioClientTransport. Start launches the configured
 executable without a shell, performs initialization and tool discovery, and captures stderr.
 Test pings a connected server or connects a stopped server. Stop closes the transport and
-subprocess; Restart does both. Editing/deleting a definition stops its running instance.
+subprocess; Restart does both. Editing a definition stops its running instance. An allowed
+deletion also stops it; a deletion blocked by agent references leaves it running.
 
 ```json
 {
@@ -31,9 +32,28 @@ subprocess; Restart does both. Editing/deleting a definition stops its running i
   "command": "npx",
   "args": ["-y", "@modelcontextprotocol/server-filesystem", "/your/project"],
   "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" },
-  "enabled": true
+  "enabled": true,
+  "autoStart": false
 }
 ```
+
+## Auto-start and deletion
+
+Check **Start automatically when application starts** in the editor to persist `autoStart: true`.
+The default is off, including for older definitions. On application launch, only enabled servers
+with auto-start on are started. A successful connection appears as **Running** on its card;
+startup failures appear as an error status with details in **Tools & logs**, without preventing
+other servers or the application from starting. Correct the executable, arguments or secret
+references and use Start/Restart to retry. Saving the checkbox does not immediately start a server.
+When auto-start is off, start the server manually. The checkbox also applies when entering
+configuration through **Import from JSON**.
+
+Deleting a server requires confirmation. Before stopping or deleting it, the app checks all
+agent definitions, including disabled agents, for `mcp:<server-id>:<tool-name>` references.
+If any exist, deletion is blocked and the affected agents are named. Remove those references
+in the Agents editor, or delete the agents, then retry. This prevents broken agent configurations.
+
+## Imports and execution
 
 Import creates a new local ID. The editor accepts one argument per line. Environment values
 must be references, never literal secrets. Resolution order is OS-encrypted stored credential,
@@ -48,7 +68,8 @@ plus explicit references.
 Connected tools appear in the Agent editor as `mcp:<server-id>:<tool-name>`. Agents receive
 tool descriptions/input schemas and can call only explicitly selected tools. Every MCP tool
 call asks for approval, including in full-auto mode. Discovery/handshake, ping and tool calls
-have timeouts. Use Stop to cancel an in-progress connection.
+have timeouts. MCP-reported tool failures become execution errors and are recorded in agent
+history with the tool input/output or error. Use Stop to cancel an in-progress connection.
 
 In Chat, type `/mcp ` and select a connected server, then enter your query. The chat model
 can use only that server's discovered tools. Approve or reject calls inline and inspect

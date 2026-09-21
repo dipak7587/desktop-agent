@@ -43,3 +43,31 @@ shutdown persistence. See README for deliberate release limits.
 The resulting local application is `dist/mac-arm64/LocalAI Workspace.app`. It is ad-hoc signed
 for local use, not Developer ID signed/notarized. System Git still requires acceptance of the
 machine's Xcode license; Windows and Linux remain unverified build targets.
+
+## Feature update verified on 2026-09-21 (macOS)
+
+The requirements in `newfeature.md` added:
+
+- A Tools sidebar and file-backed definitions for API calls and Node.js/JavaScript logic,
+  validated parameters, test execution, bounded output/timeouts, and approved agent calls.
+- Optional, removable/reselectable folder context shared by Chat and Run Agent;
+  `/agent <name>` can run configured instructions without a task or folder.
+- MCP auto-start configuration with startup error reporting, plus dependency checks that
+  block deletion of MCPs and Tools referenced by any agent.
+- Confirmed multi-agent deletion, per-agent maximum execution iterations, and separate
+  Running/Completed/Failed/Cancelled/Max iterations reached statuses.
+- Application-generated Thinking/Planning progress and persistent accordion run history,
+  including timings, iteration counts, request/folder, tool/MCP activity, results and errors.
+
+No agent-generation workflow exists, so no generation-iteration control was introduced.
+JavaScript executes directly; TypeScript transpilation is not implemented.
+
+Verification for this implementation: `pnpm typecheck`, `pnpm lint`, `pnpm build`, and
+`pnpm test` passed (37 tests across 14 files). `pnpm test:ui` passed 4 non-live UI tests;
+3 opt-in live Ollama UI tests were skipped. Live Ollama execution and packaging were not
+reverified for this feature update. These results describe the implementation run preceding
+this documentation update, not a new execution of those checks for documentation-only edits.
+
+The UI checks caught and led to a fix for YAML serialization of optional fields passed as
+`undefined`; regression coverage was added. See [Tools](TOOLS.md), [Agents](AGENTS.md),
+[Chat](CHAT.md), [MCP](MCP.md), and [Security](SECURITY.md) for current behavior.

@@ -88,7 +88,12 @@ export function useChatCommands(draft: string) {
     return false;
   };
   const resolve = () => {
-    if (selected) return { command: { kind: selected.kind, id: selected.id }, query: draft };
+    if (selected)
+      return {
+        command: { kind: selected.kind, id: selected.id },
+        query:
+          draft.trim() || (selected.kind === 'agent' ? 'Run your configured instructions.' : ''),
+      };
     if (/^\/(mcp|agent|skills)(\s|$)/.test(draft) || draft === '/') {
       return resolveSlash(draft, prefix ? libraries[prefix.kind] : []);
     }

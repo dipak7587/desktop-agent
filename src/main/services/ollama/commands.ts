@@ -43,14 +43,14 @@ export class ChatCommands {
         tools: state.tools.map((t) => `mcp:${item.id}:${t.name}`),
         knowledgeSources: knowledge === 'none' ? [] : [knowledge],
       });
-    } else if (!command.project) throw new Error('Choose a project folder for this agent');
+    }
     return {
       command: metadata,
       execute: (task, signal, observe) =>
         this.agents.runInChat(
           agent,
           task,
-          command.kind === 'agent' ? command.project! : '(MCP tools only)',
+          command.kind === 'agent' ? (command.project ?? '') : '',
           signal,
           observe,
         ),
