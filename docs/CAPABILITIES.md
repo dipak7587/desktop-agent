@@ -91,3 +91,8 @@ availability changes, legacy selections and runtime routing of skills/knowledge/
 Model judgments are mocked in deterministic tests; those tests verify enforcement, not a model's
 language understanding. UI coverage verifies mode/type controls, permissions and trace settings.
 Opt-in live Ollama tests remain separate.
+
+Normal Chat supplies source metadata and recent conversation to knowledge relevance checks.
+The response prompt distinguishes retrieved, empty, unavailable and skipped knowledge; a
+model-only response must not be represented as an answer from the KB. Retrieval activity reports
+the passage count, and retrieved excerpts remain available under Sources used.

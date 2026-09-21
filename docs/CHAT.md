@@ -82,3 +82,15 @@ See [Agents](AGENTS.md), [Tools](TOOLS.md), [Saved Text](SAVED_TEXT.md), [Knowle
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Checking KB answers
+
+Normal Chat's relevance check receives the selected source names/collections and recent
+conversation, including follow-up context. Questions about private/project facts or the selected
+documents require retrieval even if the model knows the general topic. Successful retrieval
+passes the real passages to the answer model and saves them under **Sources used**.
+
+Expand the response activity to see **Knowledge retrieval** and its passage count. If the
+selection has no ready sources, sync/index them in Knowledge Base. Empty or skipped retrieval
+is explicitly included in the answer model's context; it must not claim a KB-grounded answer
+without retrieved passages. General unrelated questions can still skip RAG.

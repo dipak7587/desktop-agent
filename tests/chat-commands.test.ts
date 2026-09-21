@@ -300,18 +300,16 @@ it.each(['general', 'restricted', 'project'] as const)(
         content: 'REVIEW WORKFLOW',
       }),
     );
-    const search = vi
-      .fn()
-      .mockResolvedValue([
-        {
-          id: 'chunk',
-          sourceId: 'carbon',
-          name: 'Architecture',
-          content: 'STORED ARCHITECTURE',
-          score: 1,
-          location: '',
-        },
-      ]);
+    const search = vi.fn().mockResolvedValue([
+      {
+        id: 'chunk',
+        sourceId: 'carbon',
+        name: 'Architecture',
+        content: 'STORED ARCHITECTURE',
+        score: 1,
+        location: '',
+      },
+    ]);
     chat = new ChatService(
       db,
       llm,
@@ -353,5 +351,136 @@ it.each(['general', 'restricted', 'project'] as const)(
     expect(search).toHaveBeenCalledTimes(kind === 'project' ? 1 : 0);
     expect(prompts[0].includes('REVIEW WORKFLOW')).toBe(kind === 'project');
     expect(prompts[0].includes('STORED ARCHITECTURE')).toBe(kind === 'project');
+  },
+);
+
+it.each(['carbon', 'collection:Engineering', 'all'])(
+  'passes source metadata and follow-up context into the decision for %s',
+  async (scope) => {
+    const search = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          id: 'c1',
+          sourceId: 'carbon',
+          name: 'Carbon architecture',
+          content: 'Carbon uses a dedicated identity service.',
+          score: 1,
+          location: '',
+        },
+      ]);
+    const source = {
+      id: 'carbon',
+      type: 'file' as const,
+      name: 'Carbon architecture',
+      collection: 'Engineering',
+      status: 'ready' as const,
+      location: '',
+      createdAt: 0,
+      updatedAt: 0,
+      documentCount: 1,
+      chunkCount: 1,
+    };
+    chat = new ChatService(
+      db,
+      llm,
+      (e) => events.push(e),
+      search,
+      () => 8192,
+      commands,
+      (s) => s,
+      () => [source],
+    );
+    let answerPrompt = '';
+    vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
+      if (request.messages[0].content.includes('CAPABILITY_RELEVANCE_CHECK')) {
+        const context = JSON.parse(request.messages[1].content);
+        expect(context.capability.description).toContain('Carbon architecture');
+        expect(context.conversation).toContain('Explain our Carbon platform');
+        yield {
+          message: {
+            content: JSON.stringify({
+              relevant: true,
+              necessary: true,
+              canAnswerDirectly: false,
+              userForbids: false,
+            }),
+          },
+        };
+      } else {
+        answerPrompt = request.messages[0].content;
+        yield {
+          message: { content: 'Carbon uses a dedicated identity service. [Carbon architecture]' },
+        };
+      }
+    });
+    const request = input();
+    db.add(request.id, 'user', 'Explain our Carbon platform');
+    db.add(request.id, 'assistant', 'Which part?');
+    await chat.send({ ...request, text: 'How does authentication work?', knowledge: scope });
+    await settle(request.id);
+    expect(search).toHaveBeenCalledExactlyOnceWith('How does authentication work?', scope);
+    expect(answerPrompt).toContain('Carbon uses a dedicated identity service.');
+    expect(answerPrompt).toContain('Base source-specific answers on these passages');
+    expect(db.messages(request.id).at(-1)?.metadata?.sources).toHaveLength(1);
+    expect(events.some((e) => e.activity?.content?.includes('Retrieved 1 passages'))).toBe(true);
+  },
+);
+it.each(['empty', 'not-ready', 'skipped'] as const)(
+  'reports %s knowledge instead of silently implying a KB answer',
+  async (state) => {
+    const search = vi.fn().mockResolvedValue([]);
+    chat = new ChatService(
+      db,
+      llm,
+      (e) => events.push(e),
+      search,
+      () => 8192,
+      commands,
+      (s) => s,
+      () => [
+        {
+          id: 'carbon',
+          type: 'file',
+          name: 'Carbon',
+          collection: '',
+          status: state === 'not-ready' ? 'idle' : 'ready',
+          location: '',
+          createdAt: 0,
+          updatedAt: 0,
+          documentCount: 0,
+          chunkCount: 0,
+        },
+      ],
+    );
+    let system = '';
+    vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
+      if (request.messages[0].content.includes('CAPABILITY_RELEVANCE_CHECK')) {
+        yield {
+          message: {
+            content: JSON.stringify({
+              relevant: state !== 'skipped',
+              necessary: state !== 'skipped',
+              canAnswerDirectly: state === 'skipped',
+              userForbids: false,
+            }),
+          },
+        };
+      } else {
+        system = request.messages[0].content;
+        yield { message: { content: 'No KB answer available.' } };
+      }
+    });
+    const request = input();
+    await chat.send({ ...request, text: 'What does Carbon use?', knowledge: 'carbon' });
+    await settle(request.id);
+    expect(search).toHaveBeenCalledTimes(state === 'empty' ? 1 : 0);
+    expect(system).toContain(
+      state === 'empty'
+        ? 'no passages were returned'
+        : state === 'not-ready'
+          ? 'No selected source is ready'
+          : 'No KB search was performed',
+    );
   },
 );

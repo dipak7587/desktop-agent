@@ -85,3 +85,17 @@ selected skills and knowledge. Legacy definitions retain their exact selections.
 visually inspected. The new deterministic tests mock model relevance judgments; live Ollama
 language understanding and packaged builds were not reverified. See
 [Capability decisions](CAPABILITIES.md) for behavior and limitations.
+
+## Normal Chat KB correction verified on 2026-09-21
+
+Knowledge relevance checks now receive selected source names/collections and recent conversation,
+rather than only the generic label “Selected knowledge”. The policy distinguishes private and
+project-specific questions from general knowledge. Retrieval status and grounding instructions
+are passed to the answer model, and activity reports actual passage counts or empty results.
+Unindexed selections are identified before attempting retrieval.
+
+Typecheck, lint, build and 71 tests passed. The targeted live Electron test for URL indexing,
+semantic search and RAG Chat passed with real local Ollama and embeddings: the response contained
+the document's private codename and showed one retrieved source. This does not guarantee every
+model relevance judgment; the regression tests additionally cover source/collection/all scopes,
+follow-up context and skipped, empty and unavailable knowledge.

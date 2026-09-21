@@ -118,6 +118,7 @@ app
       () => getSettings().contextSize,
       new ChatCommands(library, mcp, agents),
       (text) => secrets.redact(text),
+      () => knowledge.list(),
     );
     services = {
       settings,
