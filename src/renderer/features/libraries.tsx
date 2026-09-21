@@ -1,3 +1,4 @@
+import { CapabilitySettings } from '../components/capability-settings';
 import { FolderSelection } from '../components/folder-selection';
 import { useState } from 'react';
 import {
@@ -416,6 +417,7 @@ function LibraryEditor({
   const [busy, setBusy] = useState(false);
   const { models } = useSettings();
   const { items: skills } = useSkills();
+  const { items: servers } = libraryStores.mcp();
   const { sources } = useKnowledge();
   const { states } = useMCPStatus();
   const tools = [
@@ -426,32 +428,6 @@ function LibraryEditor({
   ];
   const update = (key: keyof LibraryItem, value: unknown) =>
     setItem((i) => ({ ...i, [key]: value }));
-  const checks = (
-    key: 'skills' | 'tools' | 'knowledgeSources',
-    options: { id: string; name: string }[],
-  ) => (
-    <div className="check-grid">
-      {options.length ? (
-        options.map((o) => (
-          <label key={o.id} className="check">
-            <input
-              type="checkbox"
-              checked={item[key].includes(o.id)}
-              onChange={(e) =>
-                update(
-                  key,
-                  e.target.checked ? [...item[key], o.id] : item[key].filter((id) => id !== o.id),
-                )
-              }
-            />
-            {o.name}
-          </label>
-        ))
-      ) : (
-        <span className="muted small">None available yet.</span>
-      )}
-    </div>
-  );
   return (
     <Modal
       wide
@@ -538,30 +514,25 @@ function LibraryEditor({
                   ))}
               </select>
             </label>
-            <fieldset>
-              <legend>Skills</legend>
-              {checks(
-                'skills',
-                skills.map((s) => ({ id: s.id, name: s.name })),
-              )}
-            </fieldset>
-            <fieldset>
-              <legend>Tools</legend>
-              {checks(
-                'tools',
-                [...new Set(tools)].map((t) => ({
-                  id: t,
-                  name: customTools.find((c) => t === `custom:${c.id}`)?.name ?? t,
-                })),
-              )}
-            </fieldset>
-            <fieldset>
-              <legend>Knowledge sources</legend>
-              {checks(
-                'knowledgeSources',
-                sources.map((s) => ({ id: s.id, name: s.name })),
-              )}
-            </fieldset>
+            <CapabilitySettings
+              item={item}
+              onChange={(config) =>
+                setItem((current) => ({
+                  ...current,
+                  capabilityConfig: config,
+                  skills: config.skills,
+                  tools: config.tools,
+                  knowledgeSources: config.knowledgeBases,
+                }))
+              }
+              skills={skills}
+              servers={servers}
+              knowledge={sources}
+              tools={[...new Set(tools)].map((id) => ({
+                id,
+                name: customTools.find((t) => id === `custom:${t.id}`)?.name ?? id,
+              }))}
+            />
           </>
         )}
         {kind === 'tools' && (

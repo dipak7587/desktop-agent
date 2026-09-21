@@ -23,7 +23,11 @@ deleted documents from the index. Cancel a running sync before removing its sour
 Semantic search uses an Ollama embedding model; keyword search matches text within the indexed
 chunks. Chat's **Knowledge context** selector chooses a source, collection, or all knowledge.
 Its default **No knowledge context** disables retrieval. Agents use the sources selected in
-their editor. Only ready sources are searched.
+their editor in Selected mode, or all eligible sources in Auto mode. Selection alone does not
+trigger a search: the capability decision must find stored/project-specific information necessary.
+None mode and explicit knowledge restrictions block agent retrieval. Only ready sources are
+searched. Manual search and indexing in this menu remain user-initiated operations. See
+[Capability decisions](CAPABILITIES.md).
 
 An error status means indexing needs attention. Configure the embedding model or restore Ollama,
 then retry **Sync / Re-index**. After changing embedding models, re-index sources.

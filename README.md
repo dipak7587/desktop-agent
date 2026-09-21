@@ -121,3 +121,7 @@ uses a bounded recent-history window, not automatic conversation summarization.
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEVELOPMENT.md](docs/DEVELOPMENT.md),
 [RAG.md](docs/RAG.md), [TOOLS.md](docs/TOOLS.md), [AGENTS.md](docs/AGENTS.md), [MCP.md](docs/MCP.md), [SKILLS.md](docs/SKILLS.md),
 [SECURITY.md](docs/SECURITY.md), and [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+
+Agents support Auto, Selected and None capability modes, per-type switches and per-capability
+permissions. Skills, MCP tools, custom/built-in tools and knowledge searches pass through a
+central relevance and permission check. See [Capability decisions](docs/CAPABILITIES.md).

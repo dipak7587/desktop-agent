@@ -16,6 +16,8 @@ Selecting a source supplies matching excerpts to the model; it does not enforce 
 from those excerpts. The model is instructed to cite source names and acknowledge insufficient context.
 
 Ollama must be available, with a chat model and an embedding model configured in Settings.
+Selection does not automatically trigger retrieval. A capability decision searches only when
+stored or project-specific information is needed; general questions can be answered directly.
 Only ready sources are retrieved. If a source fails to index, correct the reported problem and
 use **Sync / Re-index** in Knowledge Base.
 
@@ -32,7 +34,8 @@ and send with the arrow or Cmd/Ctrl+Enter. Names with spaces can also be entered
 /skills "Documentation" "Explain this API"
 ```
 
-- **Skills:** applies the selected skill's instructions to the current chat model's response.
+- **Skills:** applies the selected skill's instructions only when the capability decision finds
+  its workflow relevant and necessary for the request.
   Uses conversation history and the selected knowledge context. It does not grant tools.
 - **Agent:** runs the saved agent's model (or the default chat model), skills, selected tools,
   knowledge sources and execution limit. The Chat knowledge selector does not override the
@@ -60,8 +63,9 @@ shown. Agent runs also appear in the persistent [Agents history](AGENTS.md#execu
 including iteration usage and a distinct status when the maximum is reached.
 
 Agent and MCP commands start a fresh task using the submitted query; they do not inherit the
-whole conversation. Progress, tool results, and approval controls appear inline. Every MCP
-tool call requires approval, as does every custom Tool call. Agent file changes follow the existing approval settings and
+whole conversation. Progress, tool results, and approval controls appear inline. MCP
+and custom Tool calls require approval by default; saved agents may override this with
+per-capability Always allow permissions. Agent file changes follow the existing approval settings and
 hash checks. Stop generation cancels the associated run, including pending approvals.
 
 Results, command names, and the latest 100 activity events persist with the conversation.
@@ -75,3 +79,6 @@ Cmd/Ctrl+Enter. Stop an active response, regenerate a response, or copy message 
 Conversation history and retrieved source excerpts are stored locally in SQLite.
 
 See [Agents](AGENTS.md), [Tools](TOOLS.md), [Saved Text](SAVED_TEXT.md), [Knowledge Base](KNOWLEDGE_BASE.md), and [Settings](SETTINGS.md).
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

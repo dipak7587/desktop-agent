@@ -40,9 +40,10 @@ enabled: true
 Inspect relevant files, explain findings, and state which checks you ran.
 ```
 
-The model name is illustrative; choose an installed model. The runtime loads enabled skills,
-retrieves selected knowledge, and sends a bounded history to Ollama. Each turn returns one
-validated JSON action or a final report. Only explicitly enabled tools can execute. Tools
+The model name is illustrative; choose an installed model. The runtime considers eligible
+capabilities and loads skills or retrieves knowledge only after a relevance decision. It sends
+a bounded history to Ollama. Each turn returns one
+validated JSON action or a final report. Only capabilities permitted by the agent's mode, type switches, selection and permissions can execute. Tools
 return their real output; errors are fed back so the model can recover. A maximum iteration
 count, a 15-minute deadline and cancellation bound every run.
 
@@ -67,8 +68,9 @@ A selected folder scopes built-in tools; it does not sandbox custom code or MCP 
 ## Tools and execution limits
 
 Select built-in tools, discovered MCP tools (`mcp:<server-id>:<tool-name>`), or enabled
-[custom Tools](TOOLS.md) (`custom:<tool-id>`) in the editor. Only selected tools are allowed.
-Custom Tool and MCP calls always require approval, including in full-auto mode. Inputs,
+[custom Tools](TOOLS.md) (`custom:<tool-id>`) in the editor. Selected mode permits only selected capabilities; Auto considers all enabled capabilities.
+Custom Tool and MCP calls require approval by default, including in global full-auto mode;
+per-capability Always allow overrides that approval default. Inputs,
 outputs and failures are recorded in the run; tool errors are returned to the model so it
 can recover. Referenced Tools and MCPs cannot be deleted until all agent references are removed,
 including references in disabled agents.
@@ -108,3 +110,6 @@ Read [SECURITY.md](SECURITY.md) before enabling automatic approvals, custom Tool
 - Use TypeScript, provider interfaces, small service modules and formatted source.
 - Electron's bundled Chromium is the only renderer browser target.
 - Do not substitute simulated production responses for unavailable services.
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

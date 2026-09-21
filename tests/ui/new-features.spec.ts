@@ -35,7 +35,24 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       await page.getByRole('button', { name: 'New agent' }).click();
       await page.getByLabel('Name', { exact: true }).fill(name);
       await page.getByLabel('Maximum execution iterations').fill('3');
+      await page.getByRole('radio', { name: 'None', exact: true }).check();
+      await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
+      await expect(page.getByLabel('Allow Skills', { exact: true })).toBeDisabled();
+      await page.getByRole('radio', { name: 'Auto', exact: true }).check();
+      await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
+      await page.getByRole('radio', { name: 'Selected', exact: true }).check();
+      await page.getByLabel('Allow Tools', { exact: true }).uncheck();
+      await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
+      await page.getByLabel('Allow Tools', { exact: true }).check();
+      await page.getByLabel('Show capability decisions in history and Chat').check();
+      await page.getByText('Capability permissions', { exact: true }).click();
+      await page.getByLabel('Permission: shell.execute', { exact: true }).selectOption('deny');
+      await page.getByText('Capability permissions', { exact: true }).click();
       await page.getByLabel('Double', { exact: true }).check();
+      if (name === 'Reviewer') {
+        await page.getByRole('radio', { name: 'Auto', exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: 'test-results/capability-settings.png' });
+      }
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
     }

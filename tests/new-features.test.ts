@@ -140,6 +140,18 @@ it('persists folderless agent runs, uses configured iterations and never publish
   );
   expect(resolveSlash('/agent Agent', [agent]).query).toBe('Run your configured instructions.');
   const llm = new OllamaLLMProvider(settings);
+  vi.spyOn(llm, 'chat').mockImplementation(async function* () {
+    yield {
+      message: {
+        content: JSON.stringify({
+          relevant: true,
+          necessary: true,
+          canAnswerDirectly: false,
+          userForbids: false,
+        }),
+      },
+    };
+  });
   const complete = vi
     .spyOn(llm, 'complete')
     .mockResolvedValueOnce({

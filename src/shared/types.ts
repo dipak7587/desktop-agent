@@ -74,6 +74,7 @@ export interface LibraryItem {
   knowledgeSources: string[];
   autoStart: boolean;
   maxIterations?: number;
+  capabilityConfig?: AgentCapabilityConfig;
   toolConfig?: ToolConfig;
   command: string;
   args: string[];
@@ -111,6 +112,7 @@ export interface AppEvent {
   error?: string;
   approval?: { id: string; tool: string; description: string; diff?: string };
   activity?: AppEvent;
+  capabilityDecision?: CapabilityDecision & { called: boolean };
 }
 export interface MCPState {
   id: string;
@@ -154,4 +156,38 @@ export interface ToolConfig {
   url: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   headers: Record<string, string>;
+}
+
+export type CapabilityType = 'skill' | 'mcp' | 'tool' | 'knowledge';
+export type CapabilityMode = 'auto' | 'selected' | 'none';
+export type PermissionMode = 'always_allow' | 'ask' | 'deny';
+export interface Capability {
+  id: string;
+  name: string;
+  type: CapabilityType;
+  description?: string;
+  enabled: boolean;
+  selectionId?: string;
+  requiresProject?: boolean;
+  defaultPermission?: PermissionMode;
+}
+export interface AgentCapabilityConfig {
+  mode: CapabilityMode;
+  skills: string[];
+  mcpServers: string[];
+  tools: string[];
+  knowledgeBases: string[];
+  allowSkills: boolean;
+  allowMCP: boolean;
+  allowTools: boolean;
+  allowKnowledgeBase: boolean;
+  permissions: Record<string, PermissionMode>;
+  trace: boolean;
+}
+export interface CapabilityDecision {
+  shouldCall: boolean;
+  capability: Capability;
+  reason: string;
+  confidence?: number;
+  requiresConfirmation?: boolean;
 }

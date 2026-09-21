@@ -20,8 +20,9 @@ fallback for saved definitions without `maxIterations`. Each agent can save its 
 execution iterations** (1–50); that value takes precedence. Iterations count model turns,
 including a final report. Generation iterations are not a separate setting in this release.
 
-The command timeout also bounds custom Tool execution. Custom Tool and MCP calls always ask
-for approval, even with automatic approval enabled. Built-in project tools operate within a
+The command timeout also bounds custom Tool execution. Custom Tool and MCP calls ask
+for approval by default, even with global automatic approval enabled. Per-agent capability
+permissions can override this with Always allow or Deny. Built-in project tools operate within a
 folder explicitly selected for that run; folder selection is optional for other agent work. Read [Security](SECURITY.md) before enabling automatic approvals or external tools.
 
 ## Credentials and local data
@@ -38,3 +39,6 @@ history use SQLite; RAG vectors use LanceDB. MCP auto-start is configured per se
 MCP editor, separately from the preference to launch the application at login.
 
 See [Chat](CHAT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [Agents](AGENTS.md), [MCP](MCP.md), and [Tools](TOOLS.md).
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

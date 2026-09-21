@@ -30,6 +30,18 @@ beforeEach(async () => {
   db = new ChatDatabase(join(root, 'chat.sqlite'));
   library = new LibraryService(root);
   llm = new OllamaLLMProvider(settings);
+  vi.spyOn(llm, 'chat').mockImplementation(async function* () {
+    yield {
+      message: {
+        content: JSON.stringify({
+          relevant: true,
+          necessary: true,
+          canAnswerDirectly: false,
+          userForbids: false,
+        }),
+      },
+    };
+  });
   mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
   const knowledge = new KnowledgeService(
     root,
@@ -122,6 +134,19 @@ it('applies a skill to only its requested turn and persists command metadata', a
   );
   const requests: ChatRequest[] = [];
   vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
+    if (request.messages[0].content.includes('CAPABILITY_RELEVANCE_CHECK')) {
+      yield {
+        message: {
+          content: JSON.stringify({
+            relevant: true,
+            necessary: true,
+            canAnswerDirectly: false,
+            userForbids: false,
+          }),
+        },
+      };
+      return;
+    }
     requests.push(request);
     yield { message: { content: 'A helpful answer' } };
   });
@@ -262,3 +287,71 @@ it('runs an agent from chat with its configured model and applies a reviewed fil
   expect(await readFile(join(root, 'project', 'hello.txt'), 'utf8')).toBe('hello');
   expect(db.messages(request.id).at(-1)?.content).toBe('Created hello.txt');
 });
+
+it.each(['general', 'restricted', 'project'] as const)(
+  'routes regular Chat knowledge and skills for a %s request',
+  async (kind) => {
+    await library.save(
+      'skills',
+      librarySchema.parse({
+        id: 'review',
+        name: 'Code Review',
+        description: 'Review project code',
+        content: 'REVIEW WORKFLOW',
+      }),
+    );
+    const search = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          id: 'chunk',
+          sourceId: 'carbon',
+          name: 'Architecture',
+          content: 'STORED ARCHITECTURE',
+          score: 1,
+          location: '',
+        },
+      ]);
+    chat = new ChatService(
+      db,
+      llm,
+      (e) => events.push(e),
+      search,
+      () => 8192,
+      commands,
+    );
+    const prompts: string[] = [];
+    vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
+      if (request.messages[0].content.includes('CAPABILITY_RELEVANCE_CHECK')) {
+        yield {
+          message: {
+            content: JSON.stringify({
+              relevant: kind === 'project',
+              necessary: kind === 'project',
+              canAnswerDirectly: kind !== 'project',
+              userForbids: false,
+            }),
+          },
+        };
+      } else {
+        prompts.push(request.messages[0].content);
+        yield { message: { content: 'Answer' } };
+      }
+    });
+    const request = {
+      ...input(),
+      knowledge: 'carbon',
+      text:
+        kind === 'restricted'
+          ? 'No skills, no MCP, no tools. Explain React.'
+          : kind === 'general'
+            ? 'What is React?'
+            : 'Review our code against the stored architecture.',
+    };
+    await chat.send({ ...request, command: { kind: 'skills', id: 'review' } });
+    await settle(request.id);
+    expect(search).toHaveBeenCalledTimes(kind === 'project' ? 1 : 0);
+    expect(prompts[0].includes('REVIEW WORKFLOW')).toBe(kind === 'project');
+    expect(prompts[0].includes('STORED ARCHITECTURE')).toBe(kind === 'project');
+  },
+);

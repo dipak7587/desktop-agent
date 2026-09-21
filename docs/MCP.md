@@ -66,8 +66,10 @@ MCP servers. Configure each server's own permissions. The app gives it a minimal
 plus explicit references.
 
 Connected tools appear in the Agent editor as `mcp:<server-id>:<tool-name>`. Agents receive
-tool descriptions/input schemas and can call only explicitly selected tools. Every MCP tool
-call asks for approval, including in full-auto mode. Discovery/handshake, ping and tool calls
+tool descriptions/input schemas and can call only capabilities allowed by its mode, type
+switches, selections and permissions. MCP calls require a positive relevance decision and ask
+for approval by default, including in global full-auto mode; per-capability Always allow skips
+the approval prompt. Discovery/handshake, ping and tool calls
 have timeouts. MCP-reported tool failures become execution errors and are recorded in agent
 history with the tool input/output or error. Use Stop to cancel an in-progress connection.
 
@@ -77,3 +79,6 @@ their results under Command activity. See [Chat](CHAT.md) for slash-command cont
 
 Only stdio MCP transport is implemented in this release. SSE/Streamable HTTP and OAuth are
 not advertised as working features.
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

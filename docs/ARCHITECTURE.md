@@ -38,8 +38,8 @@ Built-in agent tools resolve real paths inside the chosen workspace, reject syml
 sensitive/ignored paths, limit reads and search, and never use a shell interpreter.
 Writes require an original-content hash, a reviewable diff, and approval by default.
 Built-in commands use a fixed executable/argument allowlist, timeouts and bounded output.
-MCP tools require approval because external tools can have arbitrary side effects.
-Custom Tool calls also require approval when initiated by agents. Their main-process service
+MCP and custom Tool calls require approval by default because they can have arbitrary side
+effects. Per-capability permissions can explicitly allow or deny them. Their main-process service
 validates input and executes either an HTTP(S) request or a separate Node.js process with
 bounded output, timeout and cancellation. These user-authored programs are not constrained by
 the built-in command allowlist or workspace paths. API header secrets resolve only in main;
@@ -66,3 +66,6 @@ indexing batches yield between files, and native LanceDB operations run asynchro
 Chat, settings, file libraries, knowledge, MCP and agent UI state are separate Zustand
 stores. Markdown renders without raw HTML. Dark/light/system color schemes use native
 `color-scheme`. Desktop targets are macOS, Windows and Linux.
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

@@ -71,3 +71,17 @@ this documentation update, not a new execution of those checks for documentation
 The UI checks caught and led to a fix for YAML serialization of optional fields passed as
 `undefined`; regression coverage was added. See [Tools](TOOLS.md), [Agents](AGENTS.md),
 [Chat](CHAT.md), [MCP](MCP.md), and [Security](SECURITY.md) for current behavior.
+
+## Capability routing verified on 2026-09-21 (macOS)
+
+Implemented the separate `new-feature.md` specification: centralized capability decisions and
+routing, Auto/Selected/None modes, per-type restrictions, user instruction restrictions,
+per-capability permissions, optional decision traces, and agent editor controls. Skills and
+knowledge are lazy actions rather than automatically loaded context. Regular Chat also gates
+selected skills and knowledge. Legacy definitions retain their exact selections.
+
+`pnpm typecheck`, `pnpm lint`, `pnpm test` (65 tests across 15 files), `pnpm build` and
+`pnpm test:ui` (4 passed, 3 opt-in live tests skipped) passed. The settings screenshot was
+visually inspected. The new deterministic tests mock model relevance judgments; live Ollama
+language understanding and packaged builds were not reverified. See
+[Capability decisions](CAPABILITIES.md) for behavior and limitations.

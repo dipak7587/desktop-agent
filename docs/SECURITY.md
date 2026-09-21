@@ -34,7 +34,7 @@ Package scripts require approval except in full-auto mode. Only npm/pnpm/yarn te
 and typecheck commands are permitted. Shell interpreters, arbitrary arguments, destructive
 commands, git push/reset and deletion tools are unavailable through built-in tools. Child processes run with bounded
 output, a timeout, cancellation and a reduced environment. Project scripts themselves are
-arbitrary code: inspect/trust the selected project before approving them. MCP calls always ask.
+arbitrary code: inspect/trust the selected project before approving them. MCP calls ask by default; per-capability Always allow skips approval.
 
 This is an application-level policy boundary, not an OS sandbox around agent child processes.
 The Electron renderer is sandboxed, but trusted MCP servers/package scripts run as the current
@@ -48,8 +48,9 @@ Use a disposable checkout for untrusted projects.
 runs in a separate Node.js process with a reduced environment; API tools use configured HTTP(S)
 URLs and optional secret references in headers. Both use the command timeout, input/output
 limits and cancellation. A native folder selection does not sandbox their filesystem or network
-access. Direct **Test / Run** authorizes execution; calls initiated by agents always require
-approval, including in full-auto mode. Known secret values are redacted from results/errors.
+access. Direct **Test / Run** authorizes execution; calls initiated by agents require
+approval by default, including in global full-auto mode, unless a per-capability Always allow
+permission is configured. Known secret values are redacted from results/errors.
 
 MCP auto-start is an explicit per-server setting, off by default. Enabled, opted-in servers
 execute at application startup without another prompt. Startup failures are recorded in the
@@ -76,3 +77,6 @@ material. Existing credential files are excluded from automatic code/document tr
 The app cancels work and awaits service cleanup on quit. Error logs live in `<userData>/logs/`.
 Chat content, previews and source files are not encrypted at rest by the app; use OS disk
 protection if needed. The local macOS package is ad-hoc signed; it is not Developer ID signed or notarized for public distribution.
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

@@ -4,11 +4,12 @@
 
 Create reusable instructions, expand a skill to read it, and use the editor to change its
 name, description, content, or enabled state. Search, import, export, and delete skills from
-this menu. Select enabled skills in the **Agents** editor to apply them to a run; creating
+this menu. Select enabled skills in the **Agents** editor to make them available to a run; creating
 a skill does not automatically apply it to ordinary Chat messages.
 
 To apply one explicitly in Chat, type `/skills `, select the skill, and enter your query.
-Its instructions apply to that response using the current chat model and selected RAG context.
+Its instructions apply only when the decision engine finds the workflow relevant and necessary.
+Selected RAG context is also searched only when needed.
 The skill grants no tool access. See [Chat](CHAT.md).
 
 Saved notes have their own guide: [Saved Text](SAVED_TEXT.md).
@@ -28,8 +29,9 @@ unless the task asks for changes. Prefer the project's existing patterns.
 ```
 
 The UI adds IDs and timestamps, supports accordion inspection, editing, search, enabling,
-disabling, import, export and deletion. When an agent runs it loads the selected enabled
-skills from disk and includes their instructions in its system context.
+disabling, import, export and deletion. Agents discover eligible skill metadata, then load a skill body only through the capability
+router after a positive relevance and permission decision. Skills are not applied automatically.
+See [Capability decisions](CAPABILITIES.md).
 
 Saved Text follows the same portable Markdown approach in `saved-text/<id>.md`, with a
 `title`, `createdAt`, `updatedAt` and Markdown/plain-text body. Agents are in `agents/<id>.md`

@@ -1,3 +1,4 @@
+import { capabilityConfig } from '../../../shared/capabilities';
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import matter from 'gray-matter';
@@ -79,8 +80,12 @@ export class LibraryService {
   async assertRemovable(kind: LibraryKind, id: string) {
     if (kind !== 'mcp' && kind !== 'tools') return;
     const prefix = kind === 'mcp' ? `mcp:${id}:` : `custom:${id}`;
-    const agents = (await this.list('agents')).filter((a) =>
-      a.tools.some((t) => (kind === 'mcp' ? t.startsWith(prefix) : t === prefix)),
+    const agents = (await this.list('agents')).filter(
+      (a) =>
+        [...a.tools, ...capabilityConfig(a).tools].some((t) =>
+          kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
+        ) ||
+        (kind === 'mcp' && capabilityConfig(a).mcpServers.includes(id)),
     );
     if (agents.length)
       throw new Error(

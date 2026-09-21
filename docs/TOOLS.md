@@ -72,8 +72,9 @@ its running Tool, and application shutdown aborts active custom Tools.
 
 In the **Agents** editor, select the Tool under **Tools**. It is saved as `custom:<tool-id>`.
 The agent receives its description and parameter definitions, passes input, and receives the
-real output or error. Only enabled, explicitly selected Tools are available to the agent.
-Every custom Tool call requires approval, including in full-auto mode. Inputs, results and
+real output or error. Only enabled Tools permitted by the agent's capability settings are available. Selection alone
+does not cause execution. Custom Tool calls ask for approval by default, including in global
+full-auto mode; a per-capability Always allow permission can skip that prompt. Inputs, results and
 errors appear in the persistent [execution history](AGENTS.md#execution-history).
 Custom Tools can be called without selecting a project folder.
 
@@ -90,3 +91,6 @@ named. Remove their Tool selections or delete those agents before retrying. Canc
 confirmation leaves the Tool intact.
 
 See [Agents](AGENTS.md), [Chat](CHAT.md), [Settings](SETTINGS.md), and [Security](SECURITY.md).
+
+See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
+permissions, relevance checks and decision traces.

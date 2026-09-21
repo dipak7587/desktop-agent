@@ -69,3 +69,8 @@ The Chromium version shipped by Electron 44 is the browser support target. Nativ
 are required for this desktop-only renderer.
 
 Packaged startup is covered by `node scripts/smoke-package.mjs`. The bootstrap logs module-loading errors before initializing services. Apache Arrow is an explicit runtime dependency because LanceDB declares it as a peer and pnpm-aware packaging must include it.
+
+Agent and Chat capability execution goes through `services/agents/capabilities.ts`. Register
+new model-initiated actions with `CapabilityRouter`; do not execute them directly from the
+model loop. Keep deterministic restrictions/permissions separate from model relevance judgments.
+See [Capability decisions](CAPABILITIES.md) and `tests/capabilities.test.ts`.

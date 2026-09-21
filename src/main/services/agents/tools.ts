@@ -5,7 +5,7 @@ import { createTwoFilesPatch } from 'diff';
 import { z } from 'zod';
 import { hash, atomicWrite } from '../filesystem/storage';
 import { ignored, walk, readText } from '../filesystem/walk';
-import type { Settings } from '../../../shared/types';
+import type { Settings, PermissionMode } from '../../../shared/types';
 export const localTools = [
   'filesystem.read',
   'filesystem.write',
@@ -92,8 +92,16 @@ export class AgentTools {
     root: string,
     signal: AbortSignal,
     approve: Approve,
+    permission?: PermissionMode,
   ): Promise<unknown> {
     signal.throwIfAborted();
+    if (permission === 'deny') throw new Error('Permission denies this tool');
+    const approvalMode =
+      permission === 'always_allow'
+        ? 'auto'
+        : permission === 'ask'
+          ? 'ask'
+          : this.settings().approvalMode;
     const pathArg = z
       .string()
       .max(4096)
@@ -180,7 +188,7 @@ export class AgentTools {
           content = original.replace(find, () => replacement);
         } else content = z.string().max(1_000_000).parse(args.content);
         const diff = createTwoFilesPatch(pathArg, pathArg, original, content);
-        const mode = this.settings().approvalMode;
+        const mode = approvalMode;
         const safeExtension = [
           '.md',
           '.txt',
@@ -234,7 +242,7 @@ export class AgentTools {
         )
           throw new Error('Only test, lint, build and typecheck scripts are allowed');
         const description = `${command} ${commandArgs.join(' ')} in ${root}. Project scripts can execute arbitrary code.`;
-        if (this.settings().approvalMode !== 'auto' && !(await approve(tool, description)))
+        if (approvalMode !== 'auto' && !(await approve(tool, description)))
           return { rejected: true };
         signal.throwIfAborted();
         return runCommand(

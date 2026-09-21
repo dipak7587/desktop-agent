@@ -35,6 +35,19 @@ export const settingsSchema = z
     defaultAgent: z.string().default(''),
   })
   .refine((v) => v.chunkOverlap < v.chunkSize, 'Chunk overlap must be smaller than chunk size');
+export const capabilityConfigSchema = z.object({
+  mode: z.enum(['auto', 'selected', 'none']).default('selected'),
+  skills: z.array(idSchema).max(100).default([]),
+  mcpServers: z.array(idSchema).max(100).default([]),
+  tools: z.array(z.string().max(300)).max(200).default([]),
+  knowledgeBases: z.array(z.string().max(200)).max(100).default([]),
+  allowSkills: z.boolean().default(true),
+  allowMCP: z.boolean().default(true),
+  allowTools: z.boolean().default(true),
+  allowKnowledgeBase: z.boolean().default(true),
+  permissions: z.record(z.string().max(300), z.enum(['always_allow', 'ask', 'deny'])).default({}),
+  trace: z.boolean().default(false),
+});
 export const librarySchema = z.object({
   id: idSchema,
   name: z.string().trim().min(1).max(200),
@@ -50,6 +63,7 @@ export const librarySchema = z.object({
   knowledgeSources: z.array(z.string().max(200)).max(100).default([]),
   autoStart: z.boolean().default(false),
   maxIterations: z.number().int().min(1).max(50).optional(),
+  capabilityConfig: capabilityConfigSchema.optional(),
   toolConfig: z
     .object({
       type: z.enum(['javascript', 'api']),
