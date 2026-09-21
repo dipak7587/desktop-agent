@@ -26,10 +26,14 @@ model also checks differently worded user restrictions. Restrictions can only re
 “No skills, no MCP, no tools” also disables knowledge access. Project restrictions block built-in
 project tools and knowledge access; MCP/custom code remains subject to its own type restriction.
 
-Expand **Capability permissions** to choose Default, Always allow, Ask or Deny per capability.
-In Selected mode, a permission dropdown appears only after that capability's checkbox is selected
+Skills and Knowledge Base are allowed by default and have no permission dropdown or approval
+prompt. They still obey mode, selection, enabled state, relevance and explicit user restrictions.
+Legacy Ask settings for skills/knowledge no longer prompt; explicit Deny policies remain enforced.
+
+Expand **Capability permissions** to choose Default, Always allow, Ask or Deny for tools and MCP.
+In Selected mode, a permission dropdown appears only after that tool/server's checkbox is selected
 and its type is allowed. Unchecking it hides the dropdown while retaining its saved permission
-for reselection. Auto shows permissions for all listed capabilities of allowed types; None hides
+for reselection. Auto shows permissions for all listed tools/MCPs of allowed types; None hides
 all permission dropdowns.
 Deny blocks execution before model evaluation. Ask requires approval; rejection and cancellation
 prevent execution. Always allow skips the capability's approval, but still requires a positive
@@ -60,7 +64,7 @@ capabilityConfig:
 Permission keys can be exact action IDs (`custom:ID`, `mcp:SERVER:TOOL`, `skill:ID`,
 `knowledge:ID`, or built-in tool IDs), server keys (`mcp:SERVER`), or type keys
 (`skill`, `mcp`, `tool`, `knowledge`). A matching Deny wins over a more specific Allow.
-The editor exposes per-capability choices; broader type policies can be set in YAML.
+The editor exposes tool/MCP permission choices; broader type policies can be set in YAML.
 
 ## Runtime and debugging
 
@@ -68,7 +72,8 @@ The editor exposes per-capability choices; broader type policies can be set in Y
 permission, then asks the configured local model for a structured relevance/necessity decision.
 If the model can answer directly, forbids the capability, returns invalid JSON, or fails, the
 capability is not called. Every proposed agent capability goes through `CapabilityRouter`.
-Enabled state/availability is checked again after approval for saved skills, MCPs and custom tools.
+Enabled state/availability is rechecked before dispatch for saved skills, MCPs and custom tools,
+including after tool approval.
 A run uses a snapshot of its agent configuration; changes to that configuration apply to new runs.
 
 Relevance is a model judgment, not a deterministic semantic guarantee. The hard mode, selection,

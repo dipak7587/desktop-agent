@@ -41,20 +41,16 @@ export function CapabilitySettings({
     },
   ] as const;
   const permissions = groups.flatMap((group) =>
-    config.mode === 'none' || !config[group.flag]
+    config.mode === 'none' ||
+    !config[group.flag] ||
+    group.key === 'skills' ||
+    group.key === 'knowledgeBases'
       ? []
       : group.options
           .filter((option) => config.mode === 'auto' || config[group.key].includes(option.id))
           .map((option) => ({
             ...option,
-            id:
-              group.key === 'skills'
-                ? `skill:${option.id}`
-                : group.key === 'mcpServers'
-                  ? `mcp:${option.id}`
-                  : group.key === 'knowledgeBases'
-                    ? `knowledge:${option.id}`
-                    : option.id,
+            id: group.key === 'mcpServers' ? `mcp:${option.id}` : option.id,
           })),
   );
   return (
@@ -114,14 +110,15 @@ export function CapabilitySettings({
       <details>
         <summary>Capability permissions</summary>
         <p className="small muted">
-          Defaults: MCP and custom tools ask; local tools follow Settings and show change previews.
-          Always allow skips approval for that capability. Deny always blocks it.
+          Skills and Knowledge Base need no approval. Defaults: MCP and custom tools ask; local
+          tools follow Settings and show change previews. Always allow skips approval for that
+          capability. Deny always blocks it.
         </p>
         {!permissions.length && (
           <p className="small muted">
             {config.mode === 'none'
               ? 'Capabilities are disabled in None mode.'
-              : 'Select a capability to configure its permission.'}
+              : 'Select a tool or MCP server to configure its permission.'}
           </p>
         )}
         {permissions.map((option) => (

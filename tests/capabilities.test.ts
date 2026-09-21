@@ -300,3 +300,40 @@ it.each(['none', 'selected'] as const)(
     }
   },
 );
+
+it.each([skill, kb])(
+  'does not ask approval for $type even with legacy Ask permissions',
+  async (capability) => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const execute = vi.fn().mockResolvedValue('content');
+    const router = new CapabilityRouter(
+      new CapabilityDecisionEngine(async () => yes),
+      'Use the matching workflow and project documentation',
+      capabilityConfigSchema.parse({
+        mode: 'auto',
+        permissions: { [capability.id]: 'ask', [capability.type]: 'ask' },
+      }),
+      {},
+      confirm,
+    );
+    router.register({ capability, execute });
+    expect(await router.execute(capability.id, {})).toBe('content');
+    expect(execute).toHaveBeenCalledOnce();
+    expect(confirm).not.toHaveBeenCalled();
+  },
+);
+it.each([skill, kb])(
+  'retains explicit deny for $type without asking approval',
+  async (capability) => {
+    const engine = new CapabilityDecisionEngine(async () => yes);
+    expect(
+      (
+        await engine.decide(
+          'Use project context',
+          capability,
+          capabilityConfigSchema.parse({ mode: 'auto', permissions: { [capability.id]: 'deny' } }),
+        )
+      ).shouldCall,
+    ).toBe(false);
+  },
+);

@@ -104,6 +104,8 @@ export class CapabilityDecisionEngine {
     ];
     // A broad deny cannot be overridden by a more specific allow.
     if (keys.some((key) => config.permissions[key] === 'deny')) return 'deny';
+    // Skills and retrieval do not require approval, including legacy Ask settings.
+    if (capability.type === 'skill' || capability.type === 'knowledge') return 'always_allow';
     return (
       keys.map((key) => config.permissions[key]).find(Boolean) ??
       capability.defaultPermission ??
