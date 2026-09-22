@@ -38,7 +38,7 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     for (const name of ['Reviewer', 'Writer']) {
       await page.getByRole('button', { name: 'New agent' }).click();
       await page.getByLabel('Name', { exact: true }).fill(name);
-      await page.getByLabel('Maximum execution iterations').fill('3');
+      await page.getByLabel('Maximum execution iterations').fill('500');
       await page.getByRole('radio', { name: 'None', exact: true }).check();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
       await expect(page.getByLabel('Allow Skills', { exact: true })).toBeDisabled();
@@ -118,9 +118,30 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     await page.getByRole('button', { name: 'New server' }).click();
     await page.getByLabel('Name (required)').fill('Manual server');
     await page.getByLabel('Description (required)').fill('Startup configuration test');
+    await page
+      .getByLabel('Environment variables · JSON')
+      .fill(JSON.stringify({ MODE: 'production', TOKEN: '${TOKEN}', EMPTY: '' }));
     await page.getByLabel('Start automatically when application starts').check();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Auto start: On')).toBeVisible();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    expect(JSON.parse(await page.getByLabel('Environment variables · JSON').inputValue())).toEqual({
+      MODE: 'production',
+      TOKEN: '${TOKEN}',
+      EMPTY: '',
+    });
+    await page.getByLabel('Import from JSON').check();
+    await page
+      .getByLabel('MCP configuration JSON')
+      .fill(JSON.stringify({ env: { MODE: 'development', TOKEN: 'literal-token' } }));
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    expect(JSON.parse(await page.getByLabel('Environment variables · JSON').inputValue())).toEqual({
+      MODE: 'development',
+      TOKEN: 'literal-token',
+    });
+    await page.getByRole('button', { name: 'Close dialog' }).click();
     await page.screenshot({ path: 'test-results/new-features-mcp.png' });
   } finally {
     await app.close();

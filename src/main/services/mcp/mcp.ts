@@ -32,8 +32,9 @@ export class MCPService {
       throw new Error('Add an executable command before starting this MCP server.');
     const env: Record<string, string> = {};
     const secretValues: string[] = [];
-    for (const [name, reference] of Object.entries(config.env)) {
-      env[name] = this.secrets.resolve(reference.slice(2, -1));
+    for (const [name, value] of Object.entries(config.env)) {
+      const reference = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
+      env[name] = reference ? this.secrets.resolve(reference[1]) : value;
       secretValues.push(env[name]);
     }
     const redact = (text: string) =>

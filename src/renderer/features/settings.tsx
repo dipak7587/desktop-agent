@@ -234,7 +234,7 @@ export function Settings() {
                   <input
                     type="number"
                     min={1}
-                    max={50}
+                    max={500}
                     value={value.maxIterations}
                     onChange={(e) => update('maxIterations', Number(e.target.value))}
                   />

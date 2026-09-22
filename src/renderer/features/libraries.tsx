@@ -289,7 +289,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                       <p className="small muted">
                         {Object.keys(item.env)
                           .map((k) => `${k} = ********`)
-                          .join(' · ') || 'No environment references'}
+                          .join(' · ') || 'No environment variables'}
                       </p>
                       <div className="actions">
                         {(['start', 'stop', 'restart', 'test'] as const).map((action) => (
@@ -535,7 +535,7 @@ function LibraryEditor({
               <input
                 type="number"
                 min={1}
-                max={50}
+                max={500}
                 required
                 value={item.maxIterations ?? 15}
                 onChange={(e) => update('maxIterations', e.target.valueAsNumber)}
@@ -686,7 +686,7 @@ function LibraryEditor({
                   />
                 </label>
                 <label>
-                  Environment references · JSON
+                  Environment variables · JSON
                   <textarea rows={4} value={env} onChange={(e) => setEnv(e.target.value)} />
                 </label>
               </>
@@ -697,8 +697,10 @@ function LibraryEditor({
               above are used for the saved definition.
             </p>
             <p className="small muted">
-              Use references such as {'{"GITHUB_TOKEN":"${GITHUB_TOKEN}"}'}. Add keys in Settings or
-              configure the process environment.
+              Use literal values or references, for example{' '}
+              {'{"MODE":"production","GITHUB_TOKEN":"${GITHUB_TOKEN}"}'}. References use Settings
+              credentials, the selected .env file, or the process environment. Literal values are
+              saved in the server configuration and included in exports.
             </p>
           </>
         ) : (

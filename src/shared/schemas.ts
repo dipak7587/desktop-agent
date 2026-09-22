@@ -98,7 +98,7 @@ export const settingsSchema = z
     ignorePatterns: z.array(z.string().max(300)).max(100).default([]),
     approvalMode: z.enum(['ask', 'safe', 'auto']).default('ask'),
     commandTimeout: z.number().int().min(1000).max(300000).default(60000),
-    maxIterations: z.number().int().min(1).max(50).default(15),
+    maxIterations: z.number().int().min(1).max(500).default(15),
     language: z.literal('en').default('en'),
     startAtLogin: z.boolean().default(false),
     defaultAgent: z.string().default(''),
@@ -132,7 +132,7 @@ export const librarySchema = z.object({
   tools: z.array(z.string().max(300)).max(200).default([]),
   knowledgeSources: z.array(z.string().max(200)).max(100).default([]),
   autoStart: z.boolean().default(false),
-  maxIterations: z.number().int().min(1).max(50).optional(),
+  maxIterations: z.number().int().min(1).max(500).optional(),
   capabilityConfig: capabilityConfigSchema.optional(),
   toolConfig: z
     .object({
@@ -162,10 +162,7 @@ export const librarySchema = z.object({
       z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
       z
         .string()
-        .regex(
-          /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/,
-          'Environment values must be references such as ${GITHUB_TOKEN}',
-        ),
+        .refine((value) => !value.includes('\0'), 'Environment values cannot contain null bytes'),
     )
     .default({}),
 });

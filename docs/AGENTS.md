@@ -88,7 +88,7 @@ outputs and failures are recorded in the run; tool errors are returned to the mo
 can recover. Referenced Tools and MCPs cannot be deleted until all agent references are removed,
 including references in disabled agents.
 
-**Maximum execution iterations** accepts 1–50 and is saved as `maxIterations`. New agents
+**Maximum execution iterations** accepts 1–500 and is saved as `maxIterations`. New agents
 start with the global Settings value. Older definitions without this field inherit the global
 limit when run. An iteration is one model turn, including invalid actions and the final report;
 it is not a count of tool calls. Runs stop on completion, the limit, a fatal error, cancellation,

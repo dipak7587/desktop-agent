@@ -45,7 +45,7 @@ on disk even when its background indexing fails.
 Choose the appearance and general preferences. Configure agent execution limits and approval
 behavior. The global maximum-iteration setting is the initial value for new agents and the
 fallback for saved definitions without `maxIterations`. Each agent can save its own **Maximum
-execution iterations** (1–50); that value takes precedence. Iterations count model turns,
+execution iterations** (1–500); that value takes precedence. Iterations count model turns,
 including a final report. Generation iterations are not a separate setting in this release.
 
 The command timeout also bounds custom Tool execution. Custom Tool and MCP calls ask

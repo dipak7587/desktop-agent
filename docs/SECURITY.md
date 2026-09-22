@@ -13,11 +13,12 @@ The only external browser action opens a fixed Ollama setup URL.
 
 Electron safeStorage encrypts values through the OS backend. The insecure Linux `basic_text`
 backend is refused. API values are never returned to the UI; only configured key names are
-listed. MCP configs accept `${NAME}` references only. `.env` loading requires a user-selected
+listed. MCP configs accept literal string values and `${NAME}` references. Literal values are
+visible in the editor and stored in definition files and exports. `.env` loading requires a user-selected
 file; the app stores its path, not a copy of plaintext values. Settings exports omit credentials, and definitions retain references rather than resolved
 values. Literal secrets entered into custom Tool code, URLs or headers are not automatically
 removed from definition exports; use references in API headers. Protect the original `.env` file yourself. Redaction removes known credential
-values and resolved MCP environment values from MCP logs/results.
+values and both literal and resolved MCP environment values from MCP logs/results.
 
 ## Provider configuration and requests
 

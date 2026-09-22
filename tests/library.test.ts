@@ -28,9 +28,11 @@ it('round trips saved text and skills as portable markdown, with edits and delet
   }
   await rm(root, { recursive: true, force: true });
 });
-it('rejects path traversal, literal secrets and invalid chunking', () => {
+it('rejects path traversal, invalid environment names and invalid chunking', () => {
   expect(() => librarySchema.parse({ id: '../outside', name: 'Bad' })).toThrow();
-  expect(() => librarySchema.parse({ id: 'ok', name: 'Bad', env: { TOKEN: 'secret' } })).toThrow();
+  expect(() =>
+    librarySchema.parse({ id: 'ok', name: 'Bad', env: { 'INVALID-NAME': 'value' } }),
+  ).toThrow();
   expect(() => settingsSchema.parse({ chunkSize: 200, chunkOverlap: 200 })).toThrow();
 });
 it('rejects executable frontmatter engines', () => {
@@ -38,4 +40,17 @@ it('rejects executable frontmatter engines', () => {
   expect(() => library.parse('skills', '---javascript\n({name:"malicious"})\n---\ntext')).toThrow(
     'YAML frontmatter',
   );
+});
+
+it('accepts execution iteration limits through 500 for settings and agents', () => {
+  for (const maxIterations of [1, 50, 51, 500]) {
+    expect(settingsSchema.parse({ maxIterations }).maxIterations).toBe(maxIterations);
+    expect(librarySchema.parse({ id: 'agent', name: 'Agent', maxIterations }).maxIterations).toBe(
+      maxIterations,
+    );
+  }
+  for (const maxIterations of [0, 501, 1.5]) {
+    expect(() => settingsSchema.parse({ maxIterations })).toThrow();
+    expect(() => librarySchema.parse({ id: 'agent', name: 'Agent', maxIterations })).toThrow();
+  }
 });

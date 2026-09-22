@@ -11,7 +11,7 @@ configuration instead. Uncheck it to return to manual entry. Each mode keeps its
 only the selected mode is used on save. JSON can contain a single server object or a
 `mcpServers` object containing exactly one server. The name, description, and enabled state
 from the form are used for the saved definition. Invalid JSON, unsupported fields/transports,
-and literal environment secrets are rejected.
+and non-string environment values are rejected.
 
 Start or test the server, inspect discovered tools and logs, and stop or restart it as needed.
 Definitions can be edited, imported, exported, or deleted. To use a discovered tool, select
@@ -56,14 +56,16 @@ in the Agents editor, or delete the agents, then retry. This prevents broken age
 ## Imports and execution
 
 Import creates a new local ID. The editor accepts one argument per line. Environment values
-must be references, never literal secrets. Resolution order is OS-encrypted stored credential,
-explicitly selected `.env` file, then the main process environment. Resolved values are not
-returned to the renderer and are removed from server logs and tool results.
+can be literal strings or exact `${NAME}` references. References resolve from OS-encrypted stored
+credentials, the explicitly selected `.env` file, then the main process environment. Other strings
+are passed unchanged, including empty strings. Literal values are stored in the server JSON,
+visible in the editor, and included in exports. Resolved references are not returned to the renderer.
+Both literal and resolved values are removed from server logs and tool results.
 
 MCP is an execution boundary: installing or starting an untrusted server can execute code
 with your user's privileges. The filesystem boundary of built-in agent tools does not sandbox
 MCP servers. Configure each server's own permissions. The app gives it a minimal environment
-plus explicit references.
+plus configured environment values.
 
 Connected tools appear in the Agent editor as `mcp:<server-id>:<tool-name>`. Agents receive
 tool descriptions/input schemas and can call only capabilities allowed by its mode, type

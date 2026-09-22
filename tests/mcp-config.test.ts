@@ -8,7 +8,11 @@ import { LibraryService } from '../src/main/services/filesystem/library';
 import { MCPService } from '../src/main/services/mcp/mcp';
 
 it('accepts direct and wrapped MCP configs, including an optional command', () => {
-  const config = { command: 'node', args: ['server.js'], env: { TOKEN: '${TOKEN}' } };
+  const config = {
+    command: 'node',
+    args: ['server.js'],
+    env: { TOKEN: '${TOKEN}', MODE: 'production', EMPTY: '', TEXT: 'prefix-${TOKEN}' },
+  };
   expect(parseMCPConfig(JSON.stringify(config))).toEqual(config);
   expect(parseMCPConfig(JSON.stringify({ mcpServers: { example: config } }))).toEqual(config);
   expect(parseMCPConfig('{}')).toEqual({ command: '', args: [], env: {} });
@@ -20,7 +24,8 @@ it('rejects malformed, ambiguous, unsupported and unsafe MCP JSON', () => {
     'null',
     '[]',
     '{"args":"bad"}',
-    '{"env":{"TOKEN":"secret"}}',
+    '{"env":{"TOKEN":123}}',
+    JSON.stringify({ env: { TOKEN: 'bad\0value' } }),
     '{"url":"https://example.com"}',
     '{"mcpServers":{}}',
     '{"mcpServers":{"one":{},"two":{}}}',

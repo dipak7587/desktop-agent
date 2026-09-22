@@ -30,7 +30,7 @@ export function parseMCPConfig(raw: string) {
   const result = configSchema.safeParse(value);
   if (!result.success)
     throw new Error(
-      'Invalid MCP config. Use command (string), args (string array), and env (environment references). Only stdio servers are supported.',
+      'Invalid MCP config. Use command (string), args (string array), and env (string values or ${NAME} references). Only stdio servers are supported.',
     );
   const { command, args, env } = result.data;
   return { command, args, env };
