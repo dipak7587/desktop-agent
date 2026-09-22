@@ -1,6 +1,6 @@
 # LocalAI Workspace
 
-A runnable local-first Electron workspace for Ollama chat, documentation, reusable skills,
+A runnable local-first Electron workspace for multi-provider AI chat, documentation, reusable skills,
 MCP servers, custom Tools, and agents. Core features use local files, SQLite and LanceDB; no cloud
 account or backend is required.
 
@@ -22,10 +22,14 @@ ollama pull nomic-embed-text
 ```
 
 If Ollama is already running, do not start a second server. The app discovers installed
-models and lets you change them in Settings. The default endpoint is
-`http://127.0.0.1:11434`. Notes, skills, MCP configuration and settings work while Ollama
+models through **Settings → AI Providers**, where you choose a default chat model. The default endpoint is
+`http://localhost:11434`. No installed model is assumed on first launch. Notes, skills, MCP configuration and settings work while Ollama
 is offline. This build was exercised with the machine's installed `qwen3-coder:latest`.
 `nomic-embed-text:latest` was installed during implementation for real RAG verification.
+
+Hosted options include OpenAI, Anthropic Claude, Google Gemini, OpenRouter, Groq, and custom
+compatible endpoints. Multiple accounts/servers of the same type are supported. See
+[Multi-provider AI](docs/MULTI_PROVIDER_AI.md) for setup, model discovery, and migration.
 
 ## Workflows
 
@@ -46,7 +50,7 @@ Saved Text is automatically indexed into RAG. To answer questions using it, choo
 **Collection: Saved Text** or **All knowledge** in Chat. The default **No knowledge context**
 does not retrieve saved notes.
 
-- **Chat:** select a model, send with the arrow or Cmd/Ctrl+Enter, stop, regenerate, copy,
+- **Chat:** select a provider/model in the chat header, send with the arrow or Cmd/Ctrl+Enter, stop, regenerate, copy,
   search history, rename, delete and continue conversations after restarting.
   Type `/skills `, `/agent `, or `/mcp ` to select an enabled item and run it from Chat;
   inspect activity and approve operations inline. See [CHAT.md](docs/CHAT.md).
@@ -62,11 +66,11 @@ does not retrieve saved notes.
 - **Knowledge Base:** add .md/.txt files, a folder containing .md/.txt files, or a URL, then click Sync / Re-index.
   Preview normalized content, perform semantic or keyword search, or select sources and
   collections in Chat. Changes replace old vectors; unchanged local documents skip embedding.
-- **Agents:** configure a model, skills, tools, knowledge sources and maximum iterations;
+- **Agents:** configure an independent provider/model, skills, tools, knowledge sources and maximum iterations;
   optionally select a project folder and run a task, or use `/agent <name>` in Chat. Read the proposed diff and approve or reject changes. Results include
   tool output and verification. Persistent accordion history shows timing, iteration usage,
   tools, results and status. Agents support confirmed bulk deletion. Model capability determines task quality.
-- **Settings:** configure models, chunking, ignore patterns, theme, execution bounds,
+- **Settings:** add/edit provider configurations, discover or register models, chunking, ignore patterns, theme, execution bounds,
   OS-encrypted credentials, and an explicitly selected `.env` file.
 
 Cmd/Ctrl+K opens global search. Cmd/Ctrl+N creates a chat. Escape cancels active chat/agent
@@ -95,7 +99,9 @@ If an IDE exports `ELECTRON_RUN_AS_NODE=1`, clear that variable when launching E
 
 The exact data directory is shown at the bottom of Settings. It is Electron's `userData`
 directory, never the project repository. Definitions are portable Markdown/JSON files.
-Chat and agent run history use SQLite; vectors use local LanceDB. Exports do not resolve
+Chat and agent run history use SQLite; vectors use local LanceDB. Provider metadata lives in
+`config/providers.json`, separate from encrypted credentials. Hosted inference sends conversation
+content and selected reference material to the configured provider. Exports do not resolve
 credential references. Avoid literal secrets in custom Tool code, headers and URLs.
 OS-encrypted keys are rejected when a secure encryption backend is unavailable.
 MCP starts programs you configure, including opted-in auto-start servers. Custom Tools execute

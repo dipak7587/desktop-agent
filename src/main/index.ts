@@ -1,10 +1,15 @@
+import { ProviderRouter } from './services/providers/router';
 import { CustomToolService } from './services/tools/custom';
 import { AgentRunDatabase } from './database/agent-runs';
 import { app, BrowserWindow, session, dialog } from 'electron';
 import { join } from 'node:path';
 import { mkdir, appendFile, readdir } from 'node:fs/promises';
 import { SettingsService } from './services/settings/settings';
-import { OllamaLLMProvider, OllamaEmbeddingProvider } from './services/ollama/provider';
+import {
+  createEmbeddingProvider,
+  createLLMProvider,
+  OllamaLLMProvider,
+} from './services/ollama/provider';
 import { ChatDatabase } from './database/chat';
 import { ChatService } from './services/ollama/chat';
 import { ChatCommands } from './services/ollama/commands';
@@ -70,16 +75,34 @@ app
       callback(false),
     );
     session.defaultSession.setPermissionCheckHandler(() => false);
-    const settings = new SettingsService(root);
+    const secrets = new SecretStore(root);
+    await secrets.init();
+    const settings = new SettingsService(root, secrets, () =>
+      new LibraryService(root).list('agents'),
+    );
     await settings.init();
     app.setName(settings.get().appName);
     const getSettings = () => settings.get();
     const ollama = new OllamaLLMProvider(getSettings);
-    const embeddings = new OllamaEmbeddingProvider(ollama, getSettings);
+    const providers = new ProviderRouter(settings);
+    const llm = createLLMProvider(getSettings);
+    const embeddings = {
+      embed: (text: string, signal?: AbortSignal) =>
+        createEmbeddingProvider(() => settings.forProvider()).embed(text, signal),
+      embedBatch: (texts: string[], signal?: AbortSignal) =>
+        createEmbeddingProvider(() => settings.forProvider()).embedBatch(texts, signal),
+    };
     const db = new ChatDatabase(join(root, 'database', 'app.sqlite'));
+    db.migrateProviders(settings.get().activeProviderId);
     const library = new LibraryService(root, () => knowledge.syncSavedText());
-    const secrets = new SecretStore(root);
-    await secrets.init();
+    for (const agent of await library.list('agents')) {
+      if (!agent.providerId && settings.get().activeProviderId)
+        await library.save('agents', {
+          ...agent,
+          providerId: settings.get().activeProviderId,
+          model: agent.model || settings.get().chatModel,
+        });
+    }
     const emit = (event: AppEvent) => {
       if (window && !window.isDestroyed())
         window.webContents.send('workspace:event', {
@@ -100,7 +123,7 @@ app
     const runDb = new AgentRunDatabase(join(root, 'database', 'agent-runs.sqlite'));
     const agents = new AgentService(
       library,
-      ollama,
+      llm,
       knowledge,
       mcp,
       getSettings,
@@ -109,20 +132,24 @@ app
       customTools,
       runDb,
       (text) => secrets.redact(text),
+      providers,
     );
     const chat = new ChatService(
       db,
-      ollama,
+      llm,
       emit,
       (q, scope) => knowledge.search(q, 'semantic', scope),
       () => getSettings().contextSize,
       new ChatCommands(library, mcp, agents),
       (text) => secrets.redact(text),
       () => knowledge.list(),
+      providers,
     );
     services = {
+      providers,
       settings,
       ollama,
+      llm,
       db,
       chat,
       library,

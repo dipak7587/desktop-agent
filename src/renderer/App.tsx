@@ -152,13 +152,13 @@ export function App() {
               <div>
                 <span className={`status-dot ${status.startsWith('Connected') ? '' : 'offline'}`} />
                 <strong>
-                  {status.startsWith('Connected') ? 'Local & connected' : 'Local workspace'}
+                  {status.startsWith('Connected') ? 'Provider connected' : 'Local workspace'}
                 </strong>
               </div>
               <p>
                 {status.startsWith('Connected')
                   ? 'Your intelligence. On your terms.'
-                  : 'Connect Ollama in Settings.'}
+                  : 'Configure AI Providers in Settings.'}
               </p>
               <span>
                 No cloud backend required

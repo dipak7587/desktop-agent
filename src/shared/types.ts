@@ -1,12 +1,40 @@
 export type Section =
   'Chat' | 'Tools' | 'MCP' | 'Skills' | 'Saved Text' | 'Agents' | 'Knowledge Base' | 'Settings';
 export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
-export interface Settings {
-  appName: string;
-  theme: 'system' | 'dark' | 'light';
+export type LLMProviderName =
+  'ollama' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'groq' | 'custom';
+export interface ProviderProfile {
+  enabled?: boolean;
+  modelIds?: string[];
+  manualModelIds?: string[];
+  credentialRef?: string;
+  hasCredential?: boolean;
+  timeout?: number;
+  authMethod?: 'none' | 'bearer' | 'header';
+  authHeader?: string;
+  id: string;
+  name: string;
+  provider: LLMProviderName;
+  apiKey: string;
+  apiBaseUrl: string;
   ollamaUrl: string;
   chatModel: string;
   embeddingModel: string;
+}
+export interface Settings {
+  timeout?: number;
+  authMethod?: 'none' | 'bearer' | 'header';
+  authHeader?: string;
+  appName: string;
+  theme: 'system' | 'dark' | 'light';
+  provider: LLMProviderName;
+  apiKey: string;
+  apiBaseUrl: string;
+  ollamaUrl: string;
+  chatModel: string;
+  embeddingModel: string;
+  providers: ProviderProfile[];
+  activeProviderId: string;
   temperature: number;
   contextSize: number;
   topK: number;
@@ -26,11 +54,27 @@ export interface Model {
   capabilities?: string[];
 }
 export interface Conversation {
+  providerId?: string;
+  agentId?: string;
   id: string;
   title: string;
   model: string;
   createdAt: number;
   updatedAt: number;
+}
+export function resolveProviderSettings(settings: Settings): Settings {
+  const profile = settings.providers.find((p) => p.id === settings.activeProviderId);
+  if (!profile) return settings;
+  return {
+    ...settings,
+    provider: profile.provider,
+    apiKey: profile.apiKey,
+    apiBaseUrl: profile.apiBaseUrl,
+    ollamaUrl: profile.ollamaUrl,
+    chatModel: profile.chatModel,
+    embeddingModel: profile.embeddingModel,
+    activeProviderId: profile.id,
+  };
 }
 export interface Message {
   id: string;
@@ -39,6 +83,11 @@ export interface Message {
   content: string;
   createdAt: number;
   metadata?: {
+    providerId?: string;
+    providerNameSnapshot?: string;
+    modelId?: string;
+    agentId?: string;
+    status?: 'streaming' | 'completed' | 'canceled' | 'failed';
     sources?: SearchResult[];
     error?: string;
     stopped?: boolean;
@@ -52,6 +101,7 @@ export interface ChatCommand {
   project?: string;
 }
 export interface ChatInput {
+  providerId?: string;
   id: string;
   text: string;
   model: string;
@@ -60,6 +110,7 @@ export interface ChatInput {
   command?: ChatCommand;
 }
 export interface LibraryItem {
+  providerId?: string;
   id: string;
   name: string;
   description: string;
@@ -104,6 +155,7 @@ export interface SearchResult {
   location: string;
 }
 export interface AppEvent {
+  selection?: { providerId: string; providerNameSnapshot: string; modelId: string };
   type: 'chat' | 'knowledge' | 'agent' | 'mcp';
   id: string;
   status: string;

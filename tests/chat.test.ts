@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ChatDatabase } from '../src/main/database/chat';
+import { settingsSchema } from '../src/shared/schemas';
 it('persists, searches, continues and cascade-deletes a conversation across restart', async () => {
   const root = await mkdtemp(join(tmpdir(), 'chat-test-'));
   const file = join(root, 'app.sqlite');
@@ -37,4 +38,18 @@ it('clears every stored conversation and message', async () => {
   expect(db.list()).toHaveLength(0);
   db.close();
   await rm(root, { recursive: true, force: true });
+});
+
+it('accepts cross-provider settings for Claude, OpenAI, and Google style models', () => {
+  const settings = settingsSchema.parse({
+    provider: 'anthropic',
+    apiKey: 'test-key',
+    apiBaseUrl: 'https://api.anthropic.com',
+    chatModel: 'claude-3-5-sonnet-20241022',
+    embeddingModel: 'text-embedding-004',
+  });
+
+  expect(settings.provider).toBe('anthropic');
+  expect(settings.apiKey).toBe('test-key');
+  expect(settings.apiBaseUrl).toBe('https://api.anthropic.com');
 });

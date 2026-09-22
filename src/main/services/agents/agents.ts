@@ -1,3 +1,4 @@
+import type { ProviderRouter, SelectedProvider } from '../providers/router';
 import { capabilityConfig } from '../../../shared/capabilities';
 import {
   CAPABILITY_POLICY,
@@ -11,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppEvent, RunState, Settings, LibraryItem } from '../../../shared/types';
 import type { LibraryService } from '../filesystem/library';
-import type { OllamaLLMProvider, ChatMessage } from '../ollama/provider';
+import type { LLMProvider, ChatMessage } from '../ollama/provider';
 import type { KnowledgeService } from '../rag/knowledge';
 import type { MCPService } from '../mcp/mcp';
 import { AgentTools, localTools } from './tools';
@@ -29,7 +30,7 @@ export class AgentService {
   private pending = new Map<string, { runId: string; resolve: (approved: boolean) => void }>();
   constructor(
     private library: LibraryService,
-    private llm: OllamaLLMProvider,
+    private llm: LLMProvider,
     private knowledge: KnowledgeService,
     private mcp: MCPService,
     private settings: () => Settings,
@@ -38,6 +39,7 @@ export class AgentService {
     private customTools?: CustomToolService,
     private runStore?: RunStore,
     private redact: (text: string) => string = (text) => text,
+    private providers?: ProviderRouter,
   ) {
     for (const run of runStore?.list() ?? []) {
       if (!['Completed', 'Failed', 'Cancelled', 'Max iterations reached'].includes(run.status)) {
@@ -85,10 +87,18 @@ export class AgentService {
     task: string,
     project: string,
     observe?: (event: AppEvent) => void,
+    selected?: SelectedProvider,
   ) {
     if (this.controllers.size >= 3) throw new Error('At most three agents may run at once');
     if (!agent.enabled) throw new Error('Enable this agent first');
+    if (this.providers && !selected && (!agent.providerId || !agent.model))
+      throw new Error('Select and save a provider and model for this agent.');
     if (!agent.model && !this.settings().chatModel) throw new Error('Select an agent model');
+    selected ??= this.providers?.capture(
+      agent.providerId,
+      agent.model || this.settings().chatModel,
+    );
+    agent = { ...agent, model: selected?.modelId ?? agent.model };
     const id = randomUUID();
     const controller = new AbortController();
     this.controllers.set(id, controller);
@@ -113,7 +123,7 @@ export class AgentService {
       status: 'Planning',
       content: 'Thinking… Planning the next steps…',
     });
-    const job = this.loop(id, agent, task, project, controller);
+    const job = this.loop(id, agent, task, project, controller, selected?.llm ?? this.llm);
     this.jobs.set(id, job);
     void job.finally(() => this.jobs.delete(id));
     return id;
@@ -124,9 +134,10 @@ export class AgentService {
     project: string,
     signal: AbortSignal,
     observe: (event: AppEvent) => void,
+    selected?: SelectedProvider,
   ) {
     signal.throwIfAborted();
-    const id = this.start(agent, task, project, observe);
+    const id = this.start(agent, task, project, observe, selected);
     const stop = () => this.stop(id);
     signal.addEventListener('abort', stop, { once: true });
     try {
@@ -170,6 +181,7 @@ export class AgentService {
     task: string,
     project: string,
     controller: AbortController,
+    llm: LLMProvider,
   ) {
     const timer = setTimeout(() => this.stop(id), 15 * 60 * 1000);
     const signal = controller.signal;
@@ -195,9 +207,7 @@ export class AgentService {
         });
       };
       const router = new CapabilityRouter(
-        new CapabilityDecisionEngine(
-          modelEvaluator(this.llm, agent.model || this.settings().chatModel),
-        ),
+        new CapabilityDecisionEngine(modelEvaluator(llm, agent.model || this.settings().chatModel)),
         task,
         config,
         { project, signal, instructions: agent.content },
@@ -360,12 +370,25 @@ Tool arguments: filesystem.read/list/exists: {path}; filesystem.search: {query};
           status: 'Planning',
           content: `Thinking… Planning the next steps… (iteration ${iteration + 1} / ${run.maxIterations})`,
         });
-        const reply = await this.llm.complete({
-          model: agent.model || this.settings().chatModel,
-          messages,
-          signal,
-          format: 'json',
-        });
+        const reply =
+          (await llm.complete?.({
+            model: agent.model || this.settings().chatModel,
+            messages,
+            signal,
+            format: 'json',
+          })) ??
+          (await (async () => {
+            let content = '';
+            for await (const chunk of llm.chat({
+              model: agent.model || this.settings().chatModel,
+              messages,
+              signal,
+              format: 'json',
+            })) {
+              if (chunk.message?.content) content += chunk.message.content;
+            }
+            return { role: 'assistant', content } as ChatMessage;
+          })());
         signal.throwIfAborted();
         messages.push(reply);
         let action: z.infer<typeof actionSchema>;

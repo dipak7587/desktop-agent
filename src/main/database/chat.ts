@@ -8,7 +8,29 @@ export class ChatDatabase {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY,title TEXT NOT NULL,model TEXT NOT NULL,createdAt INTEGER NOT NULL,updatedAt INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,conversationId TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,createdAt INTEGER NOT NULL,metadata TEXT);
- CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversationId,createdAt); PRAGMA user_version=1;`);
+ CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversationId,createdAt);`);
+    const columns = this.db.prepare('PRAGMA table_info(conversations)').all();
+    if (!columns.some((c) => c.name === 'providerId'))
+      this.db.exec("ALTER TABLE conversations ADD COLUMN providerId TEXT NOT NULL DEFAULT ''");
+    if (!columns.some((c) => c.name === 'agentId'))
+      this.db.exec("ALTER TABLE conversations ADD COLUMN agentId TEXT NOT NULL DEFAULT ''");
+    this.db.exec('PRAGMA user_version=2');
+    for (const row of this.db
+      .prepare("SELECT id,metadata FROM messages WHERE role='assistant' AND metadata IS NOT NULL")
+      .all()) {
+      const metadata = JSON.parse(String(row.metadata));
+      if (metadata.status === 'streaming') {
+        metadata.status = 'canceled';
+        metadata.stopped = true;
+        metadata.error = 'Application closed before this response finished.';
+        this.db
+          .prepare('UPDATE messages SET metadata=? WHERE id=?')
+          .run(JSON.stringify(metadata), String(row.id));
+      }
+    }
+  }
+  migrateProviders(defaultId: string) {
+    this.db.prepare("UPDATE conversations SET providerId=? WHERE providerId=''").run(defaultId);
   }
   list(query = ''): Conversation[] {
     return this.db
@@ -23,18 +45,30 @@ export class ChatDatabase {
     if (!c) throw new Error('Conversation no longer exists');
     return c;
   }
-  create(model: string): Conversation {
+  create(model: string, providerId = '', agentId = ''): Conversation {
     const c = {
       id: randomUUID(),
       title: 'New conversation',
+      providerId,
+      agentId,
       model,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     this.db
-      .prepare('INSERT INTO conversations VALUES(?,?,?,?,?)')
-      .run(c.id, c.title, c.model, c.createdAt, c.updatedAt);
+      .prepare(
+        'INSERT INTO conversations(id,title,model,createdAt,updatedAt,providerId,agentId) VALUES(?,?,?,?,?,?,?)',
+      )
+      .run(c.id, c.title, c.model, c.createdAt, c.updatedAt, providerId, agentId);
     return c;
+  }
+  setSelection(id: string, providerId: string, model: string, agentId?: string) {
+    this.get(id);
+    this.db
+      .prepare(
+        'UPDATE conversations SET providerId=?,model=?,agentId=COALESCE(?,agentId) WHERE id=?',
+      )
+      .run(providerId, model, agentId ?? null, id);
   }
   setModel(id: string, model: string) {
     this.get(id);
@@ -77,6 +111,12 @@ export class ChatDatabase {
       .run(m.id, id, role, content, m.createdAt, metadata ? JSON.stringify(metadata) : null);
     this.db.prepare('UPDATE conversations SET updatedAt=? WHERE id=?').run(Date.now(), id);
     return m;
+  }
+  updateMessage(message: Message, content: string, metadata: Message['metadata']): Message {
+    this.db
+      .prepare('UPDATE messages SET content=?,metadata=? WHERE id=?')
+      .run(content, JSON.stringify(metadata ?? {}), message.id);
+    return { ...message, content, metadata };
   }
   removeLastAssistant(id: string) {
     const messages = this.messages(id);

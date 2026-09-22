@@ -18,10 +18,18 @@ export interface WorkspaceAPI {
     save(value: Settings): Promise<Settings>;
     dataPath(): Promise<string>;
   };
-  models: { list(): Promise<Model[]>; info(name: string): Promise<unknown> };
+  models: {
+    list(providerId?: string): Promise<Model[]>;
+    info(name: string, providerId?: string): Promise<unknown>;
+  };
+  providers: {
+    clearCredential(id: string): Promise<void>;
+    usage(id: string): Promise<{ agents: string[]; conversations: string[] }>;
+  };
   chat: {
     list(query?: string): Promise<Conversation[]>;
-    create(model: string): Promise<Conversation>;
+    create(model: string, providerId?: string, agentId?: string): Promise<Conversation>;
+    selection(id: string, providerId: string, model: string, agentId?: string): Promise<void>;
     rename(id: string, title: string): Promise<void>;
     remove(id: string): Promise<void>;
     clear(): Promise<void>;

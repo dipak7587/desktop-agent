@@ -1,5 +1,6 @@
+import { AIProviders } from './ai-providers';
 import { useEffect, useState } from 'react';
-import { RefreshCw, KeyRound, Download, Upload } from 'lucide-react';
+import { KeyRound, Download, Upload } from 'lucide-react';
 import { useSettings, useAgents, useUI, attempt } from '../stores';
 import type { Settings as SettingsType } from '../../shared/types';
 import { PageHeader } from '../components/common';
@@ -11,7 +12,7 @@ export function Settings() {
   const [keyName, setKeyName] = useState('');
   const [secret, setSecret] = useState('');
   const [path, setPath] = useState('');
-  const [modelInfo, setModelInfo] = useState('');
+  const [tab, setTab] = useState<'general' | 'providers'>('general');
   useEffect(() => {
     setValue(state.settings);
   }, [state.settings]);
@@ -22,25 +23,7 @@ export function Settings() {
     });
   }, []);
   if (!value) return null;
-  const update = (key: keyof SettingsType, v: unknown) =>
-    setValue((s) => (s ? { ...s, [key]: v } : s));
-  const modelSelect = (key: 'chatModel' | 'embeddingModel', label: string) => (
-    <label>
-      {label}
-      <select value={value[key]} onChange={(e) => update(key, e.target.value)}>
-        <option value="">Select an installed model</option>
-        {state.models
-          .filter(
-            (m) =>
-              !m.capabilities ||
-              m.capabilities.includes(key === 'chatModel' ? 'completion' : 'embedding'),
-          )
-          .map((m) => (
-            <option key={m.name}>{m.name}</option>
-          ))}
-      </select>
-    </label>
-  );
+  const update = (key: keyof SettingsType, v: unknown) => setValue((s) => s && { ...s, [key]: v });
   return (
     <div className="page settings-page">
       <PageHeader
@@ -67,111 +50,84 @@ export function Settings() {
           </>
         }
       />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void attempt(async () => {
-            await state.save(value);
-            await state.refresh();
-            useUI.setState({ notice: 'Settings saved' });
-          });
-        }}
-      >
-        <section className="settings-section">
-          <div>
-            <h2>General</h2>
-            <p>The way your workspace looks and starts.</p>
-          </div>
-          <div className="settings-fields">
-            <label>
-              Application name
-              <input
-                required
-                value={value.appName}
-                onChange={(e) => update('appName', e.target.value)}
-              />
-            </label>
-            <div className="field-row">
+      <nav className="actions settings-tabs" aria-label="Settings pages">
+        <button type="button" aria-pressed={tab === 'general'} onClick={() => setTab('general')}>
+          General
+        </button>
+        <button
+          type="button"
+          aria-pressed={tab === 'providers'}
+          onClick={() => setTab('providers')}
+        >
+          AI Providers
+        </button>
+      </nav>
+      {tab === 'providers' ? (
+        <AIProviders />
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void attempt(async () => {
+              await state.save({
+                ...value,
+                providers: useSettings.getState().settings?.providers ?? value.providers,
+              });
+              await state.refresh();
+              useUI.setState({ notice: 'Settings saved' });
+            });
+          }}
+        >
+          <section className="settings-section">
+            <div>
+              <h2>General</h2>
+              <p>The way your workspace looks and starts.</p>
+            </div>
+            <div className="settings-fields">
               <label>
-                Theme
-                <select
-                  aria-label="Theme"
-                  value={value.theme}
-                  onChange={(e) => update('theme', e.target.value)}
-                >
-                  <option value="system">System</option>
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                </select>
+                Application name
+                <input
+                  required
+                  value={value.appName}
+                  onChange={(e) => update('appName', e.target.value)}
+                />
               </label>
-              <label>
-                Language
-                <select value="en" onChange={() => {}}>
-                  <option value="en">English</option>
-                </select>
+              <div className="field-row">
+                <label>
+                  Theme
+                  <select
+                    aria-label="Theme"
+                    value={value.theme}
+                    onChange={(e) => update('theme', e.target.value)}
+                  >
+                    <option value="system">System</option>
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                  </select>
+                </label>
+                <label>
+                  Language
+                  <select value="en" onChange={() => {}}>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+              </div>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={value.startAtLogin}
+                  onChange={(e) => update('startAtLogin', e.target.checked)}
+                />
+                Open at login
               </label>
             </div>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={value.startAtLogin}
-                onChange={(e) => update('startAtLogin', e.target.checked)}
-              />
-              Open at login
-            </label>
-          </div>
-        </section>
-        <section className="settings-section">
-          <div>
-            <h2>Ollama & models</h2>
-            <p>Inference runs through your configured Ollama server.</p>
-          </div>
-          <div className="settings-fields">
-            <label>
-              Provider
-              <input value="Ollama" readOnly />
-            </label>
-            <label>
-              Ollama URL
-              <input
-                type="url"
-                required
-                value={value.ollamaUrl}
-                onChange={(e) => update('ollamaUrl', e.target.value)}
-              />
-            </label>
-            <div className="connection-status">
-              <span
-                className={`status-dot ${state.status.startsWith('Connected') ? '' : 'offline'}`}
-              />
-              <span>
-                {state.status.startsWith('Connected') ? state.status : 'Ollama unavailable'}
-              </span>
-              <button
-                type="button"
-                disabled={state.loading}
-                onClick={() =>
-                  void attempt(async () => {
-                    await state.save(value);
-                    await state.refresh();
-                  })
-                }
-              >
-                <RefreshCw size={14} />
-                Refresh models
-              </button>
+          </section>
+          <section className="settings-section">
+            <div>
+              <h2>Generation defaults</h2>
+              <p>Used for new requests across providers.</p>
             </div>
-            {!state.status.startsWith('Connected') && (
-              <p className="small error-text">{state.status}</p>
-            )}
-            {modelSelect('chatModel', 'Chat model')}
-            {modelSelect('embeddingModel', 'Embedding model')}
-            <p className="small muted">
-              Recommended for embeddings: nomic-embed-text. Install it with{' '}
-              <code>ollama pull nomic-embed-text</code>, then refresh. Changing embedding models
-              requires syncing your sources again.
-            </p>
-            <div className="field-row">
+            <div className="settings-fields">
               <label>
                 Temperature
                 <input
@@ -180,7 +136,7 @@ export function Settings() {
                   max={2}
                   step={0.1}
                   value={value.temperature}
-                  onChange={(e) => update('temperature', Number(e.target.value))}
+                  onChange={(e) => update('temperature', e.target.valueAsNumber)}
                 />
               </label>
               <label>
@@ -191,125 +147,106 @@ export function Settings() {
                   max={131072}
                   step={1024}
                   value={value.contextSize}
-                  onChange={(e) => update('contextSize', Number(e.target.value))}
+                  onChange={(e) => update('contextSize', e.target.valueAsNumber)}
                 />
               </label>
             </div>
-            <button
-              type="button"
-              disabled={!value.chatModel}
-              onClick={() =>
-                void attempt(async () =>
-                  setModelInfo(
-                    JSON.stringify(await window.workspace.models.info(value.chatModel), null, 2),
-                  ),
-                )
-              }
-            >
-              Inspect model
-            </button>
-            {modelInfo && (
-              <details open>
-                <summary>Model information</summary>
-                <pre className="log">{modelInfo}</pre>
-              </details>
-            )}
-          </div>
-        </section>
-        <section className="settings-section">
-          <div>
-            <h2>Knowledge retrieval</h2>
-            <p>Control how documents are split and retrieved.</p>
-          </div>
-          <div className="settings-fields">
-            <div className="field-row">
-              {(['topK', 'chunkSize', 'chunkOverlap'] as const).map((key) => (
-                <label key={key}>
-                  {{ topK: 'Top K', chunkSize: 'Chunk size', chunkOverlap: 'Overlap' }[key]}
+          </section>
+          <section className="settings-section">
+            <div>
+              <h2>Knowledge retrieval</h2>
+              <p>Control how documents are split and retrieved.</p>
+            </div>
+            <div className="settings-fields">
+              <div className="field-row">
+                {(['topK', 'chunkSize', 'chunkOverlap'] as const).map((key) => (
+                  <label key={key}>
+                    {{ topK: 'Top K', chunkSize: 'Chunk size', chunkOverlap: 'Overlap' }[key]}
+                    <input
+                      type="number"
+                      value={value[key]}
+                      onChange={(e) => update(key, Number(e.target.value))}
+                    />
+                  </label>
+                ))}
+              </div>
+              <label>
+                Custom ignore patterns · one per line
+                <textarea
+                  rows={3}
+                  value={value.ignorePatterns.join('\n')}
+                  onChange={(e) =>
+                    update('ignorePatterns', e.target.value.split('\n').filter(Boolean))
+                  }
+                  placeholder={'**/generated/**\n**/private/**'}
+                />
+              </label>
+            </div>
+          </section>
+          <section className="settings-section">
+            <div>
+              <h2>Agents</h2>
+              <p>Bound execution and decide when approval is needed.</p>
+            </div>
+            <div className="settings-fields">
+              <label>
+                Default agent
+                <select
+                  value={value.defaultAgent}
+                  onChange={(e) => update('defaultAgent', e.target.value)}
+                >
+                  <option value="">None</option>
+                  {agents.map((a) => (
+                    <option value={a.id} key={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Approval mode
+                <select
+                  value={value.approvalMode}
+                  onChange={(e) => update('approvalMode', e.target.value)}
+                >
+                  <option value="ask">Ask before changes</option>
+                  <option value="safe">Auto approve safe file changes</option>
+                  <option value="auto">Full auto for allowed tools</option>
+                </select>
+              </label>
+              {value.approvalMode !== 'ask' && (
+                <p className="callout">
+                  Files may be changed without confirmation. Full auto also runs project scripts.
+                  MCP operations still require approval; destructive commands are blocked.
+                </p>
+              )}
+              <div className="field-row">
+                <label>
+                  Command timeout (ms)
                   <input
                     type="number"
-                    value={value[key]}
-                    onChange={(e) => update(key, Number(e.target.value))}
+                    value={value.commandTimeout}
+                    onChange={(e) => update('commandTimeout', Number(e.target.value))}
                   />
                 </label>
-              ))}
+                <label>
+                  Maximum iterations
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={value.maxIterations}
+                    onChange={(e) => update('maxIterations', Number(e.target.value))}
+                  />
+                </label>
+              </div>
             </div>
-            <label>
-              Custom ignore patterns · one per line
-              <textarea
-                rows={3}
-                value={value.ignorePatterns.join('\n')}
-                onChange={(e) =>
-                  update('ignorePatterns', e.target.value.split('\n').filter(Boolean))
-                }
-                placeholder={'**/generated/**\n**/private/**'}
-              />
-            </label>
+          </section>
+          <div className="settings-save">
+            <button className="primary">Save settings</button>
           </div>
-        </section>
-        <section className="settings-section">
-          <div>
-            <h2>Agents</h2>
-            <p>Bound execution and decide when approval is needed.</p>
-          </div>
-          <div className="settings-fields">
-            <label>
-              Default agent
-              <select
-                value={value.defaultAgent}
-                onChange={(e) => update('defaultAgent', e.target.value)}
-              >
-                <option value="">None</option>
-                {agents.map((a) => (
-                  <option value={a.id} key={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Approval mode
-              <select
-                value={value.approvalMode}
-                onChange={(e) => update('approvalMode', e.target.value)}
-              >
-                <option value="ask">Ask before changes</option>
-                <option value="safe">Auto approve safe file changes</option>
-                <option value="auto">Full auto for allowed tools</option>
-              </select>
-            </label>
-            {value.approvalMode !== 'ask' && (
-              <p className="callout">
-                Files may be changed without confirmation. Full auto also runs project scripts. MCP
-                operations still require approval; destructive commands are blocked.
-              </p>
-            )}
-            <div className="field-row">
-              <label>
-                Command timeout (ms)
-                <input
-                  type="number"
-                  value={value.commandTimeout}
-                  onChange={(e) => update('commandTimeout', Number(e.target.value))}
-                />
-              </label>
-              <label>
-                Maximum iterations
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={value.maxIterations}
-                  onChange={(e) => update('maxIterations', Number(e.target.value))}
-                />
-              </label>
-            </div>
-          </div>
-        </section>
-        <div className="settings-save">
-          <button className="primary">Save settings</button>
-        </div>
-      </form>
+        </form>
+      )}
       <section className="settings-section">
         <div>
           <h2>Credentials</h2>

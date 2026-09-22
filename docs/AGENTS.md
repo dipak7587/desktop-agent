@@ -2,7 +2,7 @@
 
 ## Agents sidebar menu
 
-Create an agent with instructions, a model, enabled skills, tools, and knowledge sources.
+Create an agent with instructions, a provider configuration and model, enabled skills, tools, and knowledge sources.
 Optionally select a project folder and submit a task. Leave the task empty to run the configured instructions. Inspect the run's output and review each proposed
 file change before approving or rejecting it. Execution is bounded by the configured limits.
 Definitions can be edited, imported, exported, or deleted after confirmation. Select individual
@@ -17,6 +17,18 @@ To let an agent retrieve saved notes, select the **Saved Text** knowledge source
 and ensure that source is ready in [Knowledge Base](KNOWLEDGE_BASE.md). Agent knowledge choices
 are separate from Chat's knowledge selector. See [Settings](SETTINGS.md) for execution settings.
 
+## Provider selection
+
+Each agent saves its own provider ID and model, independent of the application default.
+The editor shows only the model selector with one enabled provider; multiple enabled providers
+show both selectors. Changing provider clears incompatible models and selects its valid default
+when available. Cards and chat headers display the saved provider/model.
+
+**Open in Chat** initializes the saved pair. Chat selector changes create a conversation override;
+**Save to Agent** explicitly writes it back. Missing/disabled providers and unavailable models
+must be reassigned before running. Provider deletion is blocked while any agent references it,
+including disabled agents. The error lists all affected agent names and offers **Manage agents**.
+
 ## Reusable agent definitions
 
 Agents live in `<userData>/agents/<id>.md`, with YAML metadata and a Markdown instruction body:
@@ -25,6 +37,7 @@ Agents live in `<userData>/agents/<id>.md`, with YAML metadata and a Markdown in
 ---
 name: Project reviewer
 description: Review a selected project
+providerId: ollama-local
 model: qwen3-coder:latest
 skills: []
 tools:
@@ -42,7 +55,7 @@ Inspect relevant files, explain findings, and state which checks you ran.
 
 The model name is illustrative; choose an installed model. The runtime considers eligible
 capabilities and loads skills or retrieves knowledge only after a relevance decision. It sends
-a bounded history to Ollama. Each turn returns one
+a bounded history to the selected provider adapter. Each turn returns one
 validated JSON action or a final report. Only capabilities permitted by the agent's mode, type switches, selection and permissions can execute. Tools
 return their real output; errors are fed back so the model can recover. A maximum iteration
 count, a 15-minute deadline and cancellation bound every run.

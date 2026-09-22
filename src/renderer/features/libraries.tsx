@@ -1,3 +1,4 @@
+import { ProviderSelector } from '../components/provider-selector';
 import { CapabilitySettings } from '../components/capability-settings';
 import { FolderSelection } from '../components/folder-selection';
 import { useState } from 'react';
@@ -60,6 +61,12 @@ const builtinTools = [
 ];
 export function Library({ kind }: { kind: LibraryKind }) {
   const { items, load } = libraryStores[kind]();
+  const providerSettings = useSettings((s) => s.settings);
+  const enabledProviders = providerSettings?.providers.filter((p) => p.enabled !== false) ?? [];
+  const defaultProvider =
+    enabledProviders.length === 1
+      ? enabledProviders[0]
+      : enabledProviders.find((p) => p.id === providerSettings?.activeProviderId);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkDelete, setBulkDelete] = useState(false);
@@ -78,7 +85,8 @@ export function Library({ kind }: { kind: LibraryKind }) {
         kind === 'tools'
           ? { type: 'javascript', parameters: [], url: '', method: 'GET', headers: {} }
           : undefined,
-      model: useSettings.getState().settings?.chatModel ?? '',
+      providerId: defaultProvider?.id,
+      model: defaultProvider?.chatModel ?? '',
       tools:
         kind === 'agents'
           ? ['project.detect', 'filesystem.read', 'filesystem.search', 'filesystem.list']
@@ -197,6 +205,28 @@ export function Library({ kind }: { kind: LibraryKind }) {
                       Run
                     </button>
                   )}
+                  {kind === 'agents' && (
+                    <button
+                      onClick={() =>
+                        void attempt(async () => {
+                          await useChat
+                            .getState()
+                            .newChat({
+                              providerId: item.providerId ?? '',
+                              model: item.model,
+                              agentId: item.id,
+                            });
+                          useUI.setState({
+                            section: 'Chat',
+                            draft: '',
+                            chatCommand: { kind: 'agent', id: item.id, name: item.name },
+                          });
+                        })
+                      }
+                    >
+                      Open in Chat
+                    </button>
+                  )}
                   {kind === 'saved-text' && (
                     <>
                       <CopyButton text={item.content} />
@@ -240,7 +270,13 @@ export function Library({ kind }: { kind: LibraryKind }) {
                   )}
                   {kind === 'agents' && (
                     <div className="agent-meta">
-                      <span>{item.model || 'Default model'}</span>
+                      <span>
+                        {useSettings
+                          .getState()
+                          .settings?.providers.find((p) => p.id === item.providerId)?.name ??
+                          'Unavailable provider'}{' '}
+                        / {item.model || 'Select model'}
+                      </span>
                       <span>
                         {item.skills.length} skills · {item.tools.length} tools
                       </span>
@@ -415,7 +451,10 @@ function LibraryEditor({
     JSON.stringify({ command: initial.command, args: initial.args, env: initial.env }, null, 2),
   );
   const [busy, setBusy] = useState(false);
-  const { models } = useSettings();
+  const { settings } = useSettings();
+  const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
+  const effectiveProviderId =
+    item.providerId ?? (enabled.length === 1 ? enabled[0].id : (settings?.activeProviderId ?? ''));
   const { items: skills } = useSkills();
   const { items: servers } = libraryStores.mcp();
   const { sources } = useKnowledge();
@@ -443,6 +482,7 @@ function LibraryEditor({
               await onSave(
                 librarySchema.parse({
                   ...item,
+                  ...(kind === 'agents' ? { providerId: effectiveProviderId } : {}),
                   ...(kind === 'tools'
                     ? {
                         toolConfig: {
@@ -503,17 +543,11 @@ function LibraryEditor({
                 onChange={(e) => update('maxIterations', e.target.valueAsNumber)}
               />
             </label>
-            <label>
-              Model
-              <select value={item.model} onChange={(e) => update('model', e.target.value)}>
-                <option value="">Use default chat model</option>
-                {models
-                  .filter((m) => !m.capabilities || m.capabilities.includes('completion'))
-                  .map((m) => (
-                    <option key={m.name}>{m.name}</option>
-                  ))}
-              </select>
-            </label>
+            <ProviderSelector
+              providerId={effectiveProviderId}
+              model={item.model}
+              onChange={(providerId, model) => setItem((i) => ({ ...i, providerId, model }))}
+            />
             <CapabilitySettings
               item={item}
               onChange={(config) =>

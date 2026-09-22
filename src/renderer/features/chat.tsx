@@ -1,3 +1,4 @@
+import { ProviderSelector } from '../components/provider-selector';
 import { FolderSelection } from '../components/folder-selection';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -18,10 +19,28 @@ import { ChatActivity, useChatCommands } from './chat-commands';
 import { Markdown, CopyButton, Confirm, Modal } from '../components/common';
 export function Chat() {
   const chat = useChat();
-  const { settings, models, status, loading, refresh } = useSettings();
+  const { settings } = useSettings();
+  const agents = useAgents((s) => s.items);
   const { sources } = useKnowledge();
   const draft = useUI((s) => s.draft);
   const commands = useChatCommands(draft);
+  const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
+  const defaultProvider =
+    enabled.length === 1 ? enabled[0] : enabled.find((p) => p.id === settings?.activeProviderId);
+  const providerId = chat.current ? chat.providerId : (defaultProvider?.id ?? '');
+  const model = chat.current ? chat.model : (defaultProvider?.chatModel ?? '');
+  const selectedProvider = enabled.find((p) => p.id === providerId);
+  const validSelection = !!selectedProvider?.modelIds?.includes(model);
+  const agent = agents.find(
+    (a) => a.id === (commands.selected?.kind === 'agent' ? commands.selected.id : chat.agentId),
+  );
+  const selectedAgentId = commands.selected?.kind === 'agent' ? commands.selected.id : '';
+  useEffect(() => {
+    if (!selectedAgentId) return;
+    const a = useAgents.getState().items.find((a) => a.id === selectedAgentId);
+    if (a && useChat.getState().agentId !== a.id)
+      void attempt(() => useChat.getState().choose(a.providerId ?? '', a.model, a.id));
+  }, [selectedAgentId]);
   const submitting = useRef(false);
   const [busy, setBusy] = useState(false);
   const [project, setProject] = useState('');
@@ -43,14 +62,19 @@ export function Chat() {
     setBusy(true);
     try {
       const request = regenerate ? { command: undefined, query: '' } : commands.resolve();
-      const model =
-        request.command?.kind === 'agent'
-          ? useAgents.getState().items.find((a) => a.id === request.command?.id)?.model ||
-            settings?.chatModel
-          : settings?.chatModel;
-      if (!model) throw new Error('Select an installed chat model in Settings');
+      let sendProviderId = providerId;
+      let sendModel = model;
+      if (request.command?.kind === 'agent' && request.command.id !== chat.agentId) {
+        const selectedAgent = agents.find((a) => a.id === request.command?.id);
+        if (!selectedAgent) throw new Error('Agent is unavailable');
+        sendProviderId = selectedAgent.providerId ?? '';
+        sendModel = selectedAgent.model;
+        await chat.choose(sendProviderId, sendModel, selectedAgent.id);
+      }
+      if (!enabled.find((p) => p.id === sendProviderId)?.modelIds?.includes(sendModel))
+        throw new Error('Select an enabled provider and available model.');
       if (!regenerate && !request.query.trim()) throw new Error('Enter a query');
-      let id = chat.current;
+      let id = useChat.getState().current;
       if (!id) {
         await chat.newChat();
         id = useChat.getState().current;
@@ -60,7 +84,8 @@ export function Chat() {
       await window.workspace.chat.send({
         id,
         text,
-        model,
+        model: sendModel,
+        providerId: sendProviderId,
         knowledge,
         regenerate,
         command: request.command
@@ -68,13 +93,15 @@ export function Chat() {
               ...request.command,
               project: request.command.kind === 'agent' ? project || undefined : undefined,
             }
-          : undefined,
+          : agent
+            ? { kind: 'agent', id: agent.id, project: project || undefined }
+            : undefined,
       });
       useUI.setState({ draft: '' });
       commands.clear();
       setProject('');
-      await chat.open(id);
       await chat.load();
+      await chat.open(id);
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -95,7 +122,11 @@ export function Chat() {
             >
               <Trash2 size={16} />
             </button>
-            <button className="icon" aria-label="New chat" onClick={() => void attempt(chat.newChat)}>
+            <button
+              className="icon"
+              aria-label="New chat"
+              onClick={() => void attempt(chat.newChat)}
+            >
               <Plus size={17} />
             </button>
           </div>
@@ -155,38 +186,23 @@ export function Chat() {
             <h2>{current?.title ?? 'New conversation'}</h2>
             <span className="muted small">A private space to think, build, and explore.</span>
           </div>
-          <select
-            aria-label="Chat model"
-            value={settings?.chatModel ?? ''}
-            onChange={(e) =>
-              settings &&
-              void attempt(() =>
-                useSettings.getState().save({ ...settings, chatModel: e.target.value }),
-              )
-            }
-          >
-            <option value="">Select model</option>
-            {models
-              .filter((m) => !m.capabilities || m.capabilities.includes('completion'))
-              .map((m) => (
-                <option key={m.name}>{m.name}</option>
-              ))}
-          </select>
-        </header>
-        {!status.startsWith('Connected') && (
-          <div className="connection-banner">
-            <div>
-              <strong>Ollama not connected</strong>
-              <p>{loading ? 'Checking your local connection…' : status}</p>
+          {agent && (
+            <div className="small">
+              {agent.name} · Saved:{' '}
+              {settings?.providers.find((p) => p.id === agent.providerId)?.name ??
+                'Unavailable provider'}{' '}
+              / {agent.model}
+              {(providerId !== agent.providerId || model !== agent.model) && (
+                <span className="badge">Conversation override</span>
+              )}
             </div>
-            <button onClick={() => void refresh()} disabled={loading}>
-              Retry
-            </button>
-            <button onClick={() => void attempt(() => window.workspace.system.openOllamaDocs())}>
-              Set up Ollama
-            </button>
-          </div>
-        )}
+          )}
+          <ProviderSelector
+            providerId={providerId}
+            model={model}
+            onChange={(p, m) => void attempt(() => chat.choose(p, m))}
+          />
+        </header>
         <div className="messages">
           {!chat.messages.length && !chat.generating ? (
             <div className="chat-welcome">
@@ -198,7 +214,7 @@ export function Chat() {
               <p>
                 Talk to your models. Bring your knowledge.
                 <br />
-                Keep your work on your machine.
+                Choose a local model or your connected provider.
               </p>
               <div className="suggestions">
                 {[
@@ -228,41 +244,60 @@ export function Chat() {
             </div>
           ) : (
             <div className="message-column">
-              {chat.messages.map((m) => (
-                <article key={m.id} className={`message ${m.role}`}>
-                  <div className="message-label">
-                    {m.role === 'user' ? 'You' : 'Local assistant'}
-                    <CopyButton text={m.content} />
-                  </div>
-                  <Markdown text={m.content} />
-                  {m.metadata?.command && (
-                    <p className="badge">
-                      /{m.metadata.command.kind} · {m.metadata.command.name}
-                      {m.metadata.command.project && (
-                        <span className="folder-path">📁 {m.metadata.command.project}</span>
+              {chat.messages
+                .filter(
+                  (m) => m.metadata?.status !== 'streaming' || chat.generating !== chat.current,
+                )
+                .map((m) => (
+                  <article key={m.id} className={`message ${m.role}`}>
+                    <div className="message-label">
+                      {m.role === 'user'
+                        ? 'You'
+                        : `AI Assistant · ${m.metadata?.providerNameSnapshot ?? 'Unknown provider (legacy)'} / ${m.metadata?.modelId ?? 'Unknown model'}`}
+                      {m.role === 'assistant' && (
+                        <span className="badge">
+                          {m.metadata?.status ??
+                            (m.metadata?.error
+                              ? 'failed'
+                              : m.metadata?.stopped
+                                ? 'canceled'
+                                : 'completed')}
+                        </span>
                       )}
-                    </p>
-                  )}
-                  {!!m.metadata?.activity?.length && <ChatActivity events={m.metadata.activity} />}
-                  {m.metadata?.error && <p className="error-text">{m.metadata.error}</p>}
-                  {m.metadata?.stopped && <span className="muted small">Generation stopped</span>}
-                  {!!m.metadata?.sources?.length && (
-                    <details className="sources">
-                      <summary>Sources used: {m.metadata.sources.length}</summary>
-                      {m.metadata.sources.map((s) => (
-                        <div key={s.id}>
-                          <strong>{s.name}</strong>
-                          <p>{s.content}</p>
-                        </div>
-                      ))}
-                    </details>
-                  )}
-                </article>
-              ))}
+                      <CopyButton text={m.content} />
+                    </div>
+                    <Markdown text={m.content} />
+                    {m.metadata?.command && (
+                      <p className="badge">
+                        /{m.metadata.command.kind} · {m.metadata.command.name}
+                        {m.metadata.command.project && (
+                          <span className="folder-path">📁 {m.metadata.command.project}</span>
+                        )}
+                      </p>
+                    )}
+                    {!!m.metadata?.activity?.length && (
+                      <ChatActivity events={m.metadata.activity} />
+                    )}
+                    {m.metadata?.error && <p className="error-text">{m.metadata.error}</p>}
+                    {m.metadata?.stopped && <span className="muted small">Generation stopped</span>}
+                    {!!m.metadata?.sources?.length && (
+                      <details className="sources">
+                        <summary>Sources used: {m.metadata.sources.length}</summary>
+                        {m.metadata.sources.map((s) => (
+                          <div key={s.id}>
+                            <strong>{s.name}</strong>
+                            <p>{s.content}</p>
+                          </div>
+                        ))}
+                      </details>
+                    )}
+                  </article>
+                ))}
               {chat.generating === chat.current && (
                 <article className="message assistant">
                   <div className="message-label">
-                    Local assistant <span className="pulse">Generating</span>
+                    AI Assistant · {chat.generatingSelection?.providerNameSnapshot} /{' '}
+                    {chat.generatingSelection?.modelId} <span className="pulse">Streaming</span>
                   </div>
                   {chat.activity.length ? (
                     <ChatActivity events={chat.activity} live />
@@ -288,19 +323,27 @@ export function Chat() {
             {commands.selected && (
               <div className="command-chip">
                 <span>
-                  /{commands.selected.kind} · {commands.selected.name} · this message
+                  /{commands.selected.kind} · {commands.selected.name} ·{' '}
+                  {commands.selected.kind === 'agent' ? 'this conversation' : 'this message'}
                 </span>
                 <div className="command-chip-actions">
                   {commands.selected.kind === 'agent' && (
                     <FolderSelection value={project} onChange={setProject} controlsOnly />
                   )}
-                  <button type="button" aria-label="Remove chat command" onClick={commands.clear}>
+                  <button
+                    type="button"
+                    aria-label="Remove chat command"
+                    onClick={() => {
+                      commands.clear();
+                      if (chat.agentId) void attempt(() => chat.choose(providerId, model, ''));
+                    }}
+                  >
                     ×
                   </button>
                 </div>
               </div>
             )}
-            {commands.selected?.kind === 'agent' && (
+            {agent && (
               <p className="folder-path command-folder-path">{project || 'No folder selected'}</p>
             )}
             {!commands.selected && draft.startsWith('/agent ') && (
@@ -326,6 +369,30 @@ export function Chat() {
                 }
               }}
             />
+            {agent && (
+              <div className="actions">
+                <span className="small">
+                  Next response: {selectedProvider?.name ?? 'Unavailable provider'} /{' '}
+                  {model || 'Select model'}
+                </span>
+                <button
+                  type="button"
+                  disabled={!validSelection}
+                  onClick={() =>
+                    void attempt(async () => {
+                      await window.workspace.library.save('agents', {
+                        ...agent,
+                        providerId,
+                        model,
+                      });
+                      await useAgents.getState().load();
+                    })
+                  }
+                >
+                  Save to Agent
+                </button>
+              </div>
+            )}
             <div className="composer-tools">
               <div className="knowledge-select">
                 <BookOpen size={15} />
@@ -364,7 +431,11 @@ export function Chat() {
                   type="submit"
                   className="send"
                   aria-label="Send message"
-                  disabled={(!draft.trim() && commands.selected?.kind !== 'agent') || busy}
+                  disabled={
+                    !validSelection ||
+                    (!draft.trim() && commands.selected?.kind !== 'agent') ||
+                    busy
+                  }
                 >
                   <ArrowUp size={20} />
                 </button>
@@ -372,7 +443,7 @@ export function Chat() {
             </div>
           </form>
           <div className="composer-footer">
-            <span>Local models can make mistakes. Verify important details.</span>
+            <span>AI models can make mistakes. Verify important details.</span>
             {chat.messages.some((m) => m.role === 'assistant') &&
             !chat.generating &&
             !chat.messages.filter((m) => m.role === 'user').at(-1)?.metadata?.command ? (

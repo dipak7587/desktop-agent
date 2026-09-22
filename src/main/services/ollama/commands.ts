@@ -1,3 +1,4 @@
+import type { SelectedProvider } from '../providers/router';
 import type { AppEvent, ChatCommand, LibraryItem, Capability } from '../../../shared/types';
 import { librarySchema } from '../../../shared/schemas';
 import type { LibraryService } from '../filesystem/library';
@@ -23,7 +24,12 @@ export class ChatCommands {
     private agents: AgentService,
   ) {}
 
-  async prepare(command: ChatCommand, model: string, knowledge: string): Promise<PreparedCommand> {
+  async prepare(
+    command: ChatCommand,
+    model: string,
+    knowledge: string,
+    selected?: SelectedProvider,
+  ): Promise<PreparedCommand> {
     const item = await this.library.get(
       command.kind === 'agent' ? 'agents' : command.kind,
       command.id,
@@ -59,6 +65,7 @@ export class ChatCommands {
         knowledgeSources: knowledge === 'none' ? [] : [knowledge],
       });
     }
+    if (selected) agent = { ...agent, providerId: selected.providerId, model: selected.modelId };
     return {
       command: metadata,
       execute: (task, signal, observe) =>
@@ -68,6 +75,7 @@ export class ChatCommands {
           command.kind === 'agent' ? (command.project ?? '') : '',
           signal,
           observe,
+          selected,
         ),
     };
   }

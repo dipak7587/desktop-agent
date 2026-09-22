@@ -19,6 +19,19 @@ values. Literal secrets entered into custom Tool code, URLs or headers are not a
 removed from definition exports; use references in API headers. Protect the original `.env` file yourself. Redaction removes known credential
 values and resolved MCP environment values from MCP logs/results.
 
+## Provider configuration and requests
+
+Provider HTTP requests run in the main process. Provider metadata is separate from OS-encrypted
+credentials; raw keys are never returned through settings reads or exports. Startup migrates legacy
+plaintext provider settings to secure storage. Configured URLs reject embedded credentials, query
+strings, fragments, and known metadata-service addresses. Redirects are refused to prevent forwarding
+credentials to another endpoint. HTTP is allowed for local/private servers and shows a notice.
+
+A request captures its provider configuration at send time. Disabling or removing a provider blocks
+new requests without silently falling back to another provider. Deleting a provider referenced by
+any agent, including disabled agents, is rejected for settings saves and imports. Historical
+conversation messages retain their provider-name snapshots.
+
 ## Agent tools
 
 The main process accepts a supplied project only after a native folder selection. A folderless
@@ -68,7 +81,7 @@ into subsequent runs.
 
 ## Operations
 
-Application network access includes the configured Ollama endpoint, explicitly added URL
+Application network access includes configured local or hosted AI provider endpoints, explicitly added URL
 sources, configured API Tools, and trusted custom programs/MCP servers (including opted-in
 auto-start servers). No telemetry or automatic cloud inference is present.
 Local HTTP URLs are allowed for internal documentation. URL content is untrusted reference

@@ -1,3 +1,4 @@
+import type { ProviderRouter } from '../services/providers/router';
 import type { CustomToolService } from '../services/tools/custom';
 import type { AgentRunDatabase } from '../database/agent-runs';
 import { readText } from '../services/filesystem/walk';
@@ -17,6 +18,7 @@ import type { SettingsService } from '../services/settings/settings';
 import type { OllamaLLMProvider } from '../services/ollama/provider';
 import type { ChatDatabase } from '../database/chat';
 import type { ChatService } from '../services/ollama/chat';
+import { createLLMProvider, type LLMProvider } from '../services/ollama/provider';
 import type { LibraryService } from '../services/filesystem/library';
 import type { KnowledgeService } from '../services/rag/knowledge';
 import type { MCPService } from '../services/mcp/mcp';
@@ -24,8 +26,10 @@ import type { AgentService } from '../services/agents/agents';
 import type { SecretStore } from '../security/secrets';
 import { atomicWrite } from '../services/filesystem/storage';
 export interface Services {
+  providers: ProviderRouter;
   settings: SettingsService;
   ollama: OllamaLLMProvider;
+  llm: LLMProvider;
   db: ChatDatabase;
   chat: ChatService;
   library: LibraryService;
@@ -65,10 +69,41 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     app.setLoginItemSettings({ openAtLogin: value.startAtLogin });
     return result;
   });
-  handle('models:list', none, () => s.ollama.listModels());
-  handle('models:info', z.tuple([z.string().max(200)]), (name) => s.ollama.info(name));
+  handle('models:list', z.tuple([idSchema.optional()]), (id) => s.providers.discover(id));
+  handle('models:info', z.tuple([z.string().max(200), idSchema.optional()]), async (name, id) => {
+    const snapshot = s.settings.forProvider(id);
+    const provider = createLLMProvider(() => snapshot);
+    return provider.info ? provider.info(name) : { model: name, capabilities: ['text'] };
+  });
+  handle('providers:clear-credential', id, (id) => s.settings.clearCredential(id));
+  handle('providers:usage', id, async (id) => ({
+    agents: (await s.library.list('agents')).filter((a) => a.providerId === id).map((a) => a.name),
+    conversations: s.db
+      .list()
+      .filter((c) => c.providerId === id)
+      .map((c) => c.title),
+  }));
   handle('chat:list', z.tuple([z.string().max(500).optional()]), (q) => s.db.list(q));
-  handle('chat:create', z.tuple([z.string().max(200)]), (model) => s.db.create(model));
+  handle(
+    'chat:create',
+    z.tuple([z.string().max(200), idSchema.optional(), idSchema.optional()]),
+    (model, providerId, agentId) =>
+      s.db.create(model, providerId ?? s.settings.get().activeProviderId, agentId),
+  );
+  handle(
+    'chat:selection',
+    z.tuple([
+      idSchema,
+      idSchema,
+      z.string().max(200),
+      z.union([idSchema, z.literal('')]).optional(),
+    ]),
+    (id, providerId, model, agentId) => {
+      s.settings.profile(providerId);
+      if (model) s.settings.validateSelection(providerId, model);
+      s.db.setSelection(id, providerId, model, agentId);
+    },
+  );
   handle('chat:rename', z.tuple([idSchema, z.string().trim().min(1).max(200)]), (id, title) =>
     s.db.rename(id, title),
   );
@@ -93,6 +128,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('chat:stop', id, (id) => s.chat.stop(id));
   handle('library:list', z.tuple([kindSchema]), (kind) => s.library.list(kind));
   handle('library:save', z.tuple([kindSchema, librarySchema]), async (kind, item) => {
+    if (kind === 'agents') {
+      item = { ...item, providerId: item.providerId ?? s.settings.get().activeProviderId };
+      s.settings.validateSelection(item.providerId, item.model);
+    }
     if (kind === 'mcp') await s.mcp.stop(item.id);
     return s.library.save(kind, item);
   });
@@ -110,7 +149,14 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     if (result.canceled) return;
     const raw = await readText(result.filePaths[0], 2000000);
     if (raw.length > 2_000_000) throw new Error('Import file exceeds 2 MB');
-    await s.library.save(kind, s.library.parse(kind, raw));
+    const item = s.library.parse(kind, raw);
+    if (kind === 'agents') {
+      item.providerId ??= s.settings.get().activeProviderId;
+      item.model ||=
+        s.settings.get().providers.find((p) => p.id === item.providerId)?.chatModel ?? '';
+      s.settings.validateSelection(item.providerId, item.model);
+    }
+    await s.library.save(kind, item);
   });
   handle('library:export', z.tuple([kindSchema, idSchema]), async (kind, id) => {
     const item = await s.library.get(kind, id);

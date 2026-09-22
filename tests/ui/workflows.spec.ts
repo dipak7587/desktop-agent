@@ -18,9 +18,31 @@ const env = () =>
   );
 test.beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'localai-workflows-'));
+  if (!process.env.LOCALAI_LIVE_TEST)
+    await writeFile(
+      join(root, 'settings.json'),
+      JSON.stringify({ chatModel: 'ui-test-model', ollamaUrl: 'http://127.0.0.1:1' }),
+    );
   app = await electron.launch({ args: ['.'], env: env() });
   page = await app.firstWindow();
   await expect(page.getByRole('heading', { name: 'Good ideas start here.' })).toBeVisible();
+  if (process.env.LOCALAI_LIVE_TEST) {
+    await page.evaluate(async () => {
+      const models = await window.workspace.models.list();
+      const settings = await window.workspace.settings.get();
+      const profile = settings.providers[0];
+      profile.chatModel =
+        models.find((m) => m.capabilities?.includes('completion'))?.name ??
+        models.find((m) => !m.name.includes('embed'))?.name ??
+        '';
+      profile.embeddingModel =
+        models.find((m) => m.capabilities?.includes('embedding'))?.name ??
+        models.find((m) => m.name.includes('embed'))?.name ??
+        '';
+      await window.workspace.settings.save(settings);
+    });
+    await page.reload();
+  }
 });
 test.afterEach(async () => {
   await app.close();
@@ -122,7 +144,7 @@ test('real Ollama chat streams, persists across relaunch and continues', async (
     !process.env.LOCALAI_LIVE_TEST,
     'Set LOCALAI_LIVE_TEST=1 to test the local Ollama server',
   );
-  await expect(page.getByLabel('Chat model')).not.toHaveValue('', { timeout: 20000 });
+  await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('', { timeout: 20000 });
   await page
     .getByLabel('Message', { exact: true })
     .fill('Remember the word cedar. Reply briefly to confirm.');
@@ -163,7 +185,7 @@ test('knowledge URL sync, preview, semantic search and RAG chat use real local e
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   try {
-    await expect(page.getByLabel('Chat model')).not.toHaveValue('');
+    await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
     await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
     await page.getByRole('button', { name: 'Add source', exact: true }).click();
     await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
@@ -204,7 +226,7 @@ test('agent UI creates a worker, reviews a real diff and applies approved change
   await app.evaluate(({ dialog }, project) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
   }, project);
-  await expect(page.getByLabel('Chat model')).not.toHaveValue('');
+  await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('');
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
   await page.getByRole('button', { name: 'New agent' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Careful file editor');
@@ -237,7 +259,7 @@ test('agent UI creates a worker, reviews a real diff and applies approved change
 
 test('selected agent-desktop KB scopes give me chat details to project documentation', async () => {
   test.skip(!process.env.LOCALAI_LIVE_TEST, 'Requires local embedding and chat models');
-  await expect(page.getByLabel('Chat model')).not.toHaveValue('', { timeout: 20000 });
+  await expect(page.getByLabel('Model', { exact: true })).not.toHaveValue('', { timeout: 20000 });
   await expect
     .poll(() => page.evaluate(async () => (await window.workspace.settings.get()).embeddingModel))
     .not.toBe('');

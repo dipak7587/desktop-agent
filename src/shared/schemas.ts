@@ -1,13 +1,80 @@
 import { z } from 'zod';
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools']);
+export const providerURLSchema = z
+  .string()
+  .max(2048)
+  .refine((value) => {
+    if (!value) return true;
+    try {
+      const u = new URL(value);
+      return (
+        ['http:', 'https:'].includes(u.protocol) &&
+        !u.username &&
+        !u.password &&
+        !u.search &&
+        !u.hash &&
+        !['169.254.169.254', 'metadata.google.internal', '0.0.0.0', '[::]'].includes(u.hostname) &&
+        !u.hostname.startsWith('169.254.') &&
+        !u.hostname.startsWith('[fe80:')
+      );
+    } catch {
+      return false;
+    }
+  }, 'Use an HTTP(S) API URL without credentials, query, or a metadata-service address');
 const text = z.string().max(2_000_000);
+export const providerProfileSchema = z.object({
+  id: idSchema.default('default'),
+  enabled: z.boolean().default(true),
+  modelIds: z.array(z.string().trim().min(1).max(200)).max(10000).default([]),
+  manualModelIds: z.array(z.string().trim().min(1).max(200)).max(10000).default([]),
+  credentialRef: z.string().max(200).optional(),
+  hasCredential: z.boolean().optional(),
+  timeout: z.number().int().min(1).max(600000).default(300000),
+  authMethod: z.enum(['none', 'bearer', 'header']).default('bearer'),
+  authHeader: z
+    .string()
+    .regex(/^[A-Za-z0-9-]+$/)
+    .refine(
+      (v) =>
+        !['host', 'content-length', 'connection', 'transfer-encoding'].includes(v.toLowerCase()),
+      'Invalid credential header',
+    )
+    .default('x-api-key'),
+  name: z.string().trim().min(1).max(200).default('Default provider'),
+  provider: z
+    .enum(['ollama', 'openai', 'anthropic', 'google', 'openrouter', 'groq', 'custom'])
+    .default('ollama'),
+  apiKey: z.string().max(4000).default(''),
+  apiBaseUrl: providerURLSchema.default(''),
+  ollamaUrl: providerURLSchema
+    .refine((v) => Boolean(v), 'Enter an Ollama URL')
+    .refine((v) => {
+      const u = new URL(v);
+      return (
+        ['http:', 'https:'].includes(u.protocol) &&
+        !u.username &&
+        !u.password &&
+        !u.search &&
+        !u.hash
+      );
+    }, 'Use an HTTP(S) URL without credentials')
+    .default('http://localhost:11434'),
+  chatModel: z.string().max(200).default(''),
+  embeddingModel: z.string().max(200).default(''),
+});
+
 export const settingsSchema = z
   .object({
     appName: z.string().trim().min(1).max(80).default('LocalAI Workspace'),
     theme: z.enum(['system', 'dark', 'light']).default('system'),
-    ollamaUrl: z
-      .url()
+    provider: z
+      .enum(['ollama', 'openai', 'anthropic', 'google', 'openrouter', 'groq', 'custom'])
+      .default('ollama'),
+    apiKey: z.string().max(4000).default(''),
+    apiBaseUrl: providerURLSchema.default(''),
+    ollamaUrl: providerURLSchema
+      .refine((v) => Boolean(v), 'Enter an Ollama URL')
       .refine((v) => {
         const u = new URL(v);
         return (
@@ -18,9 +85,11 @@ export const settingsSchema = z
           !u.hash
         );
       }, 'Use an HTTP(S) URL without credentials')
-      .default('http://127.0.0.1:11434'),
+      .default('http://localhost:11434'),
     chatModel: z.string().max(200).default(''),
     embeddingModel: z.string().max(200).default(''),
+    providers: z.array(providerProfileSchema).default([]),
+    activeProviderId: z.string().max(200).default(''),
     temperature: z.number().min(0).max(2).default(0.7),
     contextSize: z.number().int().min(1024).max(131072).default(8192),
     topK: z.number().int().min(1).max(30).default(5),
@@ -57,6 +126,7 @@ export const librarySchema = z.object({
   enabled: z.boolean().default(true),
   createdAt: z.number().default(0),
   updatedAt: z.number().default(0),
+  providerId: idSchema.optional(),
   model: z.string().max(200).default(''),
   skills: z.array(idSchema).max(100).default([]),
   tools: z.array(z.string().max(300)).max(200).default([]),
@@ -100,6 +170,7 @@ export const librarySchema = z.object({
     .default({}),
 });
 export const sendSchema = z.object({
+  providerId: idSchema.optional(),
   id: idSchema,
   text: text,
   model: z.string().min(1).max(200),

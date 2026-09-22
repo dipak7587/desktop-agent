@@ -1,10 +1,14 @@
 import { test, expect, _electron as electron } from '@playwright/test';
-import { mkdtemp, rm, realpath } from 'node:fs/promises';
+import { mkdtemp, rm, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 test('custom tools, dependency errors, temporary folders and bulk agent deletion', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'workspace-features-ui-')));
+  await writeFile(
+    join(root, 'settings.json'),
+    JSON.stringify({ chatModel: 'ui-test-model', ollamaUrl: 'http://127.0.0.1:1' }),
+  );
   const app = await electron.launch({
     args: ['.'],
     env: Object.fromEntries(

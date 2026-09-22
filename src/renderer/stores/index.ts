@@ -65,20 +65,7 @@ export const useSettings = create<{
     try {
       const models = await window.workspace.models.list();
       set({ models, status: `Connected · ${models.length} models` });
-      const settings = get().settings;
-      if (settings && models.length && (!settings.chatModel || !settings.embeddingModel))
-        await get().save({
-          ...settings,
-          chatModel:
-            settings.chatModel ||
-            models.find((m) => m.capabilities?.includes('completion'))?.name ||
-            models.find((m) => !m.name.includes('embed'))?.name ||
-            '',
-          embeddingModel:
-            settings.embeddingModel ||
-            models.find((m) => m.name.startsWith('nomic-embed-text'))?.name ||
-            '',
-        });
+      await get().load();
     } catch (e) {
       set({ models: [], status: (e as Error).message });
     } finally {
@@ -97,15 +84,23 @@ export const useChat = create<{
   stream: string;
   generating: string | null;
   activity: AppEvent[];
+  generatingSelection?: AppEvent['selection'];
   search: string;
   load: (q?: string) => Promise<void>;
   open: (id: string) => Promise<void>;
-  newChat: () => Promise<void>;
+  providerId: string;
+  model: string;
+  agentId: string;
+  choose: (providerId: string, model: string, agentId?: string) => Promise<void>;
+  newChat: (selection?: { providerId: string; model: string; agentId?: string }) => Promise<void>;
   clear: () => Promise<void>;
   event: (event: AppEvent) => void;
 }>((set, get) => ({
   conversations: [],
   current: null,
+  providerId: '',
+  model: '',
+  agentId: '',
   messages: [],
   stream: '',
   generating: null,
@@ -117,24 +112,64 @@ export const useChat = create<{
       throw new Error('Stop the current response before switching conversations');
     const messages = await window.workspace.chat.messages(id);
     if (get().current !== id) useUI.setState({ chatCommand: null });
-    set({ current: id, messages, stream: '' });
+    const c = get().conversations.find((c) => c.id === id);
+    set({
+      current: id,
+      messages,
+      stream: get().generating === id ? get().stream : '',
+      ...(c ? { providerId: c.providerId ?? '', model: c.model, agentId: c.agentId ?? '' } : {}),
+    });
   },
-  newChat: async () => {
+  newChat: async (selection) => {
     if (get().generating)
       throw new Error('Stop the current response before starting another conversation');
-    const c = await window.workspace.chat.create(useSettings.getState().settings?.chatModel ?? '');
+    const settings = useSettings.getState().settings;
+    const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
+    const p =
+      enabled.length === 1 ? enabled[0] : enabled.find((p) => p.id === settings?.activeProviderId);
+    const c = await window.workspace.chat.create(
+      selection?.model ?? p?.chatModel ?? '',
+      selection?.providerId ?? p?.id,
+      selection?.agentId,
+    );
     useUI.setState({ chatCommand: null });
-    set({ current: c.id, messages: [], stream: '' });
+    set({
+      current: c.id,
+      messages: [],
+      stream: '',
+      providerId: c.providerId ?? '',
+      model: c.model,
+      agentId: c.agentId ?? '',
+    });
     await get().load();
+  },
+  choose: async (providerId, model, agentId) => {
+    set({ providerId, model, ...(agentId !== undefined ? { agentId } : {}) });
+    if (!get().current) {
+      const c = await window.workspace.chat.create(model, providerId, agentId);
+      set({ current: c.id, messages: [], stream: '', providerId, model, agentId: agentId ?? '' });
+      await get().load();
+    } else {
+      await window.workspace.chat.selection(get().current!, providerId, model, agentId);
+      await get().load();
+    }
   },
   clear: async () => {
     await window.workspace.chat.clear();
     useUI.setState({ chatCommand: null });
-    set({ current: null, messages: [], stream: '', generating: null, activity: [], conversations: [] });
+    set({
+      current: null,
+      messages: [],
+      stream: '',
+      generating: null,
+      activity: [],
+      conversations: [],
+    });
     await get().load();
   },
   event: (e) => {
-    if (e.status === 'generating') set({ generating: e.id, stream: '', activity: [] });
+    if (e.status === 'generating')
+      set({ generating: e.id, stream: '', activity: [], generatingSelection: e.selection });
     if (e.activity && get().current === e.id)
       set((s) => ({ activity: [...s.activity, e.activity!].slice(-100) }));
     if (e.status === 'streaming' && get().current === e.id)

@@ -7,10 +7,18 @@ const api: WorkspaceAPI = {
     save: (v) => invoke('settings:save', v),
     dataPath: () => invoke('settings:path'),
   },
-  models: { list: () => invoke('models:list'), info: (n) => invoke('models:info', n) },
+  models: {
+    list: (id) => invoke('models:list', id),
+    info: (n, id) => invoke('models:info', n, id),
+  },
+  providers: {
+    clearCredential: (id) => invoke('providers:clear-credential', id),
+    usage: (id) => invoke('providers:usage', id),
+  },
   chat: {
     list: (q) => invoke('chat:list', q),
-    create: (m) => invoke('chat:create', m),
+    create: (m, p, a) => invoke('chat:create', m, p, a),
+    selection: (id, p, m, a) => invoke('chat:selection', id, p, m, a),
     rename: (id, t) => invoke('chat:rename', id, t),
     remove: (id) => invoke('chat:remove', id),
     clear: () => invoke('chat:clear'),
