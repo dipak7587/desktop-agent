@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ProviderRouter, SelectedProvider } from '../providers/router';
 import { capabilityConfig } from '../../../shared/capabilities';
 import {
@@ -63,6 +64,7 @@ export class AgentService {
     e = JSON.parse(this.redact(JSON.stringify(e))) as AppEvent;
     const run = this.history.get(e.id);
     if (run) {
+      e.iterationsUsed = run.iterationsUsed;
       run.status = ['Completed', 'Failed', 'Cancelled', 'Max iterations reached'].includes(e.status)
         ? (e.status as RunState['status'])
         : 'Running';
@@ -81,6 +83,25 @@ export class AgentService {
   async run(input: { agentId: string; task: string; project?: string }) {
     const agent = await this.library.get('agents', input.agentId);
     return this.start(agent, input.task, input.project ?? '');
+  }
+  async runWorkflowNode(
+    input: { agentId: string; task: string; project?: string },
+    signal: AbortSignal,
+    observe: (event: AppEvent) => void,
+  ): Promise<RunState> {
+    const agent = await this.library.get('agents', input.agentId);
+    while (this.controllers.size >= 3) await delay(50, undefined, { signal });
+    signal.throwIfAborted();
+    const id = this.start(agent, input.task, input.project ?? '', observe);
+    const stop = () => this.stop(id);
+    signal.addEventListener('abort', stop, { once: true });
+    try {
+      await this.jobs.get(id);
+      return this.history.get(id)!;
+    } finally {
+      signal.removeEventListener('abort', stop);
+      this.observers.delete(id);
+    }
   }
   private start(
     agent: LibraryItem,

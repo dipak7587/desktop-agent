@@ -209,13 +209,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     <button
                       onClick={() =>
                         void attempt(async () => {
-                          await useChat
-                            .getState()
-                            .newChat({
-                              providerId: item.providerId ?? '',
-                              model: item.model,
-                              agentId: item.id,
-                            });
+                          await useChat.getState().newChat({
+                            providerId: item.providerId ?? '',
+                            model: item.model,
+                            agentId: item.id,
+                          });
                           useUI.setState({
                             section: 'Chat',
                             draft: '',
@@ -790,8 +788,9 @@ function RunAgent({ agent, onClose }: { agent: LibraryItem; onClose: () => void 
     </Modal>
   );
 }
-function AgentRuns() {
-  const { runs, load } = useRuns();
+export function AgentRuns({ ids }: { ids?: string[] } = {}) {
+  const { runs: allRuns, load } = useRuns();
+  const runs = ids ? allRuns.filter((run) => ids.includes(run.id)) : allRuns;
   const [resolved, setResolved] = useState<string[]>([]);
   if (!runs.length) return null;
   return (

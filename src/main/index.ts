@@ -1,3 +1,6 @@
+import { WorkflowRunDatabase } from './database/workflow-runs';
+import { WorkflowDefinitions } from './services/workflows/definitions';
+import { WorkflowService } from './services/workflows/workflows';
 import { ProviderRouter } from './services/providers/router';
 import { CustomToolService } from './services/tools/custom';
 import { AgentRunDatabase } from './database/agent-runs';
@@ -134,18 +137,28 @@ app
       (text) => secrets.redact(text),
       providers,
     );
+    const workflowDb = new WorkflowRunDatabase(join(root, 'database', 'workflow-runs.sqlite'));
+    const workflows = new WorkflowService(
+      new WorkflowDefinitions(root, library),
+      agents,
+      workflowDb,
+      emit,
+      (text) => secrets.redact(text),
+    );
     const chat = new ChatService(
       db,
       llm,
       emit,
       (q, scope) => knowledge.search(q, 'semantic', scope),
       () => getSettings().contextSize,
-      new ChatCommands(library, mcp, agents),
+      new ChatCommands(library, mcp, agents, workflows),
       (text) => secrets.redact(text),
       () => knowledge.list(),
       providers,
     );
     services = {
+      workflows,
+      workflowDb,
       providers,
       settings,
       ollama,
@@ -183,11 +196,13 @@ app.on('before-quit', (event) => {
     if (services) {
       await Promise.allSettled([
         services.chat.stopAll(),
+        services.workflows.stopAll(),
         services.knowledge.stopAll(),
         services.agents.stopAll(),
         services.mcp.stopAll(),
       ]);
       services.customTools.stopAll();
+      services.workflowDb.close();
       services.runDb.close();
       services.db.close();
     }

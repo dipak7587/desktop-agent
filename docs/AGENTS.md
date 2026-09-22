@@ -131,3 +131,37 @@ In **Capability permissions**, Selected mode shows dropdowns only for checked to
 of allowed types. Skills and Knowledge Base are allowed by default and need no permission
 dropdowns or approval prompts. Selection and relevance checks still apply. Unchecking a capability hides its dropdown without clearing its permission.
 Auto shows all listed tools/MCPs of allowed types; None hides permission dropdowns.
+
+## Agent workflows
+
+Open **Workflows** to create, edit, duplicate, or run a saved workflow. Add existing agents,
+reorder them with Move up/Move down, and use the graph preview to inspect the execution order.
+Sequential mode runs the listed order; Parallel mode runs independent agents; Mixed mode lets
+users select the required predecessors of each agent. Each node waits for all of its predecessors
+to succeed. Changing execution mode clears the previous connections.
+
+Connections pass the full `result` by default. JSON outputs can select a field such as
+`result.issues`; missing fields fail the receiving node with a mapping error. The target can be
+previous-agent context or a prompt section. Aggregated context includes the source node, agent,
+run ID, and status. Each node can also have its own task, in addition to the workflow run's task.
+Folder selection is optional and applies to every child agent. Child agents retain their saved
+provider/model, capabilities, approval rules, maximum model iterations, and 15-minute deadline.
+
+**Maximum depth** bounds the dependency chain. **Maximum agent executions** (`maxIterations` in
+the workflow file) bounds the number of node executions, separately from each agent's model
+iterations. Every node runs at most once; cycles, missing connections, duplicate node IDs, and
+unsafe output paths are rejected before saving or running. Workflows share the application's
+three-agent concurrency limit; additional ready agents wait for capacity. At most three workflows
+can be active. Failed upstream agents block dependents while independent branches may finish.
+Cancel workflow stops running children and prevents waiting nodes from starting.
+
+Definitions are JSON files in `<userData>/workflows/`. Execution snapshots and node-to-agent-run
+links are stored separately in `<userData>/database/workflow-runs.sqlite`. Expand workflow history
+to inspect individual execution details, iterations, output, tools, diffs, and approvals. Deleting
+or editing a definition preserves past execution snapshots. Unfinished workflows become Cancelled
+on application restart. Progress is generated from execution events, never private model planning.
+
+In Chat, select `/workflow ` and a saved workflow, or type `/workflow <workflow-name>` followed
+by an optional task. Names containing spaces work, including quoted names. Optional folder controls
+are available before sending. Chat displays workflow and child progress, supports concurrent
+approvals, and returns the final agents' results. Stop generation cancels the whole workflow.

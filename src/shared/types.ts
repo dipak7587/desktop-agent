@@ -1,5 +1,13 @@
 export type Section =
-  'Chat' | 'Tools' | 'MCP' | 'Skills' | 'Saved Text' | 'Agents' | 'Knowledge Base' | 'Settings';
+  | 'Chat'
+  | 'Tools'
+  | 'MCP'
+  | 'Skills'
+  | 'Saved Text'
+  | 'Agents'
+  | 'Workflows'
+  | 'Knowledge Base'
+  | 'Settings';
 export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
 export type LLMProviderName =
   'ollama' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'groq' | 'custom';
@@ -96,7 +104,7 @@ export interface Message {
   };
 }
 export interface ChatCommand {
-  kind: 'skills' | 'agent' | 'mcp';
+  kind: 'skills' | 'agent' | 'mcp' | 'workflow';
   id: string;
   project?: string;
 }
@@ -155,8 +163,9 @@ export interface SearchResult {
   location: string;
 }
 export interface AppEvent {
+  iterationsUsed?: number;
   selection?: { providerId: string; providerNameSnapshot: string; modelId: string };
-  type: 'chat' | 'knowledge' | 'agent' | 'mcp';
+  type: 'chat' | 'knowledge' | 'agent' | 'mcp' | 'workflow';
   id: string;
   status: string;
   content?: string;

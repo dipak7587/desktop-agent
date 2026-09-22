@@ -1533,3 +1533,52 @@ legend {
 .provider-dependent-agents ~ .actions {
   margin-top: 24px;
 }
+
+.workflow-list {
+  display: grid;
+  gap: 18px;
+}
+.workflow-add-agent {
+  align-items: end;
+}
+.workflow-card,
+.workflow-node-editor,
+.workflow-node-history {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  margin-block: 12px;
+}
+.workflow-graph {
+  overflow: auto;
+  padding-block: 12px;
+  max-height: 380px;
+}
+.workflow-graph svg rect {
+  fill: var(--raised);
+  stroke: var(--border);
+}
+.workflow-graph svg path {
+  fill: none;
+  stroke: currentColor;
+  opacity: 0.5;
+}
+.workflow-graph svg text {
+  fill: currentColor;
+  font-size: 12px;
+}
+.workflows-page {
+  overflow: auto;
+}
+.workflow-node-editor legend {
+  padding-inline: 6px;
+  font-weight: 600;
+}
+.workflows-page .workflow-card h2 {
+  margin-bottom: 8px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}

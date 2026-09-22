@@ -2,6 +2,15 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { WorkspaceAPI } from '../shared/api';
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 const api: WorkspaceAPI = {
+  workflows: {
+    list: () => invoke('workflows:list'),
+    save: (workflow) => invoke('workflows:save', workflow),
+    duplicate: (id) => invoke('workflows:duplicate', id),
+    remove: (id) => invoke('workflows:remove', id),
+    run: (input) => invoke('workflows:run', input),
+    stop: (id) => invoke('workflows:stop', id),
+    runs: () => invoke('workflows:runs'),
+  },
   settings: {
     get: () => invoke('settings:get'),
     save: (v) => invoke('settings:save', v),

@@ -1,3 +1,6 @@
+import type { WorkflowService } from '../services/workflows/workflows';
+import type { WorkflowRunDatabase } from '../database/workflow-runs';
+import { workflowSchema, workflowRunInputSchema } from '../../shared/workflows';
 import type { ProviderRouter } from '../services/providers/router';
 import type { CustomToolService } from '../services/tools/custom';
 import type { AgentRunDatabase } from '../database/agent-runs';
@@ -26,6 +29,8 @@ import type { AgentService } from '../services/agents/agents';
 import type { SecretStore } from '../security/secrets';
 import { atomicWrite } from '../services/filesystem/storage';
 export interface Services {
+  workflows: WorkflowService;
+  workflowDb: WorkflowRunDatabase;
   providers: ProviderRouter;
   settings: SettingsService;
   ollama: OllamaLLMProvider;
@@ -118,8 +123,8 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('chat:messages', id, (id) => s.db.messages(id));
   handle('chat:send', z.tuple([sendSchema]), (input) => {
     if (
-      input.command?.kind === 'agent' &&
-      input.command.project &&
+      ['agent', 'workflow'].includes(input.command?.kind ?? '') &&
+      input.command?.project &&
       !projects.has(input.command.project)
     )
       throw new Error('Select a project using the folder picker first');
@@ -225,6 +230,19 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     z.tuple([idSchema, z.record(z.string().max(200), z.unknown())]),
     (id, input) => s.customTools.run(id, input),
   );
+  handle('workflows:list', none, () => s.workflows.definitions.list());
+  handle('workflows:save', z.tuple([workflowSchema]), (input) =>
+    s.workflows.definitions.save(input),
+  );
+  handle('workflows:duplicate', id, (id) => s.workflows.definitions.duplicate(id));
+  handle('workflows:remove', id, (id) => s.workflows.definitions.remove(id));
+  handle('workflows:runs', none, () => s.workflows.runs());
+  handle('workflows:stop', id, (id) => s.workflows.stop(id));
+  handle('workflows:run', z.tuple([workflowRunInputSchema]), (input) => {
+    if (input.project && !projects.has(input.project))
+      throw new Error('Select a project using the folder picker first');
+    return s.workflows.run(input);
+  });
   handle('agents:runs', none, () => s.agents.runs());
   const secretName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,99}$/);
   handle('secrets:list', none, () => s.secrets.list());

@@ -1,13 +1,15 @@
 import type { ChatCommand, LibraryItem } from './types';
-export const commandKinds = ['mcp', 'agent', 'skills'] as const;
+export const commandKinds = ['mcp', 'agent', 'skills', 'workflow'] as const;
 export function slashPrefix(text: string) {
-  const match = /^\/(mcp|agent|skills)\s+([\s\S]*)$/.exec(text);
+  const match = /^\/(mcp|agent|skills|workflow)\s+([\s\S]*)$/.exec(text);
   return match ? { kind: match[1] as ChatCommand['kind'], rest: match[2] } : null;
 }
-export function resolveSlash(text: string, items: LibraryItem[]) {
+export function resolveSlash(text: string, items: Pick<LibraryItem, 'id' | 'name' | 'enabled'>[]) {
   const prefix = slashPrefix(text);
   if (!prefix)
-    throw new Error('Choose /mcp, /agent, or /skills, then select a name and enter your query.');
+    throw new Error(
+      'Choose /mcp, /agent, /skills, or /workflow, then select a name and enter your query.',
+    );
   const rest = prefix.rest.trimStart();
   const quoted = /^"((?:\\.|[^"\\])*)"(?:\s+|$)/.exec(rest);
   let name: string;
@@ -38,7 +40,8 @@ export function resolveSlash(text: string, items: LibraryItem[]) {
       /* Keep ordinary quoted prose. */
     }
   }
-  if (!query.trim() && prefix.kind === 'agent') query = 'Run your configured instructions.';
+  if (!query.trim() && ['agent', 'workflow'].includes(prefix.kind))
+    query = 'Run your configured instructions.';
   if (!query.trim()) throw new Error('Enter a query after the selected name.');
   return { command: { kind: prefix.kind, id: matching[0].id }, name: matching[0].name, query };
 }

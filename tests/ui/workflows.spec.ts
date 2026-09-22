@@ -128,7 +128,7 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
   }
   const input = page.getByLabel('Message', { exact: true });
   await input.fill('/');
-  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(3);
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(4);
   await input.press('ArrowDown');
   await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toContainText(
     '/agent',

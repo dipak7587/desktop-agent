@@ -71,7 +71,10 @@ export function Chat() {
         sendModel = selectedAgent.model;
         await chat.choose(sendProviderId, sendModel, selectedAgent.id);
       }
-      if (!enabled.find((p) => p.id === sendProviderId)?.modelIds?.includes(sendModel))
+      if (
+        request.command?.kind !== 'workflow' &&
+        !enabled.find((p) => p.id === sendProviderId)?.modelIds?.includes(sendModel)
+      )
         throw new Error('Select an enabled provider and available model.');
       if (!regenerate && !request.query.trim()) throw new Error('Enter a query');
       let id = useChat.getState().current;
@@ -85,13 +88,15 @@ export function Chat() {
         id,
         text,
         model: sendModel,
-        providerId: sendProviderId,
+        providerId: sendProviderId || undefined,
         knowledge,
         regenerate,
         command: request.command
           ? {
               ...request.command,
-              project: request.command.kind === 'agent' ? project || undefined : undefined,
+              project: ['agent', 'workflow'].includes(request.command.kind)
+                ? project || undefined
+                : undefined,
             }
           : agent
             ? { kind: 'agent', id: agent.id, project: project || undefined }
@@ -327,7 +332,7 @@ export function Chat() {
                   {commands.selected.kind === 'agent' ? 'this conversation' : 'this message'}
                 </span>
                 <div className="command-chip-actions">
-                  {commands.selected.kind === 'agent' && (
+                  {['agent', 'workflow'].includes(commands.selected.kind) && (
                     <FolderSelection value={project} onChange={setProject} controlsOnly />
                   )}
                   <button
@@ -343,10 +348,10 @@ export function Chat() {
                 </div>
               </div>
             )}
-            {agent && (
+            {(agent || commands.selected?.kind === 'workflow') && (
               <p className="folder-path command-folder-path">{project || 'No folder selected'}</p>
             )}
-            {!commands.selected && draft.startsWith('/agent ') && (
+            {!commands.selected && /^\/(agent|workflow)\s/.test(draft) && (
               <FolderSelection value={project} onChange={setProject} />
             )}
             {commands.picker}
@@ -432,8 +437,11 @@ export function Chat() {
                   className="send"
                   aria-label="Send message"
                   disabled={
-                    !validSelection ||
-                    (!draft.trim() && commands.selected?.kind !== 'agent') ||
+                    (!validSelection &&
+                      commands.selected?.kind !== 'workflow' &&
+                      !/^\/workflow\s/.test(draft)) ||
+                    (!draft.trim() &&
+                      !['agent', 'workflow'].includes(commands.selected?.kind ?? '')) ||
                     busy
                   }
                 >

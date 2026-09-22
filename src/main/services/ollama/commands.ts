@@ -1,3 +1,4 @@
+import type { WorkflowService } from '../workflows/workflows';
 import type { SelectedProvider } from '../providers/router';
 import type { AppEvent, ChatCommand, LibraryItem, Capability } from '../../../shared/types';
 import { librarySchema } from '../../../shared/schemas';
@@ -22,6 +23,7 @@ export class ChatCommands {
     private library: LibraryService,
     private mcp: MCPService,
     private agents: AgentService,
+    private workflows?: WorkflowService,
   ) {}
 
   async prepare(
@@ -30,6 +32,19 @@ export class ChatCommands {
     knowledge: string,
     selected?: SelectedProvider,
   ): Promise<PreparedCommand> {
+    if (command.kind === 'workflow') {
+      if (!this.workflows) throw new Error('Workflows are unavailable');
+      const workflow = await this.workflows.definitions.get(command.id);
+      return {
+        command: { ...command, name: workflow.name },
+        execute: (task, signal, observe) =>
+          this.workflows!.runInChat(
+            { workflowId: workflow.id, task, project: command.project },
+            signal,
+            observe,
+          ),
+      };
+    }
     const item = await this.library.get(
       command.kind === 'agent' ? 'agents' : command.kind,
       command.id,

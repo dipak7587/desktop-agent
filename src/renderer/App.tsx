@@ -1,3 +1,5 @@
+import { Workflows } from './features/workflows';
+import { useWorkflows } from './stores/workflows';
 import { useEffect, useState } from 'react';
 import {
   MessageSquare,
@@ -38,6 +40,7 @@ const nav = [
   { name: 'Skills', icon: Zap },
   { name: 'Saved Text', icon: FileText },
   { name: 'Agents', icon: Bot },
+  { name: 'Workflows', icon: Orbit },
   { name: 'Knowledge Base', icon: BookOpen },
 ] as const;
 export function App() {
@@ -55,6 +58,7 @@ export function App() {
         ...Object.values(libraryStores).map((s) => s.getState().load()),
         useMCPStatus.getState().load(),
         useRuns.getState().load(),
+        useWorkflows.getState().load(),
       ]);
       const failures = results.filter((result) => result.status === 'rejected');
       if (failures.length)
@@ -70,6 +74,7 @@ export function App() {
         void attempt(() => useKnowledge.getState().load());
       }
       if (e.type === 'mcp') void attempt(() => useMCPStatus.getState().load());
+      if (e.type === 'workflow') void attempt(() => useWorkflows.getState().load());
       if (e.type === 'agent') void attempt(() => useRuns.getState().load());
     });
   }, []);
@@ -87,6 +92,9 @@ export function App() {
       if (e.key === 'Escape') {
         const id = useChat.getState().generating;
         if (id) void attempt(() => window.workspace.chat.stop(id));
+        for (const r of useWorkflows.getState().runs)
+          if (!['completed', 'failed', 'cancelled'].includes(r.status))
+            void attempt(() => window.workspace.workflows.stop(r.id));
         for (const r of useRuns.getState().runs)
           if (
             !['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
@@ -207,6 +215,8 @@ export function App() {
           </div>
         ) : section === 'Chat' ? (
           <Chat />
+        ) : section === 'Workflows' ? (
+          <Workflows />
         ) : section === 'Knowledge Base' ? (
           <Knowledge />
         ) : section === 'Settings' ? (

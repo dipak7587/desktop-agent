@@ -37,10 +37,13 @@ export class ChatService {
   async send(input: ChatInput) {
     if (this.active.has(input.id)) throw new Error('This conversation is already generating');
     this.db.get(input.id);
-    const selected = this.providers?.capture(
-      (input.providerId ?? this.db.get(input.id).providerId) || undefined,
-      input.model,
-    );
+    const selected =
+      input.command?.kind === 'workflow'
+        ? undefined
+        : this.providers?.capture(
+            (input.providerId ?? this.db.get(input.id).providerId) || undefined,
+            input.model,
+          );
     this.db.setSelection(
       input.id,
       selected?.providerId ?? input.providerId ?? '',

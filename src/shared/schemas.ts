@@ -169,21 +169,26 @@ export const librarySchema = z.object({
     )
     .default({}),
 });
-export const sendSchema = z.object({
-  providerId: idSchema.optional(),
-  id: idSchema,
-  text: text,
-  model: z.string().min(1).max(200),
-  knowledge: z.string().max(200),
-  regenerate: z.boolean().optional(),
-  command: z
-    .object({
-      kind: z.enum(['skills', 'agent', 'mcp']),
-      id: idSchema,
-      project: z.string().max(4096).optional(),
-    })
-    .optional(),
-});
+export const sendSchema = z
+  .object({
+    providerId: idSchema.optional(),
+    id: idSchema,
+    text: text,
+    model: z.string().max(200),
+    knowledge: z.string().max(200),
+    regenerate: z.boolean().optional(),
+    command: z
+      .object({
+        kind: z.enum(['skills', 'agent', 'mcp', 'workflow']),
+        id: idSchema,
+        project: z.string().max(4096).optional(),
+      })
+      .optional(),
+  })
+  .refine((input) => input.command?.kind === 'workflow' || input.model.length > 0, {
+    message: 'Select a model',
+    path: ['model'],
+  });
 export const sourceInputSchema = z.object({
   type: z.enum(['file', 'folder', 'url']),
   url: z.url().optional(),

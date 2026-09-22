@@ -1,3 +1,4 @@
+import type { AgentWorkflow, WorkflowRun, WorkflowRunInput } from './workflows';
 import type {
   Settings,
   Model,
@@ -13,6 +14,15 @@ import type {
   ChatInput,
 } from './types';
 export interface WorkspaceAPI {
+  workflows: {
+    list(): Promise<AgentWorkflow[]>;
+    save(workflow: AgentWorkflow): Promise<AgentWorkflow>;
+    duplicate(id: string): Promise<AgentWorkflow>;
+    remove(id: string): Promise<void>;
+    run(input: WorkflowRunInput): Promise<string>;
+    stop(id: string): Promise<void>;
+    runs(): Promise<WorkflowRun[]>;
+  };
   settings: {
     get(): Promise<Settings>;
     save(value: Settings): Promise<Settings>;
