@@ -56,7 +56,7 @@ safe progress labels rather than model planning fields. Interrupted persisted ru
 Cancelled when loaded. Native `details` elements provide the history accordion.
 
 At startup `MCPService.autoStart` starts enabled opted-in definitions and records individual
-failures. `LibraryService.assertRemovable` checks agent references before Tool/MCP deletion;
+failures. `LibraryService.assertRemovable` checks agent references before Skill, Tool or MCP deletion;
 the IPC handler checks before stopping an MCP. These checks also cover disabled agents.
 
 ## Providers and UI

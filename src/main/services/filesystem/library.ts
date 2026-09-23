@@ -78,18 +78,20 @@ export class LibraryService {
     return item;
   }
   async assertRemovable(kind: LibraryKind, id: string) {
-    if (kind !== 'mcp' && kind !== 'tools') return;
+    if (kind !== 'skills' && kind !== 'mcp' && kind !== 'tools') return;
     const prefix = kind === 'mcp' ? `mcp:${id}:` : `custom:${id}`;
     const agents = (await this.list('agents')).filter(
       (a) =>
-        [...a.tools, ...capabilityConfig(a).tools].some((t) =>
-          kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
-        ) ||
+        (kind === 'skills'
+          ? [...a.skills, ...capabilityConfig(a).skills].includes(id)
+          : [...a.tools, ...capabilityConfig(a).tools].some((t) =>
+              kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
+            )) ||
         (kind === 'mcp' && capabilityConfig(a).mcpServers.includes(id)),
     );
     if (agents.length)
       throw new Error(
-        `Cannot delete this ${kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${agents.map((a) => a.name).join(', ')}. Remove it from these Agents before deleting it.`,
+        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${agents.map((a) => a.name).join(', ')}. Remove it from these Agents before deleting it.`,
       );
   }
   async remove(kind: LibraryKind, id: string) {

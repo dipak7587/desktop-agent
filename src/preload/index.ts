@@ -59,6 +59,8 @@ const api: WorkspaceAPI = {
     stop: (id) => invoke('agents:stop', id),
     approve: (id, a) => invoke('agents:approve', id, a),
     runs: () => invoke('agents:runs'),
+    removeRun: (id) => invoke('agents:remove-run', id),
+    clearRuns: () => invoke('agents:clear-runs'),
   },
   secrets: {
     importEnv: () => invoke('secrets:import-env'),

@@ -7,7 +7,8 @@ Optionally select a project folder and submit a task. Leave the task empty to ru
 file change before approving or rejecting it. Execution is bounded by the configured limits.
 Definitions can be edited, imported, exported, or deleted after confirmation. Select individual
 agents or **Select all Agents**, then **Delete Selected** to confirm a bulk deletion. Cancel
-leaves the definitions intact. Deleting a definition does not delete its execution history.
+leaves the definitions intact. Deleting a definition does not automatically delete its execution
+history; completed history entries can be removed separately from **Execution history**.
 
 Agents can also run from Chat: type `/agent ` and select an agent, or enter `/agent <name>`.
 The task and project folder are optional. Progress, diffs, approvals, and the result appear in Chat.
@@ -85,8 +86,9 @@ Select built-in tools, discovered MCP tools (`mcp:<server-id>:<tool-name>`), or 
 Custom Tool and MCP calls require approval by default, including in global full-auto mode;
 per-capability Always allow overrides that approval default. Inputs,
 outputs and failures are recorded in the run; tool errors are returned to the model so it
-can recover. Referenced Tools and MCPs cannot be deleted until all agent references are removed,
-including references in disabled agents.
+can recover. Referenced skills, Tools and MCPs cannot be deleted until all agent references are
+removed, including references in disabled agents. The deletion error appears at the top of the
+confirmation modal and names the affected agents.
 
 **Maximum execution iterations** accepts 1–500 and is saved as `maxIterations`. New agents
 start with the global Settings value. Older definitions without this field inherit the global
@@ -102,7 +104,9 @@ times, duration, iterations used/maximum, actual MCP calls, tool inputs/outputs/
 execution events and final result. Status is **Running**, **Completed**, **Failed**,
 **Cancelled**, or **Max iterations reached**. For example, `2 / 5` means two model turns
 were used out of five allowed. Active runs can be stopped and pending operations approved
-or rejected from the expanded entry.
+or rejected from the expanded entry. Completed, stopped, failed, cancelled, and max-iteration
+runs have a **Delete history** action. Running entries must be stopped before their history can
+be deleted.
 
 History persists in `<userData>/database/agent-runs.sqlite`, separately from Markdown agent
 definitions. Runs interrupted by application shutdown are marked Cancelled on restart.

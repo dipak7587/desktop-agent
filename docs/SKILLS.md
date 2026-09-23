@@ -29,7 +29,9 @@ unless the task asks for changes. Prefer the project's existing patterns.
 ```
 
 The UI adds IDs and timestamps, supports accordion inspection, editing, search, enabling,
-disabling, import, export and deletion. Agents discover eligible skill metadata, then load a skill body only through the capability
+disabling, import, export and deletion. Skill deletion requires confirmation and is blocked
+while any agent, including disabled agents, references the skill. The error names the affected
+agents; remove the skill from those agent definitions before retrying. Agents discover eligible skill metadata, then load a skill body only through the capability
 router after a positive relevance and permission decision. Skills are not applied automatically.
 See [Capability decisions](CAPABILITIES.md).
 

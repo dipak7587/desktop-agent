@@ -70,9 +70,10 @@ MCP auto-start is an explicit per-server setting, off by default. Enabled, opted
 execute at application startup without another prompt. Startup failures are recorded in the
 server's status/logs. Review the executable before enabling this setting.
 
-Before deleting a Tool or MCP, the main service checks all agents, including disabled ones.
-Referenced definitions cannot be deleted; the error identifies the agents to update. UI deletion
-of agents, Tools and MCPs requires confirmation, including bulk agent deletion.
+Before deleting a Skill, Tool or MCP, the main service checks all agents, including disabled
+ones. Referenced definitions cannot be deleted; the error identifies the agents to update and
+appears at the top of the confirmation modal. UI deletion of agents, Tools, MCPs and Skills
+requires confirmation, including bulk agent deletion.
 
 Run history persists separately from definitions in `database/agent-runs.sqlite`. It contains
 requests, folder paths, tool activity and outputs/results, with known secrets redacted. It is

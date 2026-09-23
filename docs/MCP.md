@@ -49,9 +49,10 @@ When auto-start is off, start the server manually. The checkbox also applies whe
 configuration through **Import from JSON**.
 
 Deleting a server requires confirmation. Before stopping or deleting it, the app checks all
-agent definitions, including disabled agents, for `mcp:<server-id>:<tool-name>` references.
-If any exist, deletion is blocked and the affected agents are named. Remove those references
-in the Agents editor, or delete the agents, then retry. This prevents broken agent configurations.
+agent definitions, including disabled agents, for `mcp:<server-id>:<tool-name>` references and
+the server ID in the agent capability configuration. If any exist, deletion is blocked and the
+affected agents are named in the confirmation modal. Remove those references in the Agents
+editor, or delete the agents, then retry. This prevents broken agent configurations.
 
 ## Imports and execution
 

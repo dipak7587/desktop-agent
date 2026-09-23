@@ -87,8 +87,12 @@ it('makes real HTTP calls with input, secret references, redaction and HTTP erro
     await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
   }
 });
-it('blocks MCP and Tool deletion for every referencing agent, including disabled agents', async () => {
+it('blocks skill, MCP and Tool deletion for every referencing agent, including disabled agents', async () => {
   await saveTool();
+  await library.save(
+    'skills',
+    librarySchema.parse({ id: 'review', name: 'Review', content: 'Review the change.' }),
+  );
   await library.save(
     'mcp',
     librarySchema.parse({ id: 'server', name: 'Server', description: 'Test' }),
@@ -97,12 +101,21 @@ it('blocks MCP and Tool deletion for every referencing agent, including disabled
     id: 'agent',
     name: 'Reviewer',
     enabled: false,
+    skills: ['review'],
     tools: ['custom:double', 'mcp:server:echo'],
+    capabilityConfig: { mcpServers: ['server'] },
   });
   await library.save('agents', agent);
+  await expect(library.remove('skills', 'review')).rejects.toThrow('Reviewer');
   await expect(library.remove('tools', 'double')).rejects.toThrow('Reviewer');
   await expect(library.remove('mcp', 'server')).rejects.toThrow('Reviewer');
-  await library.save('agents', { ...agent, tools: [] });
+  await library.save('agents', {
+    ...agent,
+    skills: [],
+    tools: [],
+    capabilityConfig: { ...agent.capabilityConfig!, mcpServers: [] },
+  });
+  await library.remove('skills', 'review');
   await library.remove('tools', 'double');
   await library.remove('mcp', 'server');
   expect(await library.list('tools')).toEqual([]);

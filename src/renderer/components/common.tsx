@@ -75,8 +75,10 @@ export function Confirm({
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   return (
     <Modal title={title} onClose={onClose}>
+      {error && <p className="error-text">{error}</p>}
       <p className="muted">{detail}</p>
       <div className="actions">
         <button onClick={onClose}>Cancel</button>
@@ -84,15 +86,18 @@ export function Confirm({
           className="danger"
           disabled={busy}
           onClick={() =>
-            void attempt(async () => {
+            void (async () => {
               setBusy(true);
+              setError('');
               try {
                 await onConfirm();
                 onClose();
+              } catch (e) {
+                setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
               } finally {
                 setBusy(false);
               }
-            })
+            })()
           }
         >
           {busy ? 'Deleting…' : 'Delete'}

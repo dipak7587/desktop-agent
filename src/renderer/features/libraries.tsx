@@ -14,6 +14,8 @@ import {
   Wrench,
   Square,
   ChevronDown,
+  X,
+  CircleStop,
 } from 'lucide-react';
 import type { LibraryKind, LibraryItem } from '../../shared/types';
 import { librarySchema } from '../../shared/schemas';
@@ -483,12 +485,12 @@ function LibraryEditor({
                   ...(kind === 'agents' ? { providerId: effectiveProviderId } : {}),
                   ...(kind === 'tools'
                     ? {
-                        toolConfig: {
-                          ...item.toolConfig,
-                          parameters: JSON.parse(parameters),
-                          headers: JSON.parse(headers),
-                        },
-                      }
+                      toolConfig: {
+                        ...item.toolConfig,
+                        parameters: JSON.parse(parameters),
+                        headers: JSON.parse(headers),
+                      },
+                    }
                     : {}),
                   ...(kind === 'mcp' && fromJSON
                     ? parseMCPConfig(configJSON)
@@ -797,26 +799,68 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
   if (!runs.length) return null;
   return (
     <section className="runs">
-      <h2>Execution history</h2>
+      <div className="runs-heading">
+        <h2>Execution history</h2>
+        {!ids && (
+          <button
+            className="secondary"
+            onClick={() =>
+              void attempt(async () => {
+                await window.workspace.agents.clearRuns();
+                await load();
+              })
+            }
+          >
+            Clear all history
+          </button>
+        )}
+      </div>
       {[...runs].reverse().map((run) => (
         <details key={run.id} className="run">
           <summary>
-            <strong>
-              {run.agentName} · {new Date(run.startedAt).toLocaleString()}
-            </strong>
-            <span>
-              Iterations: {run.iterationsUsed} / {run.maxIterations}
-            </span>
-            <span className="badge">{run.status}</span>
+            <div className="run-summary">
+              <div>
+                <strong>
+                  {run.agentName} · {new Date(run.startedAt).toLocaleString()}
+                </strong>
+                <span style={{
+                  marginLeft: '1rem'
+
+                }}>
+                  Iterations: {run.iterationsUsed} / {run.maxIterations}
+                </span>
+                <span className="badge" style={{
+                  marginLeft: '1rem'
+
+                }}>{run.status}</span>
+              </div>
+              <div>
+                {!['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
+                  run.status,
+                ) && (
+                    <button onClick={() => void attempt(() => window.workspace.agents.stop(run.id))}>
+                      <CircleStop size={16} />
+                    </button>
+                  )}
+                {['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
+                  run.status,
+                ) && (
+                    <button
+                      // className="danger"
+                      onClick={() =>
+                        void attempt(async () => {
+                          await window.workspace.agents.removeRun(run.id);
+                          await load();
+                        })
+                      }
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+              </div>
+            </div>
           </summary>
-          {!['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
-            run.status,
-          ) && (
-            <button onClick={() => void attempt(() => window.workspace.agents.stop(run.id))}>
-              <Square size={13} />
-              Stop run
-            </button>
-          )}
+
           <p>
             Started: {new Date(run.startedAt).toLocaleString()} · Ended:{' '}
             {run.completedAt ? new Date(run.completedAt).toLocaleString() : 'Running'}
@@ -828,7 +872,7 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
               Math.round(
                 ((run.completedAt ? Date.parse(run.completedAt) : Date.now()) -
                   Date.parse(run.startedAt)) /
-                  1000,
+                1000,
               ),
             )}
             s
@@ -865,8 +909,8 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
                   <h3>{e.approval.description}</h3>
                   {e.approval.diff && <pre className="diff">{e.approval.diff}</pre>}
                   {!resolved.includes(e.approval.id) &&
-                  run.phase === 'Waiting for approval' &&
-                  run.status === 'Running' ? (
+                    run.phase === 'Waiting for approval' &&
+                    run.status === 'Running' ? (
                     <div className="actions">
                       <button
                         onClick={() =>

@@ -225,6 +225,8 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('agents:approve', z.tuple([idSchema, z.boolean()]), (id, approved) =>
     s.agents.approve(id, approved),
   );
+  handle('agents:remove-run', id, (id) => s.agents.removeRun(id));
+  handle('agents:clear-runs', none, () => s.agents.clearRuns());
   handle(
     'tools:run',
     z.tuple([idSchema, z.record(z.string().max(200), z.unknown())]),

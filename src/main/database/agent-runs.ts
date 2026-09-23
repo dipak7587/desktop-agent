@@ -3,6 +3,8 @@ import type { RunState } from '../../shared/types';
 export interface RunStore {
   list(): RunState[];
   save(run: RunState): void;
+  remove(id: string): void;
+  clear(): void;
 }
 export class AgentRunDatabase implements RunStore {
   private db: DatabaseSync;
@@ -24,6 +26,12 @@ export class AgentRunDatabase implements RunStore {
         'INSERT INTO agent_runs(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
       )
       .run(run.id, JSON.stringify(run));
+  }
+  remove(id: string) {
+    this.db.prepare('DELETE FROM agent_runs WHERE id = ?').run(id);
+  }
+  clear() {
+    this.db.prepare('DELETE FROM agent_runs').run();
   }
   close() {
     this.db.close();

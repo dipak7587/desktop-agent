@@ -60,6 +60,17 @@ export class AgentService {
   runs() {
     return [...this.history.values()];
   }
+  removeRun(id: string) {
+    if (this.controllers.has(id)) throw new Error('Stop the agent before deleting its history');
+    if (!this.history.has(id)) throw new Error('Execution history was not found');
+    this.history.delete(id);
+    this.runStore?.remove(id);
+  }
+  clearRuns() {
+    if (this.controllers.size) throw new Error('Stop all active agents before clearing history');
+    this.history.clear();
+    this.runStore?.clear();
+  }
   private event(e: AppEvent) {
     e = JSON.parse(this.redact(JSON.stringify(e))) as AppEvent;
     const run = this.history.get(e.id);
