@@ -1,3 +1,4 @@
+import type { CrewAIService } from './services/crewai/service';
 import { WorkflowRunDatabase } from './database/workflow-runs';
 import { WorkflowDefinitions } from './services/workflows/definitions';
 import { WorkflowService } from './services/workflows/workflows';
@@ -145,6 +146,32 @@ app
       emit,
       (text) => secrets.redact(text),
     );
+    let crewService: CrewAIService | undefined;
+    let crewLoading: Promise<CrewAIService> | undefined;
+    const crewai = () => {
+      if (quitting) return Promise.reject(new Error('Application is closing'));
+      crewLoading ??= import('./services/crewai/service')
+        .then(({ CrewAIService }) => {
+          if (quitting) throw new Error('Application is closing');
+          crewService = new CrewAIService(
+            root,
+            app.isPackaged
+              ? join(process.resourcesPath, 'crewai')
+              : join(app.getAppPath(), 'workers', 'crewai'),
+            getSettings,
+            providers,
+            agents,
+            emit,
+            (text) => secrets.redact(text),
+          );
+          return crewService;
+        })
+        .catch((error) => {
+          crewLoading = undefined;
+          throw error;
+        });
+      return crewLoading;
+    };
     const chat = new ChatService(
       db,
       llm,
@@ -157,6 +184,8 @@ app
       providers,
     );
     services = {
+      crewai,
+      loadedCrewAI: () => crewService,
       workflows,
       workflowDb,
       providers,
@@ -195,12 +224,14 @@ app.on('before-quit', (event) => {
   void (async () => {
     if (services) {
       await Promise.allSettled([
+        services.loadedCrewAI()?.stopAll(),
         services.chat.stopAll(),
         services.workflows.stopAll(),
         services.knowledge.stopAll(),
         services.agents.stopAll(),
         services.mcp.stopAll(),
       ]);
+      await services.loadedCrewAI()?.close();
       services.customTools.stopAll();
       services.workflowDb.close();
       services.runDb.close();

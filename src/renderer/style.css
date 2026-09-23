@@ -1582,3 +1582,113 @@ legend {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
+
+/* CrewAI project builder */
+.crew-page .page-heading {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.crew-tabs {
+  margin: 24px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.crew-tabs button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--bg);
+}
+.crew-panel {
+  max-width: 1080px;
+  display: grid;
+  gap: 18px;
+}
+.crew-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin: 20px 0;
+}
+.crew-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.crew-stats > div {
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.crew-stats strong {
+  font-size: 28px;
+}
+.crew-stats span,
+.crew-sequence span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.crew-agent {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.crew-agent legend {
+  padding: 0 8px;
+  font-weight: 600;
+}
+.crew-sequence {
+  display: grid;
+  gap: 14px;
+  padding-left: 24px;
+}
+.crew-sequence li span {
+  display: block;
+  margin-top: 4px;
+}
+.crew-task-result,
+.crew-tool-request {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.crew-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 420px;
+  overflow: auto;
+}
+.crew-error {
+  white-space: pre-wrap;
+}
+
+.crew-tabs button {
+  transition: none;
+}
+
+.crew-custom-tools {
+  margin-top: 28px;
+}
+.crew-custom-tools > fieldset {
+  margin-top: 18px;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.crew-input-field {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+.crew-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  tab-size: 4;
+}

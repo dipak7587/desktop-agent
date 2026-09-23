@@ -1,6 +1,6 @@
 import { Workflows } from './features/workflows';
 import { useWorkflows } from './stores/workflows';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   MessageSquare,
   Plug,
@@ -33,6 +33,7 @@ import { Library } from './features/libraries';
 import { Knowledge } from './features/knowledge';
 import { Settings } from './features/settings';
 import { Modal } from './components/common';
+const CrewAIProjects = lazy(() => import('./features/crewai'));
 const nav = [
   { name: 'Chat', icon: MessageSquare },
   { name: 'MCP', icon: Plug },
@@ -41,6 +42,7 @@ const nav = [
   { name: 'Saved Text', icon: FileText },
   { name: 'Agents', icon: Bot },
   { name: 'Workflows', icon: Orbit },
+  { name: 'CrewAI Projects', icon: Bot },
   { name: 'Knowledge Base', icon: BookOpen },
 ] as const;
 export function App() {
@@ -141,18 +143,20 @@ export function App() {
         </button>
         {!collapsed && <div className="nav-label">WORKSPACE</div>}
         <nav aria-label="Main navigation">
-          {nav.map((n) => (
-            <button
-              key={n.name}
-              aria-current={section === n.name ? 'page' : undefined}
-              title={n.name}
-              onClick={() => setSection(n.name)}
-            >
-              <n.icon size={18} />
-              {!collapsed && n.name}
-              {!collapsed && section === n.name && <span className="nav-active-dot" />}
-            </button>
-          ))}
+          {nav
+            .filter((n) => n.name !== 'CrewAI Projects' || settings?.crewAIEnabled)
+            .map((n) => (
+              <button
+                key={n.name}
+                aria-current={section === n.name ? 'page' : undefined}
+                title={n.name}
+                onClick={() => setSection(n.name)}
+              >
+                <n.icon size={18} />
+                {!collapsed && n.name}
+                {!collapsed && section === n.name && <span className="nav-active-dot" />}
+              </button>
+            ))}
         </nav>
         <div className="sidebar-bottom">
           {!collapsed && (
@@ -215,6 +219,12 @@ export function App() {
           </div>
         ) : section === 'Chat' ? (
           <Chat />
+        ) : section === 'CrewAI Projects' && settings?.crewAIEnabled ? (
+          <Suspense fallback={<p role="status">Loading CrewAI projects…</p>}>
+            <CrewAIProjects />
+          </Suspense>
+        ) : section === 'CrewAI Projects' ? (
+          <Settings />
         ) : section === 'Workflows' ? (
           <Workflows />
         ) : section === 'Knowledge Base' ? (
@@ -277,7 +287,12 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           const sources = useKnowledge.getState().sources;
           const results: { name: string; section: Section; id?: string }[] = [
             ...nav
-              .filter((n) => n.name.toLowerCase().includes(query.toLowerCase()))
+              .filter(
+                (n) =>
+                  (n.name !== 'CrewAI Projects' ||
+                    useSettings.getState().settings?.crewAIEnabled) &&
+                  n.name.toLowerCase().includes(query.toLowerCase()),
+              )
               .map((n) => ({ name: n.name, section: n.name })),
             ...chats.map((c) => ({ name: c.title, section: 'Chat' as const, id: c.id })),
             ...libraries.flatMap(({ kind, items }) =>

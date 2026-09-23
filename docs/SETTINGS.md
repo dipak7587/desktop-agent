@@ -75,3 +75,12 @@ See [Chat](CHAT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [Agents](AGENTS.md), [
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Optional CrewAI projects
+
+Enable **CrewAI** in General settings to show the dedicated project builder. It is off
+by default. Configure a Python 3.10–3.13 environment containing `crewai==1.15.22`,
+save settings, and use **Check CrewAI runtime**. Enabling does not install or launch
+anything automatically. Disabling stops active crews and retains definitions/history.
+Settings import preserves the local opt-in and Python executable. See [CrewAI](CREWAI.md)
+for project creation, supported tools, export, and current limitations.

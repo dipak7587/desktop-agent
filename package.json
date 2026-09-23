@@ -82,7 +82,18 @@
       "target": [
         "AppImage"
       ]
-    }
+    },
+    "extraResources": [
+      {
+        "from": "workers/crewai",
+        "to": "crewai",
+        "filter": [
+          "*.py",
+          "requirements.txt",
+          "README.md"
+        ]
+      }
+    ]
   },
   "packageManager": "pnpm@11.5.2",
   "engines": {

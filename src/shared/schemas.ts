@@ -99,6 +99,14 @@ export const settingsSchema = z
     approvalMode: z.enum(['ask', 'safe', 'auto']).default('ask'),
     commandTimeout: z.number().int().min(1000).max(300000).default(60000),
     maxIterations: z.number().int().min(1).max(500).default(15),
+    crewAIEnabled: z.boolean().default(false),
+    crewAIPython: z
+      .string()
+      .trim()
+      .min(1)
+      .max(4096)
+      .refine((v) => !v.includes('\0'))
+      .default('python3'),
     language: z.literal('en').default('en'),
     startAtLogin: z.boolean().default(false),
     defaultAgent: z.string().default(''),

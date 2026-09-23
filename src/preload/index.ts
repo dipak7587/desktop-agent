@@ -2,6 +2,19 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { WorkspaceAPI } from '../shared/api';
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 const api: WorkspaceAPI = {
+  crewai: {
+    list: () => invoke('crewai:list'),
+    save: (p) => invoke('crewai:save', p),
+    duplicate: (id) => invoke('crewai:duplicate', id),
+    remove: (id) => invoke('crewai:remove', id),
+    check: () => invoke('crewai:check'),
+    testTool: (input) => invoke('crewai:test-tool', input),
+    run: (input) => invoke('crewai:run', input),
+    stop: (id) => invoke('crewai:stop', id),
+    runs: () => invoke('crewai:runs'),
+    approve: (id, allow) => invoke('crewai:approve', id, allow),
+    export: (id) => invoke('crewai:export', id),
+  },
   workflows: {
     list: () => invoke('workflows:list'),
     save: (workflow) => invoke('workflows:save', workflow),

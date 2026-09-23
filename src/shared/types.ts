@@ -6,6 +6,7 @@ export type Section =
   | 'Saved Text'
   | 'Agents'
   | 'Workflows'
+  | 'CrewAI Projects'
   | 'Knowledge Base'
   | 'Settings';
 export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
@@ -55,6 +56,8 @@ export interface Settings {
   language: 'en';
   startAtLogin: boolean;
   defaultAgent: string;
+  crewAIEnabled: boolean;
+  crewAIPython: string;
 }
 export interface Model {
   name: string;
@@ -165,7 +168,7 @@ export interface SearchResult {
 export interface AppEvent {
   iterationsUsed?: number;
   selection?: { providerId: string; providerNameSnapshot: string; modelId: string };
-  type: 'chat' | 'knowledge' | 'agent' | 'mcp' | 'workflow';
+  type: 'chat' | 'knowledge' | 'agent' | 'mcp' | 'workflow' | 'crewai';
   id: string;
   status: string;
   content?: string;

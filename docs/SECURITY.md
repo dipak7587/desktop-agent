@@ -94,3 +94,17 @@ protection if needed. The local macOS package is ad-hoc signed; it is not Develo
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Optional CrewAI runtime
+
+CrewAI is off by default and uses an application-owned Python worker only after an
+explicit runtime check or run. Provider keys stay in the main process. Built-in Crew tools
+perform approved reads, listings, and searches inside the picker-selected folder.
+Custom Python tools require code-and-input approval on every call, including tests,
+and execute in a separate process with a reduced environment and a 1–120 second
+timeout. They have ordinary user filesystem/network permissions, not a folder sandbox.
+Saving code never runs it; execution uses the run snapshot. Source, input, and output
+are persisted, and exported projects include custom source. Avoid embedding secrets. Every tool call requires approval. The feature gate is enforced in main;
+turning it off cancels runs and approvals. Exported projects contain no app provider
+credentials and run independently with their own configuration. Python processes
+and exported code are not OS sandboxes. See [CrewAI](CREWAI.md).

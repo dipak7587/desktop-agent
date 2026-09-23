@@ -1,3 +1,5 @@
+import type { CrewAIService } from '../services/crewai/service';
+import { crewToolTestSchema, crewProjectSchema, crewRunSchema } from '../../shared/crewai';
 import type { WorkflowService } from '../services/workflows/workflows';
 import type { WorkflowRunDatabase } from '../database/workflow-runs';
 import { workflowSchema, workflowRunInputSchema } from '../../shared/workflows';
@@ -29,6 +31,8 @@ import type { AgentService } from '../services/agents/agents';
 import type { SecretStore } from '../security/secrets';
 import { atomicWrite } from '../services/filesystem/storage';
 export interface Services {
+  crewai(): Promise<CrewAIService>;
+  loadedCrewAI(): CrewAIService | undefined;
   workflows: WorkflowService;
   workflowDb: WorkflowRunDatabase;
   providers: ProviderRouter;
@@ -70,9 +74,41 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('settings:path', none, () => s.settings.root);
   handle('settings:save', z.tuple([settingsSchema]), async (value) => {
     const result = await s.settings.save(value);
+    if (!result.crewAIEnabled) await s.loadedCrewAI()?.stopAll();
     app.setName(value.appName);
     app.setLoginItemSettings({ openAtLogin: value.startAtLogin });
     return result;
+  });
+  const requireCrewAI = async () => {
+    if (!s.settings.get().crewAIEnabled)
+      throw new Error('CrewAI is disabled. Enable it in Settings first.');
+    return s.crewai();
+  };
+  handle('crewai:list', none, async () => (await s.crewai()).list());
+  handle('crewai:runs', none, async () => (await s.crewai()).runs());
+  handle('crewai:save', z.tuple([crewProjectSchema]), async (p) => (await requireCrewAI()).save(p));
+  handle('crewai:duplicate', id, async (id) => (await requireCrewAI()).duplicate(id));
+  handle('crewai:remove', id, async (id) => (await s.crewai()).remove(id));
+  handle('crewai:check', none, async () => (await requireCrewAI()).check());
+  handle('crewai:run', z.tuple([crewRunSchema]), async (input) => {
+    if (input.folder && !projects.has(input.folder))
+      throw new Error('Select a folder using the folder picker first');
+    return (await requireCrewAI()).run(input);
+  });
+  handle('crewai:test-tool', z.tuple([crewToolTestSchema]), async (input) =>
+    (await requireCrewAI()).testTool(input),
+  );
+  handle('crewai:stop', id, (id) => s.loadedCrewAI()?.stop(id));
+  handle('crewai:approve', z.tuple([idSchema, z.boolean()]), async (id, allow) =>
+    (await requireCrewAI()).approve(id, allow),
+  );
+  handle('crewai:export', id, async (id) => {
+    const service = await requireCrewAI();
+    const result = await dialog.showOpenDialog({
+      title: 'Export CrewAI project into a new folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled ? null : service.export(id, await realpath(result.filePaths[0]));
   });
   handle('models:list', z.tuple([idSchema.optional()]), (id) => s.providers.discover(id));
   handle('models:info', z.tuple([z.string().max(200), idSchema.optional()]), async (name, id) => {
@@ -271,7 +307,11 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     });
     if (!result.canceled)
       await s.settings.save(
-        settingsSchema.parse(JSON.parse(await readText(result.filePaths[0], 2000000))),
+        settingsSchema.parse({
+          ...JSON.parse(await readText(result.filePaths[0], 2000000)),
+          crewAIEnabled: s.settings.get().crewAIEnabled,
+          crewAIPython: s.settings.get().crewAIPython,
+        }),
       );
   });
 }

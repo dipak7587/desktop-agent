@@ -8,6 +8,8 @@ export function Settings() {
   const state = useSettings();
   const { items: agents } = useAgents();
   const [value, setValue] = useState<SettingsType | null>(state.settings);
+  const [crewStatus, setCrewStatus] = useState('');
+  const [crewChecking, setCrewChecking] = useState(false);
   const [keys, setKeys] = useState<string[]>([]);
   const [keyName, setKeyName] = useState('');
   const [secret, setSecret] = useState('');
@@ -240,6 +242,70 @@ export function Settings() {
                   />
                 </label>
               </div>
+            </div>
+          </section>
+          <section className="settings-section">
+            <div>
+              <h2>CrewAI</h2>
+              <p>Build and run optional CrewAI projects.</p>
+            </div>
+            <div className="settings-fields">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={value.crewAIEnabled}
+                  onChange={(e) => {
+                    update('crewAIEnabled', e.target.checked);
+                    setCrewStatus('');
+                  }}
+                />
+                Enable CrewAI
+              </label>
+              <p className="small muted">
+                Off by default. Enabling shows CrewAI Projects; it does not install Python or start
+                a crew. Disabling stops active CrewAI runs and retains saved projects and history.
+              </p>
+              {value.crewAIEnabled && (
+                <>
+                  <label>
+                    Python executable
+                    <input
+                      value={value.crewAIPython}
+                      onChange={(e) => {
+                        update('crewAIPython', e.target.value);
+                        setCrewStatus('');
+                      }}
+                      placeholder="/path/to/venv/bin/python"
+                    />
+                  </label>
+                  <p className="small muted">
+                    Use Python 3.10–3.13 with crewai==1.15.22 installed in an isolated environment.
+                    Save settings before checking the runtime.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={
+                      crewChecking ||
+                      !state.settings?.crewAIEnabled ||
+                      value.crewAIPython !== state.settings.crewAIPython
+                    }
+                    onClick={() => {
+                      setCrewChecking(true);
+                      setCrewStatus('Checking runtime…');
+                      void window.workspace.crewai
+                        .check()
+                        .then((r) =>
+                          setCrewStatus(`Ready: CrewAI ${r.version}, Python ${r.python}`),
+                        )
+                        .catch((e) => setCrewStatus(`Not ready: ${(e as Error).message}`))
+                        .finally(() => setCrewChecking(false));
+                    }}
+                  >
+                    {crewChecking ? 'Checking…' : 'Check CrewAI runtime'}
+                  </button>
+                  {crewStatus && <p role="status">{crewStatus}</p>}
+                </>
+              )}
             </div>
           </section>
           <div className="settings-save">

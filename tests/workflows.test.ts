@@ -377,3 +377,51 @@ it('queues a fourth child behind the real three-agent limit and cancels queued c
     await agents.stopAll();
   }
 });
+
+it('shares the three execution slots with an external sequential crew', async () => {
+  await definitions.save(definition('parallel'));
+  const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 3 });
+  const llm = new OllamaLLMProvider(settings);
+  let calls = 0;
+  vi.spyOn(llm, 'complete').mockImplementation(async (request) => {
+    calls++;
+    await new Promise<void>((_resolve, reject) =>
+      request.signal!.addEventListener('abort', () => reject(new Error('cancelled')), {
+        once: true,
+      }),
+    );
+    return { role: 'assistant', content: '{"final":"done"}' };
+  });
+  const mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
+  const kb = new KnowledgeService(
+    root,
+    settings,
+    { embed: async () => [], embedBatch: async () => [] },
+    () => {},
+  );
+  const agents = new AgentService(library, llm, kb, mcp, settings, () => {});
+  const service = new WorkflowService(definitions, agents, store, () => {});
+  let release!: () => void;
+  const external = agents.withExternalSlot(
+    new AbortController().signal,
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  try {
+    const id = await service.run({ workflowId: 'quality', task: '' });
+    await expect.poll(() => calls).toBe(2);
+    expect(agents.runs()).toHaveLength(2);
+    release();
+    await external;
+    await expect.poll(() => calls).toBe(3);
+    service.stop(id);
+    expect((await finished(service, id)).status).toBe('cancelled');
+  } finally {
+    release();
+    await external;
+    await service.stopAll();
+    await agents.stopAll();
+  }
+});

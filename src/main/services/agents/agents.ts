@@ -24,6 +24,17 @@ const actionSchema = z.object({
   final: z.string().max(50000).optional(),
 });
 export class AgentService {
+  private externalSlots = 0;
+  async withExternalSlot<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
+    while (this.controllers.size + this.externalSlots >= 3) await delay(50, undefined, { signal });
+    signal.throwIfAborted();
+    this.externalSlots++;
+    try {
+      return await work();
+    } finally {
+      this.externalSlots--;
+    }
+  }
   private controllers = new Map<string, AbortController>();
   private jobs = new Map<string, Promise<void>>();
   private history = new Map<string, RunState>();
@@ -90,7 +101,7 @@ export class AgentService {
     observe: (event: AppEvent) => void,
   ): Promise<RunState> {
     const agent = await this.library.get('agents', input.agentId);
-    while (this.controllers.size >= 3) await delay(50, undefined, { signal });
+    while (this.controllers.size + this.externalSlots >= 3) await delay(50, undefined, { signal });
     signal.throwIfAborted();
     const id = this.start(agent, input.task, input.project ?? '', observe);
     const stop = () => this.stop(id);
@@ -110,7 +121,8 @@ export class AgentService {
     observe?: (event: AppEvent) => void,
     selected?: SelectedProvider,
   ) {
-    if (this.controllers.size >= 3) throw new Error('At most three agents may run at once');
+    if (this.controllers.size + this.externalSlots >= 3)
+      throw new Error('At most three agents may run at once');
     if (!agent.enabled) throw new Error('Enable this agent first');
     if (this.providers && !selected && (!agent.providerId || !agent.model))
       throw new Error('Select and save a provider and model for this agent.');

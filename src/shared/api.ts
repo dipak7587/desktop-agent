@@ -1,3 +1,4 @@
+import type { CrewToolTest, CrewProject, CrewRun, CrewRunInput, CrewRuntime } from './crewai';
 import type { AgentWorkflow, WorkflowRun, WorkflowRunInput } from './workflows';
 import type {
   Settings,
@@ -14,6 +15,19 @@ import type {
   ChatInput,
 } from './types';
 export interface WorkspaceAPI {
+  crewai: {
+    list(): Promise<CrewProject[]>;
+    save(project: CrewProject): Promise<CrewProject>;
+    duplicate(id: string): Promise<CrewProject>;
+    remove(id: string): Promise<void>;
+    check(): Promise<CrewRuntime>;
+    testTool(input: CrewToolTest): Promise<string>;
+    run(input: CrewRunInput): Promise<string>;
+    stop(id: string): Promise<void>;
+    runs(): Promise<CrewRun[]>;
+    approve(id: string, allow: boolean): Promise<void>;
+    export(id: string): Promise<string | null>;
+  };
   workflows: {
     list(): Promise<AgentWorkflow[]>;
     save(workflow: AgentWorkflow): Promise<AgentWorkflow>;
