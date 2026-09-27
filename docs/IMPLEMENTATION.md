@@ -116,6 +116,9 @@ its setup waits for automatic model discovery before indexing the fixture.
 
 ## LangChain/LangGraph/Deep Agents migration (2026-09)
 
+Historical implementation record: the bridge and JSON-action loop described below have
+been replaced. See [LangChain migration](LANGCHAIN_MIGRATION.md) for the current implementation.
+
 Implemented the AI-stack migration specified in
 `docs/Existing Electron App Migration Prompt — No Directory Restructure.md` by modifying the
 existing services in place. No directory restructure; no existing file was renamed.
@@ -222,3 +225,15 @@ pre-existing `library.test.ts` mkdir-race flake failing. New `tests/langraph-int
 covers threaded chat turns through the SQLite checkpointer (distinct checkpoints per turn,
 `deleteThread`), the plan/act graph (completion, iteration cap, tool-run persistence) and
 activity-event visibility through the graph path.
+
+
+## Native LangChain agent runtime (2026-09-27)
+
+Replaced the JSON plan/act loop with `createAgent`, removed the production custom model
+bridge and chat stream parsers, and adopted official LangChain provider integrations.
+Both standard and Deep engines share native capability tools, run lifecycle, model-turn
+limits and SQLite checkpoints. See [the migration report](LANGCHAIN_MIGRATION.md) for
+findings, implementation boundaries and behavior changes.
+
+Typecheck, lint, build and 140 service tests passed. Electron tests: 6 passed, 4 live-model
+cases skipped. Live inference and packaged releases were not revalidated.

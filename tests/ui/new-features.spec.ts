@@ -95,10 +95,9 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     await page.getByRole('button', { name: 'Tools', exact: true }).click();
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('Reviewer');
-    await expect(page.getByRole('alert')).toContainText('Writer');
+    await expect(page.getByRole('dialog')).toContainText('Reviewer');
+    await expect(page.getByRole('dialog')).toContainText('Writer');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await page.getByRole('button', { name: 'Dismiss error' }).click();
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
     await page.getByLabel('Message', { exact: true }).fill('/agent Reviewer');
     await expect(page.getByText('No folder selected', { exact: true })).toBeVisible();

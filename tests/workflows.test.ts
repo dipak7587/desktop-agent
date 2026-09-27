@@ -1,3 +1,4 @@
+import { useProviderBridge } from './fixtures/scripted-provider';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -244,9 +245,10 @@ it('uses the actual bounded agent runtime, preserves individual history, and run
   await definitions.save(definition('sequential'));
   const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 3 });
   const llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
   vi.spyOn(llm, 'complete').mockResolvedValue({
     role: 'assistant',
-    content: JSON.stringify({ final: 'Reviewed' }),
+    content: 'Reviewed',
   });
   const mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
   const kb = new KnowledgeService(
@@ -344,6 +346,7 @@ it('queues a fourth child behind the real three-agent limit and cancels queued c
   await definitions.save(definition('parallel'));
   const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 3 });
   const llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
   let calls = 0;
   vi.spyOn(llm, 'complete').mockImplementation(async (request) => {
     calls++;
@@ -352,7 +355,7 @@ it('queues a fourth child behind the real three-agent limit and cancels queued c
         once: true,
       }),
     );
-    return { role: 'assistant', content: '{"final":"done"}' };
+    return { role: 'assistant', content: 'done' };
   });
   const mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
   const kb = new KnowledgeService(

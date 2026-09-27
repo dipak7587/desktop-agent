@@ -75,10 +75,15 @@ new model-initiated actions with `CapabilityRouter`; do not execute them directl
 model loop. Keep deterministic restrictions/permissions separate from model relevance judgments.
 See [Capability decisions](CAPABILITIES.md) and `tests/capabilities.test.ts`.
 
-AI framework dependencies (`langchain`, `@langchain/core`, `@langchain/langgraph`,
-`@langchain/langgraph-checkpoint`, `deepagents`, `langsmith`) sit underneath the existing
-`LLMProvider` adapters; `services/ai/langchain-model.ts` is the single bridge. Do not import
-provider-specific LangChain packages or call LangChain models from the renderer; add new
-capabilities through the existing adapters, `CheckpointDatabase` (`database/checkpoints.ts`)
-for persisted graph state, and `MemoryService` (`services/ai/memory.ts`) for long-term memory.
-See [Memory](MEMORY.md) and the migration report in [Implementation](IMPLEMENTATION.md).
+AI orchestration uses `langchain`, `@langchain/core`, `@langchain/langgraph`,
+`@langchain/langgraph-checkpoint` and `deepagents`. Add model inference integrations in
+`services/ai/native-models.ts` using official provider packages; do not implement another
+HTTP chat protocol or model/tool loop. `LLMProvider.createChatModel` is the typed provider
+entry point. The scripted model in `tests/fixtures` is test-only. Keep model discovery,
+settings, credentials and guarded transport in main services; no framework imports belong
+in the renderer.
+
+Register agent capabilities with real JSON argument schemas via `CapabilityRouter`.
+`services/ai/agent-graph.ts` turns them into LangChain tools for both engines. Keep workspace
+validation and approval logic in privileged executors. Use `CheckpointDatabase` for graph
+state and `MemoryService` for scoped long-term memory. See [LangChain migration](LANGCHAIN_MIGRATION.md).

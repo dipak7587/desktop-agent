@@ -1,3 +1,4 @@
+import { useProviderBridge, toolReply } from './fixtures/scripted-provider';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -153,6 +154,7 @@ it('persists folderless agent runs, uses configured iterations and never publish
   );
   expect(resolveSlash('/agent Agent', [agent]).query).toBe('Run your configured instructions.');
   const llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
   vi.spyOn(llm, 'chat').mockImplementation(async function* () {
     yield {
       message: {
@@ -167,15 +169,8 @@ it('persists folderless agent runs, uses configured iterations and never publish
   });
   const complete = vi
     .spyOn(llm, 'complete')
-    .mockResolvedValueOnce({
-      role: 'assistant',
-      content: JSON.stringify({
-        plan: 'PRIVATE REASONING',
-        tool: 'custom:double',
-        args: { value: 4 },
-      }),
-    })
-    .mockResolvedValue({ role: 'assistant', content: '{"final":"Done"}' });
+    .mockResolvedValueOnce(toolReply('custom:double', { value: 4 }))
+    .mockResolvedValue({ role: 'assistant', content: 'Done' });
   const knowledge = new KnowledgeService(
     root,
     settings,
@@ -225,7 +220,7 @@ it('persists folderless agent runs, uses configured iterations and never publish
       tools,
       db,
     );
-    complete.mockResolvedValue({ role: 'assistant', content: '{}' });
+    complete.mockResolvedValue(toolReply('unavailable'));
     const limitedId = await limited.run({ agentId: 'agent', task: 'Task' });
     await expect
       .poll(() => limited.runs().find((r) => r.id === limitedId)?.status)

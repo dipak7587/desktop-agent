@@ -100,9 +100,12 @@ permissions, relevance checks and decision traces.
 
 The LangChain/LangGraph/Deep Agents layer adds no new privilege surface. Framework code
 runs only in the main process and reaches models, tools, MCP and credentials through the
-existing adapters and permission checks; the renderer still instantiates nothing. Deep
-Agents mode exposes no shell or broad filesystem access beyond the existing workspace
-tools, and its approvals flow through the standard `agents:approve` IPC. Long-term memory
+official model integrations and application permission checks; the renderer still instantiates nothing. Deep
+Agents mode hides and rejects its default filesystem, shell and delegation tools; only
+registered application capabilities and internal todo planning are exposed, and its approvals flow through the standard `agents:approve` IPC. Long-term memory
 (`database/memory.sqlite`) refuses secret-shaped values before storing, is never part of
 exports, and is retrieved only as bounded, untrusted-marked prompt context. LangGraph
-checkpoints persist only in `database/checkpoints.sqlite` and contain no credentials.
+checkpoints persist only in `database/checkpoints.sqlite`. Model configuration and credential
+handles are not graph state. Checkpoints do contain conversation/task content and tool
+messages and are not encrypted at rest; they are not included in portable exports. Removing
+an agent history entry also deletes its checkpoint thread.

@@ -56,14 +56,15 @@ Inspect relevant files, explain findings, and state which checks you ran.
 
 The model name is illustrative; choose an installed model. The runtime considers eligible
 capabilities and loads skills or retrieves knowledge only after a relevance decision. It sends
-a bounded history to the selected provider adapter. Each turn returns one
-validated JSON action or a final report. Only capabilities permitted by the agent's mode, type switches, selection and permissions can execute. Tools
+a bounded history to the selected provider adapter. LangChain `createAgent` manages native tool calls and final answers. A model turn can
+request multiple tools, which the application executes in order. Only capabilities permitted by the agent's mode, type switches, selection and permissions can execute. Tools
 return their real output; errors are fed back so the model can recover. A maximum iteration
 count, a 15-minute deadline and cancellation bound every run.
 
 Filesystem read returns content plus a SHA-256 hash. Write/edit checks that hash, displays a
 unified diff, waits for approval by default, checks again, writes atomically and verifies the
-content. A fresh run reads its explicit definition, skills, knowledge and any selected project
+content. Native tool use requires a tool-capable model; there is no legacy JSON-action fallback.
+A fresh run reads its explicit definition, skills, knowledge and any selected project
 files; previous execution history is not automatically included in its model context.
 
 ## Optional folder context
@@ -92,7 +93,7 @@ confirmation modal and names the affected agents.
 
 **Maximum execution iterations** accepts 1–500 and is saved as `maxIterations`. New agents
 start with the global Settings value. Older definitions without this field inherit the global
-limit when run. An iteration is one model turn, including invalid actions and the final report;
+limit when run. An iteration is one model turn, including tool requests and the final report;
 it is not a count of tool calls. Runs stop on completion, the limit, a fatal error, cancellation,
 or the 15-minute deadline. A reached limit has its own status rather than being reported as success.
 There is no separate agent-generation workflow or generation-iteration setting in this release.
@@ -118,16 +119,17 @@ Read [SECURITY.md](SECURITY.md) before enabling automatic approvals, custom Tool
 
 ## Deep Agents engine (optional)
 
-Settings → General → **Agent engine** can switch agent runs to Deep Agents
-(`deepAgentMode: 'deep'`). The agent's existing definition — instructions, saved
-provider/model, capability permissions, iteration limit — is translated at runtime; the
-filesystem/project tools still execute through the same workspace guards, hash checks and
-approval flow, and every run keeps the 15-minute deadline and cancellation. This mode
-requires a selected project folder; without one, agents use the classic loop. Deep Agents
-adds planning todos, workspace file tools and subagent delegation on top of the existing
-permissions rather than beside them. See [Memory](MEMORY.md) for long-term agent memory
-and [Capability decisions](CAPABILITIES.md) for permission routing, which both engines
-share.
+Settings → General → **Agent engine** selects the standard LangChain `createAgent`
+runtime (stored as `classic` for compatibility) or Deep Agents (`deepAgentMode: 'deep'`).
+Both use the agent's saved provider/model, selected capabilities, approvals, iteration
+limit, 15-minute deadline, cancellation and execution history. Folderless runs work in
+both engines; filesystem/project tools require a selected folder.
+
+Deep mode adds LangChain todo planning. All workspace, custom Tool, MCP, skill and
+knowledge operations use the same guarded native tools as standard mode. The harness's
+default filesystem/shell/delegation tools are unavailable because they do not implement
+this application's capability boundary. Use saved Workflows for multi-agent execution.
+See [LangChain migration](LANGCHAIN_MIGRATION.md) and [Capability decisions](CAPABILITIES.md).
 
 ## Repository changes
 

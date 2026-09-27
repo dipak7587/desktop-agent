@@ -1,3 +1,4 @@
+import { useProviderBridge, toolReply } from './fixtures/scripted-provider';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,6 +31,7 @@ beforeEach(async () => {
   db = new ChatDatabase(join(root, 'chat.sqlite'));
   library = new LibraryService(root);
   llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
   vi.spyOn(llm, 'chat').mockImplementation(async function* () {
     yield {
       message: {
@@ -188,17 +190,11 @@ it('restricts MCP calls to the chosen server and waits for approval before execu
   const call = await setupMCP();
   const complete = vi
     .spyOn(llm, 'complete')
+    .mockResolvedValueOnce(toolReply('mcp:other:echo', {}))
+    .mockResolvedValueOnce(toolReply('mcp:server:echo', { message: 'hello' }))
     .mockResolvedValueOnce({
       role: 'assistant',
-      content: JSON.stringify({ tool: 'mcp:other:echo', args: {} }),
-    })
-    .mockResolvedValueOnce({
-      role: 'assistant',
-      content: JSON.stringify({ tool: 'mcp:server:echo', args: { message: 'hello' } }),
-    })
-    .mockResolvedValueOnce({
-      role: 'assistant',
-      content: JSON.stringify({ final: 'Used the tool result.' }),
+      content: 'Used the tool result.',
     });
   const request = input();
   await chat.send({ ...request, command: { kind: 'mcp', id: 'server' } });
@@ -229,13 +225,10 @@ it.each(['reject', 'stop'] as const)(
   async (action) => {
     const call = await setupMCP();
     vi.spyOn(llm, 'complete')
-      .mockResolvedValueOnce({
-        role: 'assistant',
-        content: JSON.stringify({ tool: 'mcp:server:echo' }),
-      })
+      .mockResolvedValueOnce(toolReply('mcp:server:echo', {}))
       .mockResolvedValue({
         role: 'assistant',
-        content: JSON.stringify({ final: 'No operation performed.' }),
+        content: 'No operation performed.',
       });
     const request = input();
     await chat.send({ ...request, command: { kind: 'mcp', id: 'server' } });
@@ -262,16 +255,16 @@ it('runs an agent from chat with its configured model and applies a reviewed fil
   );
   const complete = vi
     .spyOn(llm, 'complete')
-    .mockResolvedValueOnce({
-      role: 'assistant',
-      content: JSON.stringify({
-        tool: 'filesystem.write',
-        args: { path: 'hello.txt', content: 'hello', expectedHash: 'missing' },
+    .mockResolvedValueOnce(
+      toolReply('filesystem.write', {
+        path: 'hello.txt',
+        content: 'hello',
+        expectedHash: 'missing',
       }),
-    })
+    )
     .mockResolvedValueOnce({
       role: 'assistant',
-      content: JSON.stringify({ final: 'Created hello.txt' }),
+      content: 'Created hello.txt',
     });
   const request = input();
   await chat.send({

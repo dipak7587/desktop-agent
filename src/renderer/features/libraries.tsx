@@ -12,7 +12,6 @@ import {
   Upload,
   Play,
   Wrench,
-  Square,
   ChevronDown,
   X,
   CircleStop,

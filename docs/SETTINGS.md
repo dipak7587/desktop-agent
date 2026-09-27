@@ -85,7 +85,6 @@ permissions, relevance checks and decision traces.
   capture (`memoryAutomatic`); explicit “Remember that …” requests always work
   while memory is enabled. Automatic capture never stores secret-shaped
   content.
-- **Agent engine** chooses between the classic JSON-action loop (default) and
-  Deep Agents autonomous execution for agents run with a selected project
-  folder (`deepAgentMode`). Approvals, permissions and execution limits apply
+- **Agent engine** chooses between LangChain `createAgent` (default, stored as `classic`) and
+  Deep Agents with todo planning (`deepAgentMode`). Approvals, permissions and execution limits apply
   identically in both engines.

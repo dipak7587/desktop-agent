@@ -16,7 +16,7 @@ import {
   CapabilityRouter,
   modelEvaluator,
 } from '../agents/capabilities';
-import { AppChatModel } from './langchain-model';
+import { createChatModel } from './langchain-model';
 
 /**
  * LangGraph chat turn graph.
@@ -27,7 +27,7 @@ import { AppChatModel } from './langchain-model';
  * conversation id is the LangGraph thread_id, so every turn leaves a durable
  * checkpoint in checkpoints.sqlite while messages keep flowing through the
  * existing ChatDatabase. Provider traffic flows through the shared
- * AppChatModel bridge; nodes never talk to provider adapters directly.
+ * createChatModel bridge; nodes never talk to provider adapters directly.
  */
 export interface ChatGraphDeps {
   db: ChatDatabase;
@@ -129,13 +129,15 @@ export class ChatTurnGraph {
   }
 
   /** Build (once) and run the turn graph for one chat exchange. */
-  async run(input: {
-    id: string;
-    question: string;
-    knowledge: string;
-    model: string;
-    history: ChatMessage[];
-  } & ChatTurnRuntime): Promise<{
+  async run(
+    input: {
+      id: string;
+      question: string;
+      knowledge: string;
+      model: string;
+      history: ChatMessage[];
+    } & ChatTurnRuntime,
+  ): Promise<{
     content: string;
     sources: SearchResult[];
     activity: AppEvent[];
@@ -196,10 +198,7 @@ export class ChatTurnGraph {
     }
 
     const capabilityDecisionEngine = new CapabilityDecisionEngine(
-      modelEvaluator(
-        runtime?.selected?.llm ?? this.deps.llm,
-        state.model,
-      ),
+      modelEvaluator(runtime?.selected?.llm ?? this.deps.llm, state.model),
     );
     const router = new CapabilityRouter(
       capabilityDecisionEngine,
@@ -211,10 +210,12 @@ export class ChatTurnGraph {
       {
         signal,
         selectedKnowledge: state.knowledge === 'none' ? undefined : state.knowledge,
-        conversation: (state.history
-          .slice(-8)
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n') as string).slice(-12000),
+        conversation: (
+          state.history
+            .slice(-8)
+            .map((m) => `${m.role}: ${m.content}`)
+            .join('\n') as string
+        ).slice(-12000),
       },
       async () => false,
       (decision, called) => {
@@ -253,15 +254,20 @@ export class ChatTurnGraph {
   }
 
   /** Retrieve knowledge passages for the turn via the existing search bridge. */
-  private async knowledgeNode(state: ChatTurnState, config: ChatTurnConfig): Promise<ChatTurnUpdate> {
+  private async knowledgeNode(
+    state: ChatTurnState,
+    config: ChatTurnConfig,
+  ): Promise<ChatTurnUpdate> {
     if (state.knowledge === 'none') return {};
     const id = `knowledge:${state.knowledge}`;
-    const selectedSources = this.deps.knowledgeSources?.().filter(
-      (source) =>
-        state.knowledge === 'all' ||
-        source.id === state.knowledge ||
-        state.knowledge === `collection:${source.collection}`,
-    );
+    const selectedSources = this.deps
+      .knowledgeSources?.()
+      .filter(
+        (source) =>
+          state.knowledge === 'all' ||
+          source.id === state.knowledge ||
+          state.knowledge === `collection:${source.collection}`,
+      );
     const ready = selectedSources?.filter((source) => source.status === 'ready');
     const name =
       state.knowledge === 'all'
@@ -289,7 +295,7 @@ export class ChatTurnGraph {
     // A retrieval activity event is only emitted when a search actually ran
     // (blocked decisions stay event-free, matching the previous behavior).
     const activity: AppEvent[] = [];
-    if (sources.length || !result || (typeof result !== 'object' || Array.isArray(result))) {
+    if (sources.length || !result || typeof result !== 'object' || Array.isArray(result)) {
       const event: AppEvent = {
         type: 'chat',
         id: state.id,
@@ -321,10 +327,7 @@ export class ChatTurnGraph {
     const id = `knowledge:${state.knowledge}`;
     const router = new CapabilityRouter(
       new CapabilityDecisionEngine(
-        modelEvaluator(
-          runtime?.selected?.llm ?? this.deps.llm,
-          state.model,
-        ),
+        modelEvaluator(runtime?.selected?.llm ?? this.deps.llm, state.model),
       ),
       state.question,
       capabilityConfigSchema.parse({
@@ -334,10 +337,12 @@ export class ChatTurnGraph {
       {
         signal: runtime?.signal ?? new AbortController().signal,
         selectedKnowledge: state.knowledge,
-        conversation: (state.history
-          .slice(-8)
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n') as string).slice(-12000),
+        conversation: (
+          state.history
+            .slice(-8)
+            .map((m) => `${m.role}: ${m.content}`)
+            .join('\n') as string
+        ).slice(-12000),
       },
       async () => false,
       (decision, called) => {
@@ -387,7 +392,7 @@ export class ChatTurnGraph {
     return { memoryEntries: entries ?? [] };
   }
 
-  /** Stream the answer through AppChatModel, persisting tokens as they arrive. */
+  /** Stream the answer through createChatModel, persisting tokens as they arrive. */
   private async modelNode(state: ChatTurnState, config: ChatTurnConfig): Promise<ChatTurnUpdate> {
     const runtime = config.configurable?.runtime;
     // Command executions bypass the model entirely: the executor's result is
@@ -406,10 +411,12 @@ export class ChatTurnGraph {
     const messages: BaseMessage[] = [
       new SystemMessage(system),
       ...recent.map((m) =>
-        m.role === 'assistant' ? new AIMessage({ content: m.content }) : new HumanMessage(m.content),
+        m.role === 'assistant'
+          ? new AIMessage({ content: m.content })
+          : new HumanMessage(m.content),
       ),
     ];
-    const model = new AppChatModel({
+    const model = createChatModel({
       provider: runtime?.selected?.llm ?? this.deps.llm,
       model: state.model,
     });
@@ -419,7 +426,7 @@ export class ChatTurnGraph {
     });
     let content = '';
     for await (const chunk of stream) {
-      const token = typeof chunk.content === 'string' ? chunk.content : '';
+      const token = chunk.text;
       if (!token) continue;
       content += token;
       onToken?.(token);

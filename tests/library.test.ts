@@ -8,7 +8,7 @@ it('round trips saved text and skills as portable markdown, with edits and delet
   const root = await mkdtemp(join(tmpdir(), 'library-'));
   const lib = new LibraryService(root);
   for (const kind of ['saved-text', 'skills', 'agents', 'mcp'] as const) {
-    await mkdir(join(root, kind));
+    await mkdir(join(root, kind), { recursive: true });
     const item = librarySchema.parse({
       id: 'example',
       name: 'Example',

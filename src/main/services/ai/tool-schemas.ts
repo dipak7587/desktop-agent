@@ -1,0 +1,36 @@
+const text = { type: 'string' };
+const object = (properties: Record<string, unknown>, required: string[] = []) => ({
+  type: 'object',
+  properties,
+  required,
+  additionalProperties: false,
+});
+/** Native tool argument schemas; privileged executors still validate inputs at execution. */
+export const workspaceToolSchemas: Record<string, Record<string, unknown>> = {
+  'filesystem.read': object({ path: text }, ['path']),
+  'filesystem.list': object({ path: text }),
+  'filesystem.exists': object({ path: text }, ['path']),
+  'filesystem.search': object({ query: text }, ['query']),
+  'filesystem.write': object({ path: text, content: text, expectedHash: text }, [
+    'path',
+    'content',
+    'expectedHash',
+  ]),
+  'filesystem.edit': object({ path: text, find: text, replace: text, expectedHash: text }, [
+    'path',
+    'find',
+    'replace',
+    'expectedHash',
+  ]),
+  'project.detect': object({}),
+  'git.status': object({}),
+  'git.diff': object({}),
+  'git.log': object({}),
+  'shell.execute': object(
+    {
+      command: { type: 'string', enum: ['pnpm', 'npm', 'yarn'] },
+      args: { type: 'array', items: text },
+    },
+    ['command', 'args'],
+  ),
+};

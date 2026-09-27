@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { MemoryService } from '../src/main/services/ai/memory';
 import { CheckpointDatabase } from '../src/main/database/checkpoints';
 import { settingsSchema } from '../src/shared/schemas';
-import { AppChatModel } from '../src/main/services/ai/langchain-model';
+import { ScriptedChatModel } from './fixtures/scripted-model';
+import { useProviderBridge } from './fixtures/scripted-provider';
 import type { LLMProvider, ChatChunk } from '../src/main/services/ollama/provider';
 
 const roots: string[] = [];
@@ -23,14 +24,14 @@ function memoryRoot() {
 
 function fakeLLM(responses: string[] = ['{}']) {
   let index = 0;
-  return {
+  return useProviderBridge({
     chat: async function* (request: { messages: { role: string; content: string }[] }) {
       const response = responses[Math.min(index, responses.length - 1)];
       index += 1;
       yield { message: { content: response } } as ChatChunk;
       void request;
     },
-  } as unknown as LLMProvider;
+  } as unknown as LLMProvider);
 }
 
 const settings = () => settingsSchema.parse({});
@@ -77,11 +78,9 @@ it('captures explicit remember requests without a model call and respects the ki
   const root = await memoryRoot();
   const llm = fakeLLM(['{"remember":"should not be stored"}']);
   const memory = new MemoryService(root, settings, llm, () => 'model');
-  await memory.maybeCapture(
-    'Remember that I prefer short answers',
-    'Sure.',
-    { conversationId: 'c1' },
-  );
+  await memory.maybeCapture('Remember that I prefer short answers', 'Sure.', {
+    conversationId: 'c1',
+  });
   expect(memory.list('conversation', 'c1').at(-1)?.content).toContain('prefer short answers');
   expect(memory.list().every((m) => m.source === 'explicit')).toBe(true);
   const disabled = new MemoryService(
@@ -117,7 +116,12 @@ it('persists and deletes LangGraph checkpoints through SQLite', async () => {
   expect(tuple?.checkpoint.id).toBe('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
   expect(tuple?.config.configurable?.thread_id).toBe('thread-1');
   await saver.putWrites(
-    { configurable: { thread_id: 'thread-1', checkpoint_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' } },
+    {
+      configurable: {
+        thread_id: 'thread-1',
+        checkpoint_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      },
+    },
     [['messages', { value: 1 }]],
     'task-1',
   );
@@ -140,11 +144,11 @@ it('maps adapter tool definitions and normalizes provider errors into the existi
       yield { message: { content: 'Hi' } } as ChatChunk;
     },
   } as unknown as LLMProvider;
-  const model = new AppChatModel({ provider, model: 'm' });
+  const model = new ScriptedChatModel({ provider, model: 'm' });
   const bound = model.bindTools([
     { name: 'get_weather', description: 'Weather', schema: { type: 'object' } },
   ]);
   const result = await bound.invoke([{ role: 'user', content: 'Hi' }], {});
   expect(String(result.content)).toBe('Hi');
-  expect((bound as AppChatModel).lc_namespace).toEqual(['localai', 'chat']);
+  expect((bound as ScriptedChatModel).lc_namespace).toEqual(['tests', 'scripted']);
 });

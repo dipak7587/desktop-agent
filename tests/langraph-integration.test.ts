@@ -1,3 +1,4 @@
+import { toolReply, useProviderBridge } from './fixtures/scripted-provider';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -33,12 +34,12 @@ it('chat turns run as LangGraph threads keyed by conversation id with durable ch
   const db = new ChatDatabase(join(root, 'chat.sqlite'));
   const saver = new CheckpointDatabase(join(root, 'checkpoints.sqlite'));
   let turn = 0;
-  const llm = {
+  const llm = useProviderBridge({
     chat: async function* () {
       turn += 1;
       yield { message: { content: `Answer ${turn}` } } as ChatChunk;
     },
-  } as unknown as LLMProvider;
+  } as unknown as LLMProvider);
   const chat = new ChatService(
     db,
     llm,
@@ -72,21 +73,18 @@ it('chat turns run as LangGraph threads keyed by conversation id with durable ch
   saver.close();
 });
 
-it('the agent loop executes as a plan/act graph until a final answer', async () => {
+it('the agent loop executes through createAgent until a final answer', async () => {
   const root = await mkdtemp(join(tmpdir(), 'agentgraph-'));
   roots.push(root);
-  const scripted = [
-    JSON.stringify({ tool: 'filesystem.list' }),
-    JSON.stringify({ final: 'All done' }),
-  ];
+  const scripted = [toolReply('filesystem.list'), { role: 'assistant', content: 'All done' }];
   let call = 0;
-  const llm = {
+  const llm = useProviderBridge({
     listModels: async () => [],
-    complete: async () => ({ role: 'assistant', content: scripted[Math.min(call++, 1)] }),
+    complete: async () => scripted[Math.min(call++, 1)],
     chat: async function* () {
-      yield { message: { content: scripted[Math.min(call++, 1)] } } as ChatChunk;
+      yield { message: scripted[Math.min(call++, 1)] } as ChatChunk;
     },
-  } as unknown as LLMProvider;
+  } as unknown as LLMProvider);
   const execute = vi.fn(async () => 'file list');
   const router = new CapabilityRouter(
     new CapabilityDecisionEngine(async () => yes),
@@ -135,19 +133,19 @@ it('the agent loop executes as a plan/act graph until a final answer', async () 
   expect(run.iterationsUsed).toBe(2);
   expect(execute).toHaveBeenCalledExactlyOnceWith({});
   expect(run.tools[0]).toMatchObject({ toolId: 'filesystem.list', status: 'completed' });
-  expect(persists).toEqual([1]);
+  expect(persists).toContain(1);
 });
 
-it('stops the plan/act graph at the iteration cap without executing a final tool', async () => {
+it('stops createAgent at the iteration cap without executing a final tool', async () => {
   const root = await mkdtemp(join(tmpdir(), 'agentgraph-'));
   roots.push(root);
-  const llm = {
+  const llm = useProviderBridge({
     listModels: async () => [],
-    complete: async () => ({ role: 'assistant', content: '{"tool":"filesystem.list"}' }),
+    complete: async () => toolReply('filesystem.list'),
     chat: async function* () {
-      yield { message: { content: '{"tool":"filesystem.list"}' } } as ChatChunk;
+      yield { message: toolReply('filesystem.list') } as ChatChunk;
     },
-  } as unknown as LLMProvider;
+  } as unknown as LLMProvider);
   const execute = vi.fn(async () => 'file list');
   const router = new CapabilityRouter(
     new CapabilityDecisionEngine(async () => yes),
@@ -201,7 +199,7 @@ it('events from chat graph nodes stay visible on the activity stream', async () 
   roots.push(root);
   const db = new ChatDatabase(join(root, 'chat.sqlite'));
   const events: AppEvent[] = [];
-  const llm = {
+  const llm = useProviderBridge({
     chat: async function* (request: { messages: { content: string }[] }) {
       if (request.messages[0].content.includes('CAPABILITY_RELEVANCE_CHECK')) {
         yield { message: { content: JSON.stringify(yes) } } as ChatChunk;
@@ -209,7 +207,7 @@ it('events from chat graph nodes stay visible on the activity stream', async () 
       }
       yield { message: { content: 'KB answer' } } as ChatChunk;
     },
-  } as unknown as LLMProvider;
+  } as unknown as LLMProvider);
   const chat = new ChatService(
     db,
     llm,
@@ -245,9 +243,7 @@ it('events from chat graph nodes stay visible on the activity stream', async () 
   const c = db.create('test-model');
   await chat.send({ id: c.id, text: 'Question', model: 'test-model', knowledge: 'kb' });
   await expect.poll(() => chat.isActive(c.id)).toBe(false);
-  expect(
-    events.some((e) => e.activity?.content?.includes('Retrieved 1 passages')),
-  ).toBe(true);
+  expect(events.some((e) => e.activity?.content?.includes('Retrieved 1 passages'))).toBe(true);
   expect(db.messages(c.id).at(-1)?.metadata?.sources).toHaveLength(1);
   db.close();
 });

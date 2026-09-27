@@ -22,9 +22,7 @@ test('provider selection, historical badges, agent overrides, and restart persis
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const body = JSON.parse(Buffer.concat(chunks).toString());
-      const answer = body.messages.some((m: { content: string }) => m.content.includes('JSON'))
-        ? '{"final":"Agent answer"}'
-        : `Answer from ${body.model}`;
+      const answer = body.stream === false ? 'Agent answer' : `Answer from ${body.model}`;
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.end(
         JSON.stringify({ message: { role: 'assistant', content: answer }, done: true }) + '\n',

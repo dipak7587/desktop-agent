@@ -24,7 +24,6 @@ import { KnowledgeService } from './services/rag/knowledge';
 import { SecretStore } from './security/secrets';
 import { MCPService } from './services/mcp/mcp';
 import { AgentService } from './services/agents/agents';
-import { AgentTools } from './services/agents/tools';
 import { registerIPC, type Services } from './ipc/register';
 import type { AppEvent } from '../shared/types';
 let window: BrowserWindow | null = null;
@@ -148,7 +147,8 @@ app
       runDb,
       (text) => secrets.redact(text),
       providers,
-      new DeepAgentEngine(llm, new AgentTools(getSettings), getSettings, checkpoints),
+      new DeepAgentEngine(),
+      checkpoints,
     );
     const workflowDb = new WorkflowRunDatabase(join(root, 'database', 'workflow-runs.sqlite'));
     const workflows = new WorkflowService(

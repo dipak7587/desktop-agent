@@ -36,25 +36,42 @@ vectors live in `rag/lancedb`. Settings and OS-encrypted credentials are separat
 
 ## AI stack layers
 
-Model calls flow through the existing `LLMProvider` adapters
-(`services/ollama/provider.ts`). `AppChatModel` (`services/ai/langchain-model.ts`) is a
-LangChain chat model over that abstraction, so LangChain, LangGraph and Deep Agents
-invoke the same configured providers, models and main-process credentials as Chat.
-Provider-specific behavior stays inside the adapters; capability-driven configuration
-remains in Settings.
+`services/ai/langchain-model.ts` resolves official LangChain chat models from captured
+provider settings. `services/ai/native-models.ts` configures `ChatOllama`, `ChatOpenAI`
+(OpenAI/OpenRouter/Groq/custom compatible endpoints), `ChatAnthropic`, and `ChatGoogle`.
+These integrations own inference protocols, streaming, tool-call IDs and message conversion.
+`services/ollama/provider.ts` retains model discovery, embedding adapters and the guarded
+HTTP transport; credentials and settings remain main-process concerns. No custom
+`BaseChatModel` implementation ships in the application.
 
-LangGraph is the execution engine: chat turns run as a compiled `StateGraph`
-(`services/ai/chat-graph.ts`; capability routing → knowledge retrieval → memory →
-streaming model → persistence) with the conversation id as the `thread_id`, and the
-classic agent loop runs as a `plan ⇄ act` graph (`services/ai/agent-graph.ts`) over the
-existing capability router and approval flow. Thread state persists in
-`database/checkpoints.sqlite` through `CheckpointDatabase`. Opted-in agents with a
-selected folder can run through Deep Agents (`services/ai/deep-agents.ts`), which maps
-existing agent definitions and permissions onto the harness and executes every tool via
-the existing `AgentTools` permission and approval layer. Long-term memory
-(`services/ai/memory.ts`, [Memory](MEMORY.md)) is scoped, bounded and retrieved by the
-chat graph before prompts; it is distinct from RAG and from SQLite chat history. No AI
-framework code runs in the renderer.
+The default agent runtime in `services/ai/agent-graph.ts` calls LangChain `createAgent`.
+LangChain owns the model/tool loop, argument validation, tool-result messages and graph
+state. `modelCallLimitMiddleware` enforces the configured number of agent model turns;
+application middleware supplies progress, bounded context and the capability boundary.
+Native tools carry schemas for workspace operations, custom Tools, MCP, skills and
+knowledge. Provider-safe tool names map deterministically to existing capability IDs.
+Execution still passes through `CapabilityRouter` and `AgentTools` for eligibility,
+relevance, approvals, hash checks, cancellation and redacted activity records.
+
+Deep mode calls `createDeepAgent` using the same captured model, capability tools,
+model-turn limit, lifecycle middleware and checkpointer. It adds LangChain todo planning.
+Default harness filesystem/shell/delegation tools are hidden and rejected: they cannot
+bypass the application's capability selections or execution limits. Multi-agent work
+continues through the configured Workflows feature. Both engines support folderless
+runs; only workspace capabilities require a selected project.
+
+Normal Chat remains a compiled LangGraph `StateGraph` (`services/ai/chat-graph.ts`):
+capability preparation → retrieval → memory → official model streaming → persistence.
+This application workflow does not need an autonomous tool loop. Chat uses the conversation
+ID as its checkpoint thread; agents use a fresh run ID. Both persist through
+`CheckpointDatabase` in `database/checkpoints.sqlite`. Deleting agent history removes
+its corresponding checkpoint thread. Interrupted runs are cancelled on restart; automatic
+replay of approved side effects is not implemented.
+
+Long-term memory (`services/ai/memory.ts`, [Memory](MEMORY.md)) remains scoped, bounded
+application data, separate from RAG and SQLite chat history. Model-driven relevance and
+memory extraction use LangChain models and schema parsers. No AI framework runs in the
+renderer. See [LangChain migration](LANGCHAIN_MIGRATION.md) for the analysis and boundaries.
 
 ## Boundaries
 

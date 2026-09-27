@@ -1,3 +1,4 @@
+import { useProviderBridge, toolReply } from './fixtures/scripted-provider';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -214,7 +215,7 @@ it('model evaluator sends the policy, request and bounded context and validates 
   const chat = vi.fn(async function* () {
     yield { message: { content: JSON.stringify(no) } };
   });
-  const evaluate = modelEvaluator({ chat, listModels: async () => [] }, 'test');
+  const evaluate = modelEvaluator(useProviderBridge({ chat, listModels: async () => [] }), 'test');
   expect(await evaluate('What is React?', kb, {})).toEqual(no);
   expect(chat.mock.calls[0]).toBeDefined();
 });
@@ -226,6 +227,7 @@ it.each(['none', 'selected'] as const)(
     const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 5 });
     const library = new LibraryService(root);
     const llm = new OllamaLLMProvider(settings);
+    useProviderBridge(llm);
     const knowledge = new KnowledgeService(
       root,
       settings,
@@ -254,10 +256,10 @@ it.each(['none', 'selected'] as const)(
       yield { message: { content: JSON.stringify(yes) } };
     });
     vi.spyOn(llm, 'complete')
-      .mockResolvedValueOnce({ role: 'assistant', content: '{"tool":"skill:code-review"}' })
-      .mockResolvedValueOnce({ role: 'assistant', content: '{"tool":"knowledge:carbon"}' })
-      .mockResolvedValueOnce({ role: 'assistant', content: '{"tool":"filesystem.list"}' })
-      .mockResolvedValue({ role: 'assistant', content: '{"final":"Done"}' });
+      .mockResolvedValueOnce(toolReply('skill:code-review'))
+      .mockResolvedValueOnce(toolReply('knowledge:carbon'))
+      .mockResolvedValueOnce(toolReply('filesystem.list'))
+      .mockResolvedValue({ role: 'assistant', content: 'Done' });
     const service = new AgentService(library, llm, knowledge, mcp, settings, () => {}, tools);
     try {
       await library.save(

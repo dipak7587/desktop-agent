@@ -73,7 +73,7 @@ does not retrieve saved notes.
   tools, results and status. Agents support confirmed bulk deletion. Model capability determines task quality.
 - **Settings:** add/edit provider configurations, discover or register models, chunking, ignore patterns, theme, execution bounds,
   OS-encrypted credentials, an explicitly selected `.env` file, long-term memory switches, and the agent engine
-  (classic loop or optional Deep Agents mode). See [Memory](docs/MEMORY.md).
+  (LangChain `createAgent` or Deep Agents mode). See [Memory](docs/MEMORY.md).
 
 Cmd/Ctrl+K opens global search. Cmd/Ctrl+N creates a chat. Escape cancels active chat/agent
 work. The main sidebar collapses; the conversation sidebar can be resized from its corner.
@@ -114,8 +114,7 @@ page; there is no automatic crawler or JavaScript browser execution.
 
 This is a functional initial desktop implementation, not a signed public release. macOS is
 the verified platform; Windows/Linux packaging targets are configured but need native QA.
-English is the current UI language. MCP supports stdio transports. Agents use a bounded
-JSON-action loop, approve changes individually, and do literal content search rather than
+English is the current UI language. MCP supports stdio transports. Agents use LangChain native tool calling with a bounded model-turn limit, approve changes individually, and do literal content search rather than
 AST/symbol indexing. Built-in tools restrict commands; user-authored Tools and MCP servers
 are trusted code with the current user’s privileges, not an OS sandbox. Custom code runs as
 JavaScript, without TypeScript transpilation. There is no separate agent-generation workflow.
@@ -133,3 +132,5 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEVELOPMENT.md](docs/DEVELOPMENT.m
 Agents support Auto, Selected and None capability modes, per-type switches and per-capability
 permissions. Skills, MCP tools, custom/built-in tools and knowledge searches pass through a
 central relevance and permission check. See [Capability decisions](docs/CAPABILITIES.md).
+
+See [LangChain migration](docs/LANGCHAIN_MIGRATION.md) for the current AI architecture and validation scope.
