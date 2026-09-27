@@ -1,3 +1,4 @@
+import { defaultChatSelection } from '../src/shared/chat-selection';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { librarySchema } from '../src/shared/schemas';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -411,4 +412,47 @@ it('blocks provider deletion for all dependent agents, including disabled agents
   await library.save('agents', { ...writer, providerId: 'b' });
   await remove();
   expect(settings.get().providers.map((p) => p.id)).toEqual(['b']);
+});
+
+it('remembers the chat selection across restart without changing provider defaults or losing it to stale settings', async () => {
+  const { root, settings, secrets } = await setup();
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b')],
+    activeProviderId: 'a',
+  });
+  const staleForm = settings.get();
+  await settings.rememberChatSelection('b', 'model-b');
+  await settings.save({ ...staleForm, theme: 'dark' });
+  const reopened = new SettingsService(root, secrets);
+  await reopened.init();
+  expect(defaultChatSelection(reopened.get())).toEqual({ providerId: 'b', model: 'model-b' });
+  expect(reopened.get()).toMatchObject({ activeProviderId: 'a', theme: 'dark' });
+  expect(reopened.get().providers.map((p) => p.chatModel)).toEqual(['model-a', 'model-a']);
+  await expect(reopened.rememberChatSelection('b', 'unknown')).rejects.toThrow('available model');
+  await expect(reopened.rememberChatSelection('missing', 'model-a')).rejects.toThrow('removed');
+  expect(defaultChatSelection(reopened.get())).toEqual({ providerId: 'b', model: 'model-b' });
+});
+
+it('uses the configured default when the remembered model or provider is unavailable', async () => {
+  const { settings } = await setup();
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b')],
+    activeProviderId: 'a',
+  });
+  await settings.rememberChatSelection('b', 'model-b');
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b', { enabled: false })],
+  });
+  expect(defaultChatSelection(settings.get())).toEqual({ providerId: 'a', model: 'model-a' });
+  await expect(settings.rememberChatSelection('b', 'model-b')).rejects.toThrow('disabled');
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b', { modelIds: ['model-a'] })],
+  });
+  expect(defaultChatSelection(settings.get())).toEqual({ providerId: 'a', model: 'model-a' });
+  await settings.save({ ...settings.get(), providers: [] });
+  expect(defaultChatSelection(settings.get())).toEqual({ providerId: '', model: '' });
 });

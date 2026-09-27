@@ -103,6 +103,9 @@ export class SettingsService {
   save(input: Settings): Promise<Settings> {
     return this.exclusive(async () => {
       const value = settingsSchema.parse(input);
+      // General settings forms may have opened before the latest Chat selection.
+      // This preference is changed through its dedicated operation.
+      value.lastChatSelection = this.value.lastChatSelection;
       const removed = this.value.providers.filter(
         (p) => !value.providers.some((next) => next.id === p.id),
       );
@@ -142,6 +145,16 @@ export class SettingsService {
       await this.persist(value);
       this.value = value;
       this.revision++;
+      return this.get();
+    });
+  }
+  rememberChatSelection(providerId: string, model: string): Promise<Settings> {
+    return this.exclusive(async () => {
+      this.validateSelection(providerId, model);
+      const value = this.get();
+      value.lastChatSelection = { providerId, model };
+      await this.persist(value);
+      this.value = value;
       return this.get();
     });
   }

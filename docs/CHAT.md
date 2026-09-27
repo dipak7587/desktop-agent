@@ -134,3 +134,11 @@ capture may store one concise durable fact; secret-shaped content is never store
 memory failures never interrupt chat. Management (list/remove/clear per scope) is exposed
 over IPC; see [Memory](MEMORY.md). Conversation state itself remains the existing SQLite
 history and is unrelated to memory.
+
+## Remembered model selection
+
+Choosing a provider/model manually in Chat remembers that pair for new chats and app
+restarts. No separate Save action is needed. Existing conversations retain their own
+selections. Opening a saved agent uses its configured provider/model without replacing the
+remembered chat choice. If the remembered provider is disabled/removed or its model is no
+longer available, new chats use the configured default when valid.

@@ -15,6 +15,8 @@ const api: WorkspaceAPI = {
   settings: {
     get: () => invoke('settings:get'),
     save: (v) => invoke('settings:save', v),
+    rememberChatSelection: (providerId, model) =>
+      invoke('settings:remember-chat-selection', providerId, model),
     dataPath: () => invoke('settings:path'),
   },
   models: {
@@ -64,8 +66,7 @@ const api: WorkspaceAPI = {
     clearRuns: () => invoke('agents:clear-runs'),
   },
   memory: {
-    list: (scope?: MemoryEntry['scope'], scopeId?: string) =>
-      invoke('memory:list', scope, scopeId),
+    list: (scope?: MemoryEntry['scope'], scopeId?: string) => invoke('memory:list', scope, scopeId),
     save: (entry) => invoke('memory:save', entry),
     remove: (id) => invoke('memory:remove', id),
     clear: (scope, scopeId) => invoke('memory:clear', scope, scopeId),

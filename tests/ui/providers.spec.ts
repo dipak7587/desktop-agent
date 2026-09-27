@@ -156,3 +156,57 @@ test('provider selection, historical badges, agent overrides, and restart persis
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('a manually chosen model is reused for new chats and after reopening the app', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'remember-model-ui-'));
+  await writeFile(
+    join(root, 'settings.json'),
+    JSON.stringify({
+      providers: [
+        {
+          id: 'local',
+          name: 'Local',
+          provider: 'ollama',
+          ollamaUrl: 'http://127.0.0.1:1',
+          chatModel: '',
+          modelIds: ['first-model', 'second-model'],
+        },
+      ],
+      activeProviderId: 'local',
+    }),
+  );
+  const env = Object.fromEntries(
+    Object.entries({ ...process.env, LOCALAI_DATA_DIR: root }).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === 'string' && entry[0] !== 'ELECTRON_RUN_AS_NODE',
+    ),
+  );
+  let app = await electron.launch({ args: ['.'], env });
+  try {
+    let page = await app.firstWindow();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('');
+    await page.getByLabel('Model', { exact: true }).selectOption('second-model');
+    await expect
+      .poll(() =>
+        page.evaluate(async () => (await window.workspace.settings.get()).lastChatSelection),
+      )
+      .toEqual({ providerId: 'local', model: 'second-model' });
+    await page.getByRole('button', { name: 'New chat', exact: true }).click();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await expect
+      .poll(() => page.evaluate(async () => (await window.workspace.chat.list()).length))
+      .toBe(2);
+    await app.close();
+    app = await electron.launch({ args: ['.'], env });
+    page = await app.firstWindow();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await page.getByRole('button', { name: 'New chat', exact: true }).click();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await expect
+      .poll(() => page.evaluate(async () => (await window.workspace.chat.list()).length))
+      .toBe(3);
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

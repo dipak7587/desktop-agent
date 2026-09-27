@@ -30,6 +30,7 @@ export interface ProviderProfile {
   embeddingModel: string;
 }
 export interface Settings {
+  lastChatSelection?: { providerId: string; model: string };
   timeout?: number;
   authMethod?: 'none' | 'bearer' | 'header';
   authHeader?: string;

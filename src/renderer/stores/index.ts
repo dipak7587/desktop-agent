@@ -1,3 +1,4 @@
+import { defaultChatSelection } from '../../shared/chat-selection';
 import { create } from 'zustand';
 import type {
   Settings,
@@ -124,12 +125,10 @@ export const useChat = create<{
     if (get().generating)
       throw new Error('Stop the current response before starting another conversation');
     const settings = useSettings.getState().settings;
-    const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
-    const p =
-      enabled.length === 1 ? enabled[0] : enabled.find((p) => p.id === settings?.activeProviderId);
+    const defaults = defaultChatSelection(settings);
     const c = await window.workspace.chat.create(
-      selection?.model ?? p?.chatModel ?? '',
-      selection?.providerId ?? p?.id,
+      selection?.model ?? defaults.model,
+      selection?.providerId ?? (defaults.providerId || undefined),
       selection?.agentId,
     );
     useUI.setState({ chatCommand: null });
@@ -152,6 +151,12 @@ export const useChat = create<{
     } else {
       await window.workspace.chat.selection(get().current!, providerId, model, agentId);
       await get().load();
+    }
+    // Automatic agent selection passes an agentId; only manual choices become
+    // the remembered selection for ordinary new chats.
+    if (agentId === undefined && model) {
+      const settings = await window.workspace.settings.rememberChatSelection(providerId, model);
+      useSettings.setState({ settings });
     }
   },
   clear: async () => {

@@ -90,6 +90,9 @@ export const settingsSchema = z
     embeddingModel: z.string().max(200).default(''),
     providers: z.array(providerProfileSchema).default([]),
     activeProviderId: z.string().max(200).default(''),
+    lastChatSelection: z
+      .object({ providerId: idSchema, model: z.string().min(1).max(200) })
+      .optional(),
     temperature: z.number().min(0).max(2).default(0.7),
     contextSize: z.number().int().min(1024).max(131072).default(8192),
     topK: z.number().int().min(1).max(30).default(5),

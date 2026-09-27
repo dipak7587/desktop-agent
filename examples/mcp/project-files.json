@@ -1,0 +1,13 @@
+{
+  "name": "Project files",
+  "description": "Read the selected project through the official filesystem MCP server.",
+  "command": "npx",
+  "args": [
+    "-y",
+    "@modelcontextprotocol/server-filesystem",
+    "/replace/with/your/project"
+  ],
+  "env": {},
+  "enabled": true,
+  "autoStart": false
+}

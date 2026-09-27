@@ -1,3 +1,4 @@
+import { defaultChatSelection } from '../../shared/chat-selection';
 import { ProviderSelector } from '../components/provider-selector';
 import { FolderSelection } from '../components/folder-selection';
 import { useEffect, useRef, useState } from 'react';
@@ -25,10 +26,9 @@ export function Chat() {
   const draft = useUI((s) => s.draft);
   const commands = useChatCommands(draft);
   const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
-  const defaultProvider =
-    enabled.length === 1 ? enabled[0] : enabled.find((p) => p.id === settings?.activeProviderId);
-  const providerId = chat.current ? chat.providerId : (defaultProvider?.id ?? '');
-  const model = chat.current ? chat.model : (defaultProvider?.chatModel ?? '');
+  const defaults = defaultChatSelection(settings);
+  const providerId = chat.current ? chat.providerId : defaults.providerId;
+  const model = chat.current ? chat.model : defaults.model;
   const selectedProvider = enabled.find((p) => p.id === providerId);
   const validSelection = !!selectedProvider?.modelIds?.includes(model);
   const agent = agents.find(

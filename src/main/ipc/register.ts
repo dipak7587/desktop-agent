@@ -73,6 +73,11 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     id = z.tuple([idSchema]);
   handle('settings:get', none, () => s.settings.get());
   handle('settings:path', none, () => s.settings.root);
+  handle(
+    'settings:remember-chat-selection',
+    z.tuple([idSchema, z.string().min(1).max(200)]),
+    (providerId, model) => s.settings.rememberChatSelection(providerId, model),
+  );
   handle('settings:save', z.tuple([settingsSchema]), async (value) => {
     const result = await s.settings.save(value);
     app.setName(value.appName);
@@ -253,7 +258,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('agents:runs', none, () => s.agents.runs());
   handle(
     'memory:list',
-    z.tuple([z.enum(['global', 'conversation', 'agent']).optional(), z.string().max(200).optional()]),
+    z.tuple([
+      z.enum(['global', 'conversation', 'agent']).optional(),
+      z.string().max(200).optional(),
+    ]),
     (scope, scopeId) => s.memory.list(scope, scopeId) as MemoryEntry[],
   );
   handle('memory:save', z.tuple([memoryInputSchema]), (input) =>
@@ -267,7 +275,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('memory:remove', id, (id) => s.memory.remove(id));
   handle(
     'memory:clear',
-    z.tuple([z.enum(['global', 'conversation', 'agent']).optional(), z.string().max(200).optional()]),
+    z.tuple([
+      z.enum(['global', 'conversation', 'agent']).optional(),
+      z.string().max(200).optional(),
+    ]),
     (scope, scopeId) => s.memory.clear(scope, scopeId),
   );
   const secretName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,99}$/);

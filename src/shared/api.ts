@@ -27,6 +27,7 @@ export interface WorkspaceAPI {
   settings: {
     get(): Promise<Settings>;
     save(value: Settings): Promise<Settings>;
+    rememberChatSelection(providerId: string, model: string): Promise<Settings>;
     dataPath(): Promise<string>;
   };
   models: {
@@ -84,7 +85,11 @@ export interface WorkspaceAPI {
   };
   memory: {
     list(): Promise<MemoryEntry[]>;
-    save(entry: { scope: MemoryEntry['scope']; scopeId?: string; content: string }): Promise<MemoryEntry>;
+    save(entry: {
+      scope: MemoryEntry['scope'];
+      scopeId?: string;
+      content: string;
+    }): Promise<MemoryEntry>;
     remove(id: string): Promise<void>;
     clear(scope?: MemoryEntry['scope'], scopeId?: string): Promise<void>;
   };
