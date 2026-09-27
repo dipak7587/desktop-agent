@@ -27,9 +27,34 @@ Each phase is checked before the next. No simulated application data or model re
 
 All runtime data lives beneath Electron `app.getPath('userData')` (a test-only
 environment override permits isolated smoke tests). `database/app.sqlite` stores
-conversations and messages. `database/agent-runs.sqlite` stores execution history. `saved-text/*.md`, `skills/*/SKILL.md`, `agents/*.md`,
+conversations and messages. `database/agent-runs.sqlite` stores execution history.
+`database/memory.sqlite` stores scoped long-term agent memory and
+`database/checkpoints.sqlite` stores LangGraph checkpoints, both with the same
+built-in SQLite engine. `saved-text/*.md`, `skills/*/SKILL.md`, `agents/*.md`,
 `tools/*.md`, and `mcp/*.json` remain portable files. Knowledge metadata and previews are files;
 vectors live in `rag/lancedb`. Settings and OS-encrypted credentials are separate.
+
+## AI stack layers
+
+Model calls flow through the existing `LLMProvider` adapters
+(`services/ollama/provider.ts`). `AppChatModel` (`services/ai/langchain-model.ts`) is a
+LangChain chat model over that abstraction, so LangChain, LangGraph and Deep Agents
+invoke the same configured providers, models and main-process credentials as Chat.
+Provider-specific behavior stays inside the adapters; capability-driven configuration
+remains in Settings.
+
+LangGraph is the execution engine: chat turns run as a compiled `StateGraph`
+(`services/ai/chat-graph.ts`; capability routing → knowledge retrieval → memory →
+streaming model → persistence) with the conversation id as the `thread_id`, and the
+classic agent loop runs as a `plan ⇄ act` graph (`services/ai/agent-graph.ts`) over the
+existing capability router and approval flow. Thread state persists in
+`database/checkpoints.sqlite` through `CheckpointDatabase`. Opted-in agents with a
+selected folder can run through Deep Agents (`services/ai/deep-agents.ts`), which maps
+existing agent definitions and permissions onto the harness and executes every tool via
+the existing `AgentTools` permission and approval layer. Long-term memory
+(`services/ai/memory.ts`, [Memory](MEMORY.md)) is scoped, bounded and retrieved by the
+chat graph before prompts; it is distinct from RAG and from SQLite chat history. No AI
+framework code runs in the renderer.
 
 ## Boundaries
 

@@ -16,8 +16,11 @@ import {
   sendSchema,
   sourceInputSchema,
   runInputSchema,
+  memoryInputSchema,
 } from '../../shared/schemas';
 import type { SettingsService } from '../services/settings/settings';
+import type { MemoryService, MemoryEntry } from '../services/ai/memory';
+import type { CheckpointDatabase } from '../database/checkpoints';
 import type { OllamaLLMProvider } from '../services/ollama/provider';
 import type { ChatDatabase } from '../database/chat';
 import type { ChatService } from '../services/ollama/chat';
@@ -44,6 +47,8 @@ export interface Services {
   secrets: SecretStore;
   customTools: CustomToolService;
   runDb: AgentRunDatabase;
+  memory: MemoryService;
+  checkpoints?: CheckpointDatabase;
 }
 export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) {
   const projects = new Set<string>();
@@ -246,6 +251,25 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     return s.workflows.run(input);
   });
   handle('agents:runs', none, () => s.agents.runs());
+  handle(
+    'memory:list',
+    z.tuple([z.enum(['global', 'conversation', 'agent']).optional(), z.string().max(200).optional()]),
+    (scope, scopeId) => s.memory.list(scope, scopeId) as MemoryEntry[],
+  );
+  handle('memory:save', z.tuple([memoryInputSchema]), (input) =>
+    s.memory.save({
+      scope: input.scope,
+      scopeId: input.scopeId ?? (input.scope === 'global' ? '' : ''),
+      content: input.content,
+      source: 'explicit',
+    }),
+  );
+  handle('memory:remove', id, (id) => s.memory.remove(id));
+  handle(
+    'memory:clear',
+    z.tuple([z.enum(['global', 'conversation', 'agent']).optional(), z.string().max(200).optional()]),
+    (scope, scopeId) => s.memory.clear(scope, scopeId),
+  );
   const secretName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,99}$/);
   handle('secrets:list', none, () => s.secrets.list());
   handle('secrets:import-env', none, async () => {

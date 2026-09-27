@@ -95,3 +95,14 @@ protection if needed. The local macOS package is ad-hoc signed; it is not Develo
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## AI frameworks, memory and checkpointing
+
+The LangChain/LangGraph/Deep Agents layer adds no new privilege surface. Framework code
+runs only in the main process and reaches models, tools, MCP and credentials through the
+existing adapters and permission checks; the renderer still instantiates nothing. Deep
+Agents mode exposes no shell or broad filesystem access beyond the existing workspace
+tools, and its approvals flow through the standard `agents:approve` IPC. Long-term memory
+(`database/memory.sqlite`) refuses secret-shaped values before storing, is never part of
+exports, and is retrieved only as bounded, untrusted-marked prompt context. LangGraph
+checkpoints persist only in `database/checkpoints.sqlite` and contain no credentials.

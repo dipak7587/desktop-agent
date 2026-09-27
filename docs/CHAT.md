@@ -123,3 +123,14 @@ The selected KB also supplies the subject for ambiguous topical requests. For ex
 **agent-desktop** and asking **give me chat details** means the project's Chat feature, not
 personal chat history. Both the relevance check and answer prompt receive this scope. Explicitly
 unrelated general questions and instructions disabling knowledge still take precedence.
+
+## Long-term memory in chat
+
+With **Enable long-term agent memory** on in Settings, each request first retrieves at
+most five relevant memory entries (global plus the current conversation) and injects them
+as a bounded background-context block. Saying “Remember that …” stores the stated fact for
+this conversation without a model call. After a completed exchange, opt-in automatic
+capture may store one concise durable fact; secret-shaped content is never stored and
+memory failures never interrupt chat. Management (list/remove/clear per scope) is exposed
+over IPC; see [Memory](MEMORY.md). Conversation state itself remains the existing SQLite
+history and is unrelated to memory.

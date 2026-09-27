@@ -74,3 +74,11 @@ Agent and Chat capability execution goes through `services/agents/capabilities.t
 new model-initiated actions with `CapabilityRouter`; do not execute them directly from the
 model loop. Keep deterministic restrictions/permissions separate from model relevance judgments.
 See [Capability decisions](CAPABILITIES.md) and `tests/capabilities.test.ts`.
+
+AI framework dependencies (`langchain`, `@langchain/core`, `@langchain/langgraph`,
+`@langchain/langgraph-checkpoint`, `deepagents`, `langsmith`) sit underneath the existing
+`LLMProvider` adapters; `services/ai/langchain-model.ts` is the single bridge. Do not import
+provider-specific LangChain packages or call LangChain models from the renderer; add new
+capabilities through the existing adapters, `CheckpointDatabase` (`database/checkpoints.ts`)
+for persisted graph state, and `MemoryService` (`services/ai/memory.ts`) for long-term memory.
+See [Memory](MEMORY.md) and the migration report in [Implementation](IMPLEMENTATION.md).

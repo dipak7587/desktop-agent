@@ -52,6 +52,9 @@ export interface Settings {
   approvalMode: 'ask' | 'safe' | 'auto';
   commandTimeout: number;
   maxIterations: number;
+  memoryEnabled: boolean;
+  memoryAutomatic: boolean;
+  deepAgentMode: 'classic' | 'deep';
   language: 'en';
   startAtLogin: boolean;
   defaultAgent: string;
@@ -161,6 +164,15 @@ export interface SearchResult {
   content: string;
   score: number;
   location: string;
+}
+export interface MemoryEntry {
+  id: string;
+  scope: 'global' | 'conversation' | 'agent';
+  scopeId: string;
+  content: string;
+  source: 'explicit' | 'automatic';
+  createdAt: string;
+  updatedAt: string;
 }
 export interface AppEvent {
   iterationsUsed?: number;

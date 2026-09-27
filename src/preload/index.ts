@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { WorkspaceAPI } from '../shared/api';
+import type { MemoryEntry } from '../shared/types';
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 const api: WorkspaceAPI = {
   workflows: {
@@ -61,6 +62,13 @@ const api: WorkspaceAPI = {
     runs: () => invoke('agents:runs'),
     removeRun: (id) => invoke('agents:remove-run', id),
     clearRuns: () => invoke('agents:clear-runs'),
+  },
+  memory: {
+    list: (scope?: MemoryEntry['scope'], scopeId?: string) =>
+      invoke('memory:list', scope, scopeId),
+    save: (entry) => invoke('memory:save', entry),
+    remove: (id) => invoke('memory:remove', id),
+    clear: (scope, scopeId) => invoke('memory:clear', scope, scopeId),
   },
   secrets: {
     importEnv: () => invoke('secrets:import-env'),

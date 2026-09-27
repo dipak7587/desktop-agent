@@ -75,3 +75,17 @@ See [Chat](CHAT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [Agents](AGENTS.md), [
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Memory and agent engine (General tab)
+
+- **Enable long-term agent memory** turns scoped long-term memory on or off
+  (`memoryEnabled`). With it off, nothing is retrieved or captured. See
+  [Memory](MEMORY.md).
+- **Allow automatic memory capture** opts into conservative model-driven
+  capture (`memoryAutomatic`); explicit “Remember that …” requests always work
+  while memory is enabled. Automatic capture never stores secret-shaped
+  content.
+- **Agent engine** chooses between the classic JSON-action loop (default) and
+  Deep Agents autonomous execution for agents run with a selected project
+  folder (`deepAgentMode`). Approvals, permissions and execution limits apply
+  identically in both engines.

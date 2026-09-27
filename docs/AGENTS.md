@@ -116,6 +116,19 @@ numbered planning list.
 
 Read [SECURITY.md](SECURITY.md) before enabling automatic approvals, custom Tools or MCP tools.
 
+## Deep Agents engine (optional)
+
+Settings → General → **Agent engine** can switch agent runs to Deep Agents
+(`deepAgentMode: 'deep'`). The agent's existing definition — instructions, saved
+provider/model, capability permissions, iteration limit — is translated at runtime; the
+filesystem/project tools still execute through the same workspace guards, hash checks and
+approval flow, and every run keeps the 15-minute deadline and cancellation. This mode
+requires a selected project folder; without one, agents use the classic loop. Deep Agents
+adds planning todos, workspace file tools and subagent delegation on top of the existing
+permissions rather than beside them. See [Memory](MEMORY.md) for long-term agent memory
+and [Capability decisions](CAPABILITIES.md) for permission routing, which both engines
+share.
+
 ## Repository changes
 
 - Preserve the file-vs-database storage boundary from `desing.md`.

@@ -8,6 +8,9 @@ import { app, BrowserWindow, session, dialog } from 'electron';
 import { join } from 'node:path';
 import { mkdir, appendFile, readdir } from 'node:fs/promises';
 import { SettingsService } from './services/settings/settings';
+import { MemoryService } from './services/ai/memory';
+import { DeepAgentEngine } from './services/ai/deep-agents';
+import { CheckpointDatabase } from './database/checkpoints';
 import {
   createEmbeddingProvider,
   createLLMProvider,
@@ -21,6 +24,7 @@ import { KnowledgeService } from './services/rag/knowledge';
 import { SecretStore } from './security/secrets';
 import { MCPService } from './services/mcp/mcp';
 import { AgentService } from './services/agents/agents';
+import { AgentTools } from './services/agents/tools';
 import { registerIPC, type Services } from './ipc/register';
 import type { AppEvent } from '../shared/types';
 let window: BrowserWindow | null = null;
@@ -124,6 +128,14 @@ app
     const mcp = new MCPService(library, secrets, emit);
     const customTools = new CustomToolService(library, secrets, () => getSettings().commandTimeout);
     const runDb = new AgentRunDatabase(join(root, 'database', 'agent-runs.sqlite'));
+    const checkpoints = new CheckpointDatabase(join(root, 'database', 'checkpoints.sqlite'));
+    const memory = new MemoryService(
+      join(root, 'database'),
+      getSettings,
+      llm,
+      () => getSettings().chatModel,
+      () => knowledge.list(),
+    );
     const agents = new AgentService(
       library,
       llm,
@@ -136,6 +148,7 @@ app
       runDb,
       (text) => secrets.redact(text),
       providers,
+      new DeepAgentEngine(llm, new AgentTools(getSettings), getSettings, checkpoints),
     );
     const workflowDb = new WorkflowRunDatabase(join(root, 'database', 'workflow-runs.sqlite'));
     const workflows = new WorkflowService(
@@ -155,6 +168,8 @@ app
       (text) => secrets.redact(text),
       () => knowledge.list(),
       providers,
+      memory,
+      { checkpointer: checkpoints },
     );
     services = {
       workflows,
@@ -172,6 +187,8 @@ app
       secrets,
       customTools,
       runDb,
+      memory,
+      checkpoints,
     };
     registerIPC(services, () => window);
     createWindow();
@@ -202,6 +219,7 @@ app.on('before-quit', (event) => {
         services.mcp.stopAll(),
       ]);
       services.customTools.stopAll();
+      services.checkpoints?.close();
       services.workflowDb.close();
       services.runDb.close();
       services.db.close();

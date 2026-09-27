@@ -120,6 +120,22 @@ export function Settings() {
                 />
                 Open at login
               </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={value.memoryEnabled}
+                  onChange={(e) => update('memoryEnabled', e.target.checked)}
+                />
+                Enable long-term agent memory
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={value.memoryAutomatic}
+                  onChange={(e) => update('memoryAutomatic', e.target.checked)}
+                />
+                Allow automatic memory capture (explicit “remember …” always works)
+              </label>
             </div>
           </section>
           <section className="settings-section">
@@ -201,6 +217,18 @@ export function Settings() {
                       {a.name}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Agent engine
+                <select
+                  value={value.deepAgentMode}
+                  onChange={(e) =>
+                    update('deepAgentMode', e.target.value as SettingsType['deepAgentMode'])
+                  }
+                >
+                  <option value="classic">Classic loop (JSON actions)</option>
+                  <option value="deep">Deep Agents (autonomous, selected folder)</option>
                 </select>
               </label>
               <label>

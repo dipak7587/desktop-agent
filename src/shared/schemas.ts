@@ -99,11 +99,19 @@ export const settingsSchema = z
     approvalMode: z.enum(['ask', 'safe', 'auto']).default('ask'),
     commandTimeout: z.number().int().min(1000).max(300000).default(60000),
     maxIterations: z.number().int().min(1).max(500).default(15),
+    memoryEnabled: z.boolean().default(true),
+    memoryAutomatic: z.boolean().default(false),
+    deepAgentMode: z.enum(['classic', 'deep']).default('classic'),
     language: z.literal('en').default('en'),
     startAtLogin: z.boolean().default(false),
     defaultAgent: z.string().default(''),
   })
   .refine((v) => v.chunkOverlap < v.chunkSize, 'Chunk overlap must be smaller than chunk size');
+export const memoryInputSchema = z.object({
+  scope: z.enum(['global', 'conversation', 'agent']),
+  scopeId: z.string().max(200).optional(),
+  content: z.string().trim().min(1).max(2000),
+});
 export const capabilityConfigSchema = z.object({
   mode: z.enum(['auto', 'selected', 'none']).default('selected'),
   skills: z.array(idSchema).max(100).default([]),

@@ -12,6 +12,7 @@ import type {
   MCPState,
   RunState,
   ChatInput,
+  MemoryEntry,
 } from './types';
 export interface WorkspaceAPI {
   workflows: {
@@ -80,6 +81,12 @@ export interface WorkspaceAPI {
     runs(): Promise<RunState[]>;
     removeRun(id: string): Promise<void>;
     clearRuns(): Promise<void>;
+  };
+  memory: {
+    list(): Promise<MemoryEntry[]>;
+    save(entry: { scope: MemoryEntry['scope']; scopeId?: string; content: string }): Promise<MemoryEntry>;
+    remove(id: string): Promise<void>;
+    clear(scope?: MemoryEntry['scope'], scopeId?: string): Promise<void>;
   };
   secrets: {
     importEnv(): Promise<string[]>;
