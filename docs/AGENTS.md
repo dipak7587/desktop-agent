@@ -3,6 +3,7 @@
 ## Agents sidebar menu
 
 Create an agent with instructions, a provider configuration and model, enabled skills, tools, and knowledge sources.
+The editor supports Form, Markdown, JSON, and YAML definitions, validated against the same schema.
 Optionally select a project folder and submit a task. Leave the task empty to run the configured instructions. Inspect the run's output and review each proposed
 file change before approving or rejecting it. Execution is bounded by the configured limits.
 Definitions can be edited, imported, exported, or deleted after confirmation. Select individual

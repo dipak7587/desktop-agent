@@ -18,7 +18,11 @@ import {
 } from 'lucide-react';
 import type { LibraryKind, LibraryItem } from '../../shared/types';
 import { librarySchema } from '../../shared/schemas';
-import { parseMCPConfig } from '../../shared/mcp-config';
+import {
+  parseLibraryDefinition,
+  stringifyLibraryDefinition,
+  type LibraryDefinitionFormat,
+} from '../../shared/library-definition';
 import {
   libraryStores,
   useSettings,
@@ -445,10 +449,8 @@ function LibraryEditor({
   const { items: customTools } = useTools();
   const [args, setArgs] = useState(initial.args.join('\n'));
   const [env, setEnv] = useState(JSON.stringify(initial.env, null, 2));
-  const [fromJSON, setFromJSON] = useState(false);
-  const [configJSON, setConfigJSON] = useState(
-    JSON.stringify({ command: initial.command, args: initial.args, env: initial.env }, null, 2),
-  );
+  const [editorMode, setEditorMode] = useState<'form' | LibraryDefinitionFormat>('form');
+  const [definition, setDefinition] = useState('');
   const [busy, setBusy] = useState(false);
   const { settings } = useSettings();
   const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
@@ -466,6 +468,47 @@ function LibraryEditor({
   ];
   const update = (key: keyof LibraryItem, value: unknown) =>
     setItem((i) => ({ ...i, [key]: value }));
+  const formDraft = () => ({
+    ...item,
+    ...(kind === 'agents' ? { providerId: effectiveProviderId } : {}),
+    ...(kind === 'tools'
+      ? {
+          toolConfig: {
+            ...item.toolConfig,
+            parameters: JSON.parse(parameters),
+            headers: JSON.parse(headers),
+          },
+        }
+      : {}),
+    ...(kind === 'mcp' ? { args: args.split('\n').filter(Boolean), env: JSON.parse(env) } : {}),
+  });
+  const formValue = () => librarySchema.parse(formDraft());
+  const setMode = (mode: 'form' | LibraryDefinitionFormat) => {
+    void attempt(async () => {
+      if (mode === editorMode) return;
+      if (mode === 'form') {
+        if (editorMode === 'form') return;
+        const imported = parseLibraryDefinition(definition, editorMode, kind);
+        const next = { ...item, ...imported, id: item.id, createdAt: item.createdAt };
+        setItem(next);
+        if (kind === 'tools') {
+          setParameters(JSON.stringify(next.toolConfig?.parameters ?? [], null, 2));
+          setHeaders(JSON.stringify(next.toolConfig?.headers ?? {}, null, 2));
+        }
+        if (kind === 'mcp') {
+          setArgs(next.args.join('\n'));
+          setEnv(JSON.stringify(next.env, null, 2));
+        }
+      } else {
+        const value =
+          editorMode === 'form'
+            ? formDraft()
+            : parseLibraryDefinition(definition, editorMode, kind);
+        setDefinition(stringifyLibraryDefinition({ ...item, ...value }, mode));
+      }
+      setEditorMode(mode);
+    });
+  };
   return (
     <Modal
       wide
@@ -478,197 +521,204 @@ function LibraryEditor({
           setBusy(true);
           void attempt(async () => {
             try {
-              await onSave(
-                librarySchema.parse({
-                  ...item,
-                  ...(kind === 'agents' ? { providerId: effectiveProviderId } : {}),
-                  ...(kind === 'tools'
-                    ? {
-                      toolConfig: {
-                        ...item.toolConfig,
-                        parameters: JSON.parse(parameters),
-                        headers: JSON.parse(headers),
-                      },
-                    }
-                    : {}),
-                  ...(kind === 'mcp' && fromJSON
-                    ? parseMCPConfig(configJSON)
-                    : { args: args.split('\n').filter(Boolean), env: JSON.parse(env) }),
-                }),
-              );
+              const value =
+                editorMode === 'form'
+                  ? formValue()
+                  : librarySchema.parse({
+                      ...item,
+                      ...parseLibraryDefinition(definition, editorMode, kind),
+                      id: item.id,
+                      createdAt: item.createdAt,
+                    });
+              await onSave(value);
             } finally {
               setBusy(false);
             }
           });
         }}
       >
-        <label>
-          {kind === 'saved-text' ? 'Title' : kind === 'mcp' ? 'Name (required)' : 'Name'}
-          <input
-            autoFocus
-            required
-            maxLength={200}
-            value={item.name}
-            onChange={(e) => update('name', e.target.value)}
-          />
-        </label>
         {kind !== 'saved-text' && (
-          <label>
-            {kind === 'mcp' ? 'Description (required)' : 'Description'}
-            <input
-              required={kind === 'mcp'}
-              maxLength={2000}
-              value={item.description}
-              onChange={(e) => update('description', e.target.value)}
-            />
-          </label>
-        )}
-        {kind === 'skills' && (
-          <label>
-            Version
-            <input value={item.version} onChange={(e) => update('version', e.target.value)} />
-          </label>
-        )}
-        {kind === 'agents' && (
-          <>
-            <label>
-              Maximum execution iterations
-              <input
-                type="number"
-                min={1}
-                max={500}
-                required
-                value={item.maxIterations ?? 15}
-                onChange={(e) => update('maxIterations', e.target.valueAsNumber)}
-              />
-            </label>
-            <ProviderSelector
-              providerId={effectiveProviderId}
-              model={item.model}
-              onChange={(providerId, model) => setItem((i) => ({ ...i, providerId, model }))}
-            />
-            <CapabilitySettings
-              item={item}
-              onChange={(config) =>
-                setItem((current) => ({
-                  ...current,
-                  capabilityConfig: config,
-                  skills: config.skills,
-                  tools: config.tools,
-                  knowledgeSources: config.knowledgeBases,
-                }))
-              }
-              skills={skills}
-              servers={servers}
-              knowledge={sources}
-              tools={[...new Set(tools)].map((id) => ({
-                id,
-                name: customTools.find((t) => id === `custom:${t.id}`)?.name ?? id,
-              }))}
-            />
-          </>
-        )}
-        {kind === 'tools' && (
-          <>
-            <p className="small muted">
-              Custom tools run trusted local code or make API calls. Agent calls require approval.
-            </p>
-            <label>
-              Execution type
-              <select
-                value={item.toolConfig?.type ?? 'javascript'}
-                onChange={(e) => update('toolConfig', { ...item.toolConfig, type: e.target.value })}
+          <nav className="actions settings-tabs" role="group" aria-label="Definition format">
+            {(['form', 'md', 'json', 'yaml'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={editorMode === mode}
+                onClick={() => setMode(mode)}
               >
-                <option value="javascript">Node.js / JavaScript</option>
-                <option value="api">API call</option>
-              </select>
-            </label>
+                {mode === 'form' ? 'Form' : mode === 'md' ? 'Markdown' : mode.toUpperCase()}
+              </button>
+            ))}
+          </nav>
+        )}
+        {editorMode !== 'form' ? (
+          <label>
+            Definition · {editorMode === 'md' ? 'Markdown' : editorMode.toUpperCase()}
+            <textarea
+              required
+              className="editor"
+              rows={20}
+              value={definition}
+              onChange={(e) => setDefinition(e.target.value)}
+              spellCheck={false}
+            />
+          </label>
+        ) : (
+          <>
             <label>
-              Input parameters · JSON
-              <textarea
-                rows={5}
-                value={parameters}
-                onChange={(e) => setParameters(e.target.value)}
-                placeholder={'[{"name":"query","type":"string","required":true}]'}
+              {kind === 'saved-text' ? 'Title' : kind === 'mcp' ? 'Name (required)' : 'Name'}
+              <input
+                autoFocus
+                required
+                maxLength={200}
+                value={item.name}
+                onChange={(e) => update('name', e.target.value)}
               />
             </label>
-            <p className="small muted">
-              Parameters have name, type (string, number, boolean, object, array), and required.
-            </p>
-            {item.toolConfig?.type === 'api' && (
+            {kind !== 'saved-text' && (
+              <label>
+                {kind === 'mcp' ? 'Description (required)' : 'Description'}
+                <input
+                  required={kind === 'mcp'}
+                  maxLength={2000}
+                  value={item.description}
+                  onChange={(e) => update('description', e.target.value)}
+                />
+              </label>
+            )}
+            {kind === 'skills' && (
+              <label>
+                Version
+                <input value={item.version} onChange={(e) => update('version', e.target.value)} />
+              </label>
+            )}
+            {kind === 'agents' && (
               <>
                 <label>
-                  API URL
+                  Maximum execution iterations
                   <input
-                    type="url"
+                    type="number"
+                    min={1}
+                    max={500}
                     required
-                    value={item.toolConfig.url}
-                    onChange={(e) =>
-                      update('toolConfig', { ...item.toolConfig, url: e.target.value })
-                    }
+                    value={item.maxIterations ?? 15}
+                    onChange={(e) => update('maxIterations', e.target.valueAsNumber)}
                   />
                 </label>
+                <ProviderSelector
+                  providerId={effectiveProviderId}
+                  model={item.model}
+                  onChange={(providerId, model) => setItem((i) => ({ ...i, providerId, model }))}
+                />
+                <CapabilitySettings
+                  item={item}
+                  onChange={(config) =>
+                    setItem((current) => ({
+                      ...current,
+                      capabilityConfig: config,
+                      skills: config.skills,
+                      tools: config.tools,
+                      knowledgeSources: config.knowledgeBases,
+                    }))
+                  }
+                  skills={skills}
+                  servers={servers}
+                  knowledge={sources}
+                  tools={[...new Set(tools)].map((id) => ({
+                    id,
+                    name: customTools.find((t) => id === `custom:${t.id}`)?.name ?? id,
+                  }))}
+                />
+              </>
+            )}
+            {kind === 'tools' && (
+              <>
+                <p className="small muted">
+                  Custom tools run trusted local code or make API calls. Agent calls require
+                  approval.
+                </p>
                 <label>
-                  HTTP method
+                  Execution type
                   <select
-                    value={item.toolConfig.method}
+                    value={item.toolConfig?.type ?? 'javascript'}
                     onChange={(e) =>
-                      update('toolConfig', { ...item.toolConfig, method: e.target.value })
+                      update('toolConfig', { ...item.toolConfig, type: e.target.value })
                     }
                   >
-                    {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => (
-                      <option key={method}>{method}</option>
-                    ))}
+                    <option value="javascript">Node.js / JavaScript</option>
+                    <option value="api">API call</option>
                   </select>
                 </label>
                 <label>
-                  Headers · JSON
-                  <textarea rows={4} value={headers} onChange={(e) => setHeaders(e.target.value)} />
+                  Input parameters · JSON
+                  <textarea
+                    rows={5}
+                    value={parameters}
+                    onChange={(e) => setParameters(e.target.value)}
+                    placeholder={'[{"name":"query","type":"string","required":true}]'}
+                  />
                 </label>
                 <p className="small muted">
-                  Use Settings secret references such as {'${API_TOKEN}'} in headers. GET sends
-                  inputs as query parameters; other methods send JSON.
+                  Parameters have name, type (string, number, boolean, object, array), and required.
                 </p>
+                {item.toolConfig?.type === 'api' && (
+                  <>
+                    <label>
+                      API URL
+                      <input
+                        type="url"
+                        required
+                        value={item.toolConfig.url}
+                        onChange={(e) =>
+                          update('toolConfig', { ...item.toolConfig, url: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      HTTP method
+                      <select
+                        value={item.toolConfig.method}
+                        onChange={(e) =>
+                          update('toolConfig', { ...item.toolConfig, method: e.target.value })
+                        }
+                      >
+                        {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => (
+                          <option key={method}>{method}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Headers · JSON
+                      <textarea
+                        rows={4}
+                        value={headers}
+                        onChange={(e) => setHeaders(e.target.value)}
+                      />
+                    </label>
+                    <p className="small muted">
+                      Use Settings secret references such as {'${API_TOKEN}'} in headers. GET sends
+                      inputs as query parameters; other methods send JSON.
+                    </p>
+                  </>
+                )}
               </>
             )}
-          </>
-        )}
-        {kind === 'mcp' ? (
-          <>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={item.autoStart}
-                onChange={(e) => update('autoStart', e.target.checked)}
-              />
-              Start automatically when application starts
-            </label>
-            <div className="callout mcp-config-heading">
-              <span>
-                Starting a server executes this program on your machine. Add only servers you trust.
-              </span>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={fromJSON}
-                  onChange={(e) => setFromJSON(e.target.checked)}
-                />
-                Import from JSON
-              </label>
-            </div>
-            {fromJSON ? (
-              <label>
-                MCP configuration JSON
-                <textarea
-                  required
-                  rows={10}
-                  value={configJSON}
-                  onChange={(e) => setConfigJSON(e.target.value)}
-                  spellCheck={false}
-                />
-              </label>
-            ) : (
+            {kind === 'mcp' ? (
               <>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={item.autoStart}
+                    onChange={(e) => update('autoStart', e.target.checked)}
+                  />
+                  Start automatically when application starts
+                </label>
+                <div className="callout mcp-config-heading">
+                  <span>
+                    Starting a server executes this program on your machine. Add only servers you
+                    trust.
+                  </span>
+                </div>
                 <label>
                   Executable (optional)
                   <input
@@ -690,45 +740,45 @@ function LibraryEditor({
                   Environment variables · JSON
                   <textarea rows={4} value={env} onChange={(e) => setEnv(e.target.value)} />
                 </label>
+                <p className="small muted">
+                  A command is needed to start a server, but you can save it without one. JSON and
+                  YAML can contain a single server object or an mcpServers object containing one
+                  server. Name and description above are used for the saved definition.
+                </p>
+                <p className="small muted">
+                  Use literal values or references, for example{' '}
+                  {'{"MODE":"production","GITHUB_TOKEN":"${GITHUB_TOKEN}"}'}. References use
+                  Settings credentials, the selected .env file, or the process environment. Literal
+                  values are saved in the server configuration and included in exports.
+                </p>
               </>
+            ) : (
+              <label>
+                {kind === 'saved-text'
+                  ? 'Text'
+                  : kind === 'tools'
+                    ? 'JavaScript logic · use input, return the result (Node.js require available)'
+                    : 'Instructions'}
+                <textarea
+                  className="editor"
+                  rows={10}
+                  value={item.content}
+                  onChange={(e) => update('content', e.target.value)}
+                  placeholder="Write in plain text or Markdown…"
+                />
+              </label>
             )}
-            <p className="small muted">
-              A command is needed to start a server, but you can save it without one. JSON accepts
-              one server object or an mcpServers object containing one server. Name and description
-              above are used for the saved definition.
-            </p>
-            <p className="small muted">
-              Use literal values or references, for example{' '}
-              {'{"MODE":"production","GITHUB_TOKEN":"${GITHUB_TOKEN}"}'}. References use Settings
-              credentials, the selected .env file, or the process environment. Literal values are
-              saved in the server configuration and included in exports.
-            </p>
+            {kind !== 'saved-text' && (
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  onChange={(e) => update('enabled', e.target.checked)}
+                />
+                Enabled
+              </label>
+            )}
           </>
-        ) : (
-          <label>
-            {kind === 'saved-text'
-              ? 'Text'
-              : kind === 'tools'
-                ? 'JavaScript logic · use input, return the result (Node.js require available)'
-                : 'Instructions'}
-            <textarea
-              className="editor"
-              rows={10}
-              value={item.content}
-              onChange={(e) => update('content', e.target.value)}
-              placeholder="Write in plain text or Markdown…"
-            />
-          </label>
-        )}
-        {kind !== 'saved-text' && (
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={item.enabled}
-              onChange={(e) => update('enabled', e.target.checked)}
-            />
-            Enabled
-          </label>
         )}
         <div className="actions">
           <button type="button" onClick={onClose}>
@@ -822,40 +872,49 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
                 <strong>
                   {run.agentName} · {new Date(run.startedAt).toLocaleString()}
                 </strong>
-                <span style={{
-                  marginLeft: '1rem'
-
-                }}>
+                <span
+                  style={{
+                    marginLeft: '1rem',
+                  }}
+                >
                   Iterations: {run.iterationsUsed} / {run.maxIterations}
                 </span>
-                <span className="badge" style={{
-                  marginLeft: '1rem'
-
-                }}>{run.status}</span>
+                <span
+                  className="badge"
+                  style={{
+                    marginLeft: '1rem',
+                  }}
+                >
+                  {run.status}
+                </span>
               </div>
               <div>
-                {!['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
-                  run.status,
-                ) && (
-                    <button onClick={() => void attempt(() => window.workspace.agents.stop(run.id))}>
-                      <CircleStop size={16} />
-                    </button>
-                  )}
+                {![
+                  'Completed',
+                  'Stopped',
+                  'Failed',
+                  'Cancelled',
+                  'Max iterations reached',
+                ].includes(run.status) && (
+                  <button onClick={() => void attempt(() => window.workspace.agents.stop(run.id))}>
+                    <CircleStop size={16} />
+                  </button>
+                )}
                 {['Completed', 'Stopped', 'Failed', 'Cancelled', 'Max iterations reached'].includes(
                   run.status,
                 ) && (
-                    <button
-                      // className="danger"
-                      onClick={() =>
-                        void attempt(async () => {
-                          await window.workspace.agents.removeRun(run.id);
-                          await load();
-                        })
-                      }
-                    >
-                      <X size={16} />
-                    </button>
-                  )}
+                  <button
+                    // className="danger"
+                    onClick={() =>
+                      void attempt(async () => {
+                        await window.workspace.agents.removeRun(run.id);
+                        await load();
+                      })
+                    }
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
             </div>
           </summary>
@@ -871,7 +930,7 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
               Math.round(
                 ((run.completedAt ? Date.parse(run.completedAt) : Date.now()) -
                   Date.parse(run.startedAt)) /
-                1000,
+                  1000,
               ),
             )}
             s
@@ -908,8 +967,8 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
                   <h3>{e.approval.description}</h3>
                   {e.approval.diff && <pre className="diff">{e.approval.diff}</pre>}
                   {!resolved.includes(e.approval.id) &&
-                    run.phase === 'Waiting for approval' &&
-                    run.status === 'Running' ? (
+                  run.phase === 'Waiting for approval' &&
+                  run.status === 'Running' ? (
                     <div className="actions">
                       <button
                         onClick={() =>

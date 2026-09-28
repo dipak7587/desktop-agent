@@ -3,6 +3,7 @@
 The **Tools** sidebar manages reusable API calls and custom Node.js/JavaScript logic.
 Tools can be created, edited, enabled/disabled, imported, exported, tested, and selected by agents.
 Creating or testing a Tool does not require Ollama.
+Use Form, Markdown, JSON, or YAML to edit the complete Tool definition.
 
 ## Create a Tool
 

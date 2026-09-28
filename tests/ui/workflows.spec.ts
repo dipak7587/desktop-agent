@@ -91,6 +91,55 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByText('Your saved text start here')).toBeVisible();
 });
+test('agent, MCP, skill, and tool editors create definitions from JSON and YAML', async () => {
+  const entries = [
+    { section: 'Skills', create: 'New skill', mode: 'YAML', name: 'YAML skill', format: 'yaml' },
+    {
+      section: 'Agents',
+      create: 'New agent',
+      mode: 'Markdown',
+      name: 'Markdown agent',
+      format: 'md',
+    },
+    { section: 'MCP', create: 'New server', mode: 'YAML', name: 'YAML server', format: 'yaml' },
+    { section: 'Tools', create: 'New tool', mode: 'JSON', name: 'JSON tool', format: 'json' },
+  ] as const;
+  for (const entry of entries) {
+    await page.getByRole('button', { name: entry.section, exact: true }).click();
+    await page.getByRole('button', { name: entry.create, exact: true }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal.getByRole('button', { name: 'Form', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(modal.getByRole('button', { name: 'Form', exact: true })).toHaveCSS(
+      'font-weight',
+      '600',
+    );
+    await modal.getByRole('button', { name: entry.mode, exact: true }).click();
+    const definition =
+      entry.format === 'json'
+        ? JSON.stringify({
+            name: entry.name,
+            description: 'Created from a definition',
+            ...(entry.section === 'Tools' ? { content: 'return input;' } : {}),
+          })
+        : entry.format === 'md'
+          ? `---\nname: ${entry.name}\ndescription: Created from a definition\n---\nAgent instructions.\n`
+          : `name: ${entry.name}\ndescription: Created from a definition\n`;
+    await modal
+      .getByRole('textbox', { name: `Definition · ${entry.mode}`, exact: true })
+      .fill(definition);
+    await modal.getByRole('button', { name: 'Form', exact: true }).click();
+    await expect(
+      modal.getByLabel(entry.section === 'MCP' ? 'Name (required)' : 'Name', { exact: true }),
+    ).toHaveValue(entry.name);
+    await modal.getByRole('button', { name: entry.mode, exact: true }).click();
+    await modal.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(modal).not.toBeVisible();
+    await expect(page.getByText(entry.name, { exact: true })).toBeVisible();
+  }
+});
 test('chat slash commands offer searchable selections, keyboard navigation and removable chips', async () => {
   for (const entry of [
     { section: 'Skills', create: 'New skill', name: 'Writing helper', command: 'skills' },

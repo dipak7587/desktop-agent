@@ -2,7 +2,7 @@
 
 ## Skills sidebar menu
 
-Create reusable instructions, expand a skill to read it, and use the editor to change its
+Create reusable instructions using Form, Markdown, JSON, or YAML, expand a skill to read it, and use the editor to change its
 name, description, content, or enabled state. Search, import, export, and delete skills from
 this menu. Select enabled skills in the **Agents** editor to make them available to a run; creating
 a skill does not automatically apply it to ordinary Chat messages.
