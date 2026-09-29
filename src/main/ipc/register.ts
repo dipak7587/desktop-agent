@@ -353,6 +353,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('workflows:duplicate', id, (id) => s.workflows.definitions.duplicate(id));
   handle('workflows:remove', id, (id) => s.workflows.definitions.remove(id));
   handle('workflows:runs', none, () => s.workflows.runs());
+  handle('workflows:clear-runs', none, () => s.workflows.clearRuns());
   handle('workflows:stop', id, (id) => s.workflows.stop(id));
   handle('workflows:run', z.tuple([workflowRunInputSchema]), (input) => {
     if (input.project && !projects.has(input.project))

@@ -66,11 +66,13 @@ export function Modal({
 export function Confirm({
   title,
   detail,
+  confirmLabel = 'Delete',
   onConfirm,
   onClose,
 }: {
   title: string;
   detail: string;
+  confirmLabel?: string;
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -100,7 +102,7 @@ export function Confirm({
             })()
           }
         >
-          {busy ? 'Deleting…' : 'Delete'}
+          {busy ? 'Please wait…' : confirmLabel}
         </button>
       </div>
     </Modal>

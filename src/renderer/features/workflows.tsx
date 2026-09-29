@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { GitBranch, Plus } from 'lucide-react';
+import { GitBranch, Plus, ChevronDown } from 'lucide-react';
 import { type AgentWorkflow, workflowEdges, validateWorkflow } from '../../shared/workflows';
 import { useWorkflows } from '../stores/workflows';
 import { useAgents, attempt, useUI } from '../stores';
-import { Modal } from '../components/common';
+import { Modal, Confirm } from '../components/common';
 import { FolderSelection } from '../components/folder-selection';
 import { AgentRuns } from './libraries';
 const fresh = (): AgentWorkflow => ({
@@ -24,6 +24,10 @@ export function Workflows() {
   const [editing, setEditing] = useState<AgentWorkflow | null>(null);
   const [running, setRunning] = useState<AgentWorkflow | null>(null);
   const [deleting, setDeleting] = useState<AgentWorkflow | null>(null);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const hasActiveRuns = runs.some(
+    (run) => !['completed', 'failed', 'cancelled'].includes(run.status),
+  );
   return (
     <div className="page workflows-page">
       <div className="page-heading">
@@ -45,33 +49,59 @@ export function Workflows() {
       )}
       <div className="workflow-list">
         {items.map((workflow) => (
-          <article className="workflow-card" key={workflow.id}>
-            <h2>{workflow.name}</h2>
-            <p className="muted">{workflow.description}</p>
-            <p>
-              {workflow.agents.length} agents · {workflow.executionMode}
-            </p>
-            <WorkflowGraph workflow={workflow} />
-            <div className="actions">
-              <button onClick={() => setRunning(workflow)}>Run workflow</button>
-              <button onClick={() => setEditing(structuredClone(workflow))}>Edit</button>
-              <button
-                onClick={() =>
-                  void attempt(async () => {
-                    await window.workspace.workflows.duplicate(workflow.id);
-                    await load();
-                  })
-                }
-              >
-                Duplicate
-              </button>
-              <button onClick={() => setDeleting(workflow)}>Delete</button>
+          <details className="workflow-card" key={workflow.id}>
+            <summary>
+              <div className="item-icon">
+                <GitBranch size={21} />
+              </div>
+              <div className="library-card-heading">
+                <h2>{workflow.name}</h2>
+                <p className="muted">{workflow.description}</p>
+              </div>
+              <span className="badge">{workflow.agents.length} agents</span>
+              <span className="badge">{workflow.executionMode}</span>
+              <ChevronDown size={16} className="collapse-chevron" />
+            </summary>
+            <div className="library-card-body">
+              <p>
+                {workflow.agents.length} agents · {workflow.executionMode}
+              </p>
+              <WorkflowGraph workflow={workflow} />
+              <div className="actions">
+                <button onClick={() => setRunning(workflow)}>Run workflow</button>
+                <button onClick={() => setEditing(structuredClone(workflow))}>Edit</button>
+                <button
+                  onClick={() =>
+                    void attempt(async () => {
+                      await window.workspace.workflows.duplicate(workflow.id);
+                      await load();
+                    })
+                  }
+                >
+                  Duplicate
+                </button>
+                <button onClick={() => setDeleting(workflow)}>Delete</button>
+              </div>
             </div>
-          </article>
+          </details>
         ))}
       </div>
       <section className="runs">
-        <h2>Workflow execution history</h2>
+        <div className="runs-heading">
+          <h2>Workflow execution history</h2>
+          {!!runs.length && (
+            <button
+              className="secondary"
+              disabled={hasActiveRuns}
+              title={
+                hasActiveRuns ? 'Stop all active workflows before clearing history' : undefined
+              }
+              onClick={() => setClearingHistory(true)}
+            >
+              Clear workflow history
+            </button>
+          )}
+        </div>
         {!runs.length && <p className="muted">Workflow runs will appear here.</p>}
         {[...runs].reverse().map((run) => (
           <details className="run" key={run.id}>
@@ -117,21 +147,29 @@ export function Workflows() {
       </section>
       {editing && <WorkflowEditor initial={editing} onClose={() => setEditing(null)} />}
       {running && <WorkflowRunner workflow={running} onClose={() => setRunning(null)} />}
+      {clearingHistory && (
+        <Confirm
+          title="Clear workflow history?"
+          detail="This permanently removes all workflow execution history. Workflow definitions and individual agent history are kept. This cannot be undone."
+          confirmLabel="Clear history"
+          onClose={() => setClearingHistory(false)}
+          onConfirm={async () => {
+            await window.workspace.workflows.clearRuns();
+            await load();
+          }}
+        />
+      )}
       {deleting && (
-        <Modal title="Delete workflow" onClose={() => setDeleting(null)}>
-          <p>Delete {deleting.name}? Execution history is retained.</p>
-          <button
-            onClick={() =>
-              void attempt(async () => {
-                await window.workspace.workflows.remove(deleting.id);
-                await load();
-                setDeleting(null);
-              })
-            }
-          >
-            Delete workflow
-          </button>
-        </Modal>
+        <Confirm
+          title="Delete workflow"
+          detail={`Delete “${deleting.name}”? This cannot be undone. Execution history is retained.`}
+          confirmLabel="Delete workflow"
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await window.workspace.workflows.remove(deleting.id);
+            await load();
+          }}
+        />
       )}
     </div>
   );

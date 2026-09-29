@@ -53,6 +53,11 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     await expect(
       page.getByRole('heading', { name: 'Quality workflow', exact: true }),
     ).toBeVisible();
+    await page
+      .locator('.workflow-card summary')
+      .filter({ hasText: 'Quality workflow' })
+      .first()
+      .click();
     await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Quality workflow copy', exact: true }),
@@ -60,6 +65,9 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     const card = page
       .locator('.workflow-card')
       .filter({ has: page.getByRole('heading', { name: 'Quality workflow', exact: true }) });
+    await card.evaluate((el) => {
+      (el as HTMLDetailsElement).open = true;
+    });
     await card.getByRole('button', { name: 'Run workflow', exact: true }).click();
     await expect(modal.getByText('No folder selected', { exact: true })).toBeVisible();
     await modal.getByRole('button', { name: 'Start workflow', exact: true }).click();
@@ -101,6 +109,21 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     await expect(page.locator('.workflows-page > .runs > .run > summary .badge')).toHaveText(
       'failed',
     );
+    await page.getByRole('button', { name: 'Clear workflow history', exact: true }).click();
+    await expect(modal).toHaveAccessibleName('Clear workflow history?');
+    await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.locator('.workflows-page > .runs > .run')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Clear workflow history', exact: true }).click();
+    await modal.getByRole('button', { name: 'Clear history', exact: true }).click();
+    await expect(page.getByText('Workflow runs will appear here.')).toBeVisible();
+    await card.locator(':scope > summary').click();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(modal).toContainText('Quality workflow');
+    await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    await modal.getByRole('button', { name: 'Delete workflow', exact: true }).click();
+    await expect(card).toHaveCount(0);
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

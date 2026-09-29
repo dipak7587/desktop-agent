@@ -28,6 +28,7 @@ export interface WorkspaceAPI {
     run(input: WorkflowRunInput): Promise<string>;
     stop(id: string): Promise<void>;
     runs(): Promise<WorkflowRun[]>;
+    clearRuns(): Promise<void>;
   };
   settings: {
     get(): Promise<Settings>;

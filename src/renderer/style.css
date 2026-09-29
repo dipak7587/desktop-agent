@@ -1088,27 +1088,113 @@ p {
   gap: 13px;
 }
 
-.skill-card {
+.skill-card,
+.library-card,
+.workflow-card {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--raised);
 }
 
-summary {
-  cursor: pointer;
-  list-style-position: inside;
+.library-card,
+.workflow-card {
+  padding: 0;
+  overflow: hidden;
 }
 
-.skill-card > summary {
+.skill-card > summary,
+.library-card > summary,
+.workflow-card > summary {
   list-style: none;
   display: flex;
   align-items: center;
   gap: 15px;
-  padding: 19px 22px;
+  padding: 15px 22px;
+  cursor: pointer;
 }
 
-.skill-card summary > div:nth-child(2) {
+.skill-card > summary:hover,
+.library-card > summary:hover,
+.workflow-card > summary:hover {
+  background: var(--panel);
+}
+
+.library-card-heading {
   flex: 1;
+  min-width: 0;
+}
+
+.library-card-heading h2 {
+  font-size: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.library-card-heading p {
+  font-size: 11px;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.library-card-compact > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  padding: 15px 16px;
+}
+
+.library-card-compact > summary > .check {
+  margin: 0;
+}
+
+.library-card-compact > summary > .library-card-description {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.collapse-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.library-card[open] > summary .collapse-chevron,
+.workflow-card[open] > summary .collapse-chevron,
+.skill-card[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.skill-card[open] > summary,
+.library-card[open] > summary,
+.workflow-card[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.library-card-body {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.library-card-body .card-actions {
+  display: flex;
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skill-card > summary > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .skill-card summary p {
@@ -1122,7 +1208,8 @@ summary {
 }
 
 .skill-body {
-  padding: 0 24px 23px 75px;
+  padding: 18px 22px;
+  overflow-wrap: anywhere;
 }
 
 .skill-body > .markdown {

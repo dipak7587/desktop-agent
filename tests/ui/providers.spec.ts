@@ -89,6 +89,7 @@ test('provider selection, historical badges, agent overrides, and restart persis
     await modal.getByLabel('Provider', { exact: true }).selectOption({ label: 'Second Ollama' });
     await modal.getByRole('button', { name: 'Save', exact: true }).click();
     const card = page.locator('.library-card').filter({ hasText: 'Provider agent' });
+    await card.locator('summary').click();
     await expect(card).toContainText('Second Ollama / second-model');
     await card.getByRole('button', { name: 'Open in Chat', exact: true }).click();
     await page.getByLabel('Model', { exact: true }).selectOption('first-model');

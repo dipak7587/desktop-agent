@@ -147,6 +147,34 @@ it('persists file definitions, duplicates them, and keeps history after deletion
   ).toBe('completed');
   expect(await definitions.list()).toHaveLength(1);
 });
+it('clears persisted workflow history while preserving definitions and protecting active runs', async () => {
+  await definitions.save(definition());
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const agents = {
+    runWorkflowNode: async ({ agentId }: { agentId: string }) => {
+      await gate;
+      return child(agentId);
+    },
+  };
+  const service = new WorkflowService(definitions, agents, store, () => {});
+  const id = await service.run({ workflowId: 'quality', task: '' });
+  try {
+    expect(() => service.clearRuns()).toThrow(/Stop all active workflows/);
+    expect(store.list()).toHaveLength(1);
+  } finally {
+    release();
+  }
+  await finished(service, id);
+  service.clearRuns();
+  expect(service.runs()).toEqual([]);
+  expect(store.list()).toEqual([]);
+  expect(new WorkflowService(definitions, agents, store, () => {}).runs()).toEqual([]);
+  expect(await definitions.get('quality')).toMatchObject({ name: 'Code quality' });
+  expect(() => service.clearRuns()).not.toThrow();
+});
 it('runs a fork concurrently, waits for both branches, maps structured output and keeps source identities', async () => {
   const w = definition();
   w.connections[2].inputMapping = { sourceOutput: 'result.from', targetInput: 'prompt' };

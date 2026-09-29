@@ -29,6 +29,7 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       .fill('[{"name":"value","type":"number","required":true}]');
     await page.getByLabel('JavaScript logic').fill('return input.value * 2;');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.locator('.library-card summary').click();
     await page.getByRole('button', { name: 'Test / Run' }).click();
     await page.getByLabel('Input · JSON').fill('{"value":3}');
     await page.getByRole('button', { name: 'Run tool', exact: true }).click();
@@ -75,6 +76,7 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
     }
+    await page.locator('.library-card summary').first().click();
     await page.getByRole('button', { name: 'Run', exact: true }).first().click();
     await expect(page.getByText('No folder selected', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Start agent' })).toBeEnabled();
@@ -93,6 +95,7 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     await expect(page.locator('.folder-path')).not.toHaveText(root);
     await page.getByRole('button', { name: 'Close dialog' }).click();
     await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.locator('.library-card summary').click();
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
     await expect(page.getByRole('dialog')).toContainText('Reviewer');
@@ -122,6 +125,7 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       .fill(JSON.stringify({ MODE: 'production', TOKEN: '${TOKEN}', EMPTY: '' }));
     await page.getByLabel('Start automatically when application starts').check();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.locator('.library-card summary').click();
     await expect(page.getByText('Auto start: On')).toBeVisible();
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
     expect(JSON.parse(await page.getByLabel('Environment variables · JSON').inputValue())).toEqual({

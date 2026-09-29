@@ -243,7 +243,15 @@ export function Library({ kind }: { kind: LibraryKind }) {
           }
         />
       ) : (
-        <div className={kind === 'skills' ? 'accordions' : 'library-grid'}>
+        <div
+          className={
+            kind === 'skills'
+              ? 'accordions'
+              : kind === 'saved-text'
+                ? 'library-list'
+                : 'library-grid'
+          }
+        >
           {!visible.length && <p className="small muted">No items match this group and search.</p>}
           {visible.map((item) => {
             const state = states.find((s) => s.id === item.id);
@@ -307,7 +315,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 {grouped && item.group && (
                   <span className="badge library-group-badge">{item.group}</span>
                 )}
-                <p className="muted">{item.description || 'No description'}</p>
+                {(kind === 'skills' || kind === 'saved-text') && (
+                  <p className="muted">{item.description || 'No description'}</p>
+                )}
                 {kind === 'skills' && (
                   <>
                     <div className="small muted">Version {item.version}</div>
@@ -384,7 +394,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     <p>{item.description || 'Reusable model instructions'}</p>
                   </div>
                   <span className="badge">{item.enabled ? 'Enabled' : 'Disabled'}</span>
-                  <label className="check skill-group-select">
+                  <label className="check skill-group-select" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       aria-label={`Select ${item.name}`}
@@ -402,10 +412,16 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 <div className="skill-body">{details}</div>
               </details>
             ) : (
-              <article className="library-card" key={item.id}>
-                <div className="card-top">
+              <details
+                className={`library-card${grouped ? ' library-card-compact' : ''}`}
+                key={item.id}
+              >
+                <summary>
                   <div className="item-icon">
                     <Icon size={21} />
+                  </div>
+                  <div className="library-card-heading">
+                    <h2>{item.name}</h2>
                   </div>
                   <span className="badge">
                     {kind === 'mcp'
@@ -416,25 +432,31 @@ export function Library({ kind }: { kind: LibraryKind }) {
                         ? 'Local'
                         : 'Disabled'}
                   </span>
-                </div>
-                {grouped && (
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${item.name}`}
-                      checked={selected.includes(item.id)}
-                      onChange={(e) =>
-                        setSelected((ids) =>
-                          e.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id),
-                        )
-                      }
-                    />
-                    Select
-                  </label>
-                )}
-                <h2>{item.name}</h2>
-                {details}
-              </article>
+                  {grouped && (
+                    <label className="check" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${item.name}`}
+                        checked={selected.includes(item.id)}
+                        onChange={(e) =>
+                          setSelected((ids) =>
+                            e.target.checked
+                              ? [...ids, item.id]
+                              : ids.filter((id) => id !== item.id),
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                  <ChevronDown size={16} className="collapse-chevron" />
+                  {grouped && (
+                    <p className="library-card-description">
+                      {item.description || 'No description'}
+                    </p>
+                  )}
+                </summary>
+                <div className="library-card-body">{details}</div>
+              </details>
             );
           })}
         </div>
@@ -992,6 +1014,7 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
   const { runs: allRuns, load } = useRuns();
   const runs = ids ? allRuns.filter((run) => ids.includes(run.id)) : allRuns;
   const [resolved, setResolved] = useState<string[]>([]);
+  const [clearingHistory, setClearingHistory] = useState(false);
   if (!runs.length) return null;
   return (
     <section className="runs">
@@ -1000,17 +1023,25 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
         {!ids && (
           <button
             className="secondary"
-            onClick={() =>
-              void attempt(async () => {
-                await window.workspace.agents.clearRuns();
-                await load();
-              })
-            }
+            disabled={runs.some((run) => run.status === 'Running')}
+            onClick={() => setClearingHistory(true)}
           >
             Clear all history
           </button>
         )}
       </div>
+      {clearingHistory && (
+        <Confirm
+          title="Clear agent history?"
+          detail="This permanently removes all agent execution history. Agent definitions are kept. This cannot be undone."
+          confirmLabel="Clear history"
+          onClose={() => setClearingHistory(false)}
+          onConfirm={async () => {
+            await window.workspace.agents.clearRuns();
+            await load();
+          }}
+        />
+      )}
       {[...runs].reverse().map((run) => (
         <details key={run.id} className="run">
           <summary>

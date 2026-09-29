@@ -12,6 +12,7 @@ const api: WorkspaceAPI = {
     run: (input) => invoke('workflows:run', input),
     stop: (id) => invoke('workflows:stop', id),
     runs: () => invoke('workflows:runs'),
+    clearRuns: () => invoke('workflows:clear-runs'),
   },
   settings: {
     get: () => invoke('settings:get'),

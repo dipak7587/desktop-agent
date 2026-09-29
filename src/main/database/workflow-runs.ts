@@ -3,6 +3,7 @@ import type { WorkflowRun } from '../../shared/workflows';
 export interface WorkflowRunStore {
   list(): WorkflowRun[];
   save(run: WorkflowRun): void;
+  clear(): void;
 }
 export class WorkflowRunDatabase implements WorkflowRunStore {
   private db: DatabaseSync;
@@ -24,6 +25,9 @@ export class WorkflowRunDatabase implements WorkflowRunStore {
         'INSERT INTO workflow_runs(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
       )
       .run(run.id, JSON.stringify(run));
+  }
+  clear() {
+    this.db.prepare('DELETE FROM workflow_runs').run();
   }
   close() {
     this.db.close();

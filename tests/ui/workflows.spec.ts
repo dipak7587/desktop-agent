@@ -74,9 +74,12 @@ test('Landing settings customize the welcome screen and Credentials has its own 
       'base64',
     ),
   });
-  const preview = page.getByRole('region', { name: 'Landing preview' });
+  await expect(page.getByRole('button', { name: 'Remove logo', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: 'Landing preview' });
   await expect(preview.getByRole('img', { name: 'Landing logo' })).toBeVisible();
   await expect(preview.getByRole('heading', { name: 'Every story starts here.' })).toBeVisible();
+  await preview.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'Save landing', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Landing page saved');
   await page.reload();
@@ -143,8 +146,25 @@ for (const [kind, section] of [
     }, kind);
     await page.reload();
     await page.getByRole('button', { name: section, exact: true }).click();
+    const cards = page.locator(kind === 'skills' ? '.skill-card' : '.library-card');
+    const neighbor = cards.nth(1);
+    const closedHeight = await neighbor.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    await cards.first().locator(':scope > summary').click();
+    await expect(cards.first()).toHaveJSProperty('open', true);
+    await expect(neighbor).toHaveJSProperty('open', false);
+    await expect(neighbor.getByRole('button', { name: 'Edit', exact: true })).not.toBeVisible();
+    expect(
+      await neighbor.evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeCloseTo(closedHeight, 0);
+    await expect(cards.first().locator(':scope > summary')).toHaveCSS('display', 'flex');
+    await page.screenshot({ path: `test-results/accordion-${kind}.png` });
+    await cards.first().locator(':scope > summary').click();
     if (kind === 'mcp') {
-      const command = page.locator('.command-line').first();
+      const expanded = page.locator('.library-card').filter({ hasText: 'Writer' });
+      await expanded.locator(':scope > summary').click();
+      const command = expanded.locator('.command-line');
       const tooltip = page.getByRole('tooltip');
       await command.hover();
       await expect(tooltip).toHaveText(
@@ -193,7 +213,7 @@ for (const [kind, section] of [
     const card = page
       .locator(kind === 'skills' ? '.skill-card' : '.library-card')
       .filter({ hasText: 'Writer' });
-    if (kind === 'skills') await card.locator('summary').click();
+    await card.locator(':scope > summary').click();
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     await page.getByRole('dialog').getByLabel('Group', { exact: true }).fill('Video Studio');
     await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
@@ -207,6 +227,7 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   await page.getByLabel('Text', { exact: true }).fill('# Design\nPrivate local notes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Architecture notes' })).toBeVisible();
+  await page.locator('.library-card').filter({ hasText: 'Architecture notes' }).click();
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Copied to clipboard');
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
@@ -244,6 +265,7 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   page = await app.firstWindow();
   await page.getByRole('button', { name: 'Saved Text', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Updated notes' })).toBeVisible();
+  await page.locator('.library-card').filter({ hasText: 'Updated notes' }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByText('Your saved text start here')).toBeVisible();

@@ -46,6 +46,11 @@ export class WorkflowService {
   runs() {
     return [...this.history.values()];
   }
+  clearRuns() {
+    if (this.controllers.size) throw new Error('Stop all active workflows before clearing history');
+    this.store.clear();
+    this.history.clear();
+  }
   async run(input: WorkflowRunInput, observe?: (event: AppEvent) => void) {
     input = workflowRunInputSchema.parse(input);
     const workflow = validateWorkflow(await this.definitions.get(input.workflowId));
