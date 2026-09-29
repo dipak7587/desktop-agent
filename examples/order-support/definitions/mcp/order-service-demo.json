@@ -1,0 +1,12 @@
+{
+  "id": "order-service-demo",
+  "name": "Order service demo",
+  "description": "Read fictional sample orders through a local MCP server.",
+  "command": "/Users/dipakgupta/.nvm/versions/node/v22.22.3/bin/node",
+  "args": [
+    "/Users/dipakgupta/workspace/project/agent-desktop/examples/order-support/server.mjs"
+  ],
+  "env": {},
+  "enabled": true,
+  "autoStart": false
+}

@@ -14,6 +14,8 @@ import {
   BookOpen,
   Terminal,
   Code2,
+  RotateCcw,
+  FileDown,
 } from 'lucide-react';
 import { useChat, useSettings, useKnowledge, useUI, useAgents, attempt } from '../stores';
 import { ChatActivity, useChatCommands } from './chat-commands';
@@ -81,6 +83,8 @@ export function Chat() {
       if (!id) {
         await chat.newChat();
         id = useChat.getState().current;
+        // Creating the first conversation is part of sending, not an explicit reset.
+        useUI.setState({ chatCommand: commands.selected });
       }
       if (!id) return;
       const text = request.query;
@@ -103,7 +107,6 @@ export function Chat() {
             : undefined,
       });
       useUI.setState({ draft: '' });
-      commands.clear();
       setProject('');
       await chat.load();
       await chat.open(id);
@@ -188,7 +191,17 @@ export function Chat() {
       <section className="conversation">
         <header className="chat-heading">
           <div>
-            <h2>{current?.title ?? 'New conversation'}</h2>
+            <h2
+              className={current ? 'conversation-title' : undefined}
+              title={current ? 'Double-click to rename conversation' : undefined}
+              onDoubleClick={() => {
+                if (!current) return;
+                setRename(current.id);
+                setTitle(current.title);
+              }}
+            >
+              {current?.title ?? 'New conversation'}
+            </h2>
             <span className="muted small">A private space to think, build, and explore.</span>
           </div>
           {agent && (
@@ -202,11 +215,43 @@ export function Chat() {
               )}
             </div>
           )}
-          <ProviderSelector
-            providerId={providerId}
-            model={model}
-            onChange={(p, m) => void attempt(() => chat.choose(p, m))}
-          />
+          <div className="chat-heading-controls">
+            <button
+              type="button"
+              className="secondary"
+              disabled={!current}
+              title="Export this conversation as a Markdown file"
+              onClick={() => current && void attempt(() => window.workspace.chat.exportMarkdown(current.id))}
+            >
+              <FileDown size={14} /> Export .md
+            </button>
+            <ProviderSelector
+              providerId={providerId}
+              model={model}
+              onChange={(p, m) => void attempt(() => chat.choose(p, m))}
+            />
+            <button
+              type="button"
+              className="secondary chat-clear-history"
+              disabled={busy || !!chat.generating}
+              title="Start a fresh chat with this model. Previous conversations stay in history."
+              onClick={() => {
+                setBusy(true);
+                void attempt(async () => {
+                  try {
+                    await chat.newChat({ providerId, model });
+                    useUI.setState({ draft: '' });
+                    setKnowledge('none');
+                    commands.inputRef.current?.focus();
+                  } finally {
+                    setBusy(false);
+                  }
+                });
+              }}
+            >
+              <RotateCcw size={14} /> Clear history
+            </button>
+          </div>
         </header>
         <div className="messages">
           {!chat.messages.length && !chat.generating ? (
@@ -328,8 +373,7 @@ export function Chat() {
             {commands.selected && (
               <div className="command-chip">
                 <span>
-                  /{commands.selected.kind} · {commands.selected.name} ·{' '}
-                  {commands.selected.kind === 'agent' ? 'this conversation' : 'this message'}
+                  /{commands.selected.kind} · {commands.selected.name} · this conversation
                 </span>
                 <div className="command-chip-actions">
                   {['agent', 'workflow'].includes(commands.selected.kind) && (

@@ -550,6 +550,10 @@ p {
   margin-bottom: 4px;
 }
 
+.chat-heading .conversation-title {
+  cursor: text;
+}
+
 .chat-heading select {
   max-width: 240px;
   font-size: 11px;
@@ -1501,6 +1505,8 @@ legend {
 
 .toast {
   position: fixed;
+  inset: auto;
+  margin: 0;
   bottom: 25px;
   left: 50%;
   transform: translateX(-50%);
@@ -1762,9 +1768,32 @@ legend {
   flex-direction: row;
 }
 
-.chat-heading .provider-selector {
+.chat-heading-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
   margin-inline-start: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.chat-heading .provider-selector {
+  min-width: 0;
+  max-width: 100%;
   padding: 0;
+}
+
+.chat-heading-controls select,
+.chat-clear-history {
+  height: 34px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.chat-clear-history {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .chat-heading .provider-selector label {

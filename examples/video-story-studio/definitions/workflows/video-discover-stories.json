@@ -1,0 +1,23 @@
+{
+  "id": "video-discover-stories",
+  "name": "Video 1 · Discover five stories",
+  "description": "Live research → five numbered Markdown story options. Copy the full report into Video 2 with your choice.",
+  "executionMode": "sequential",
+  "agents": [
+    {
+      "id": "scout",
+      "agentId": "video-story-scout",
+      "name": "Find five stories",
+      "prompt": "Perform your assigned role for the current task using all required upstream results. Respect BLOCKED prerequisites.",
+      "position": {
+        "x": 120,
+        "y": 100
+      }
+    }
+  ],
+  "connections": [],
+  "maxDepth": 1,
+  "maxIterations": 1,
+  "createdAt": "2026-09-29T07:45:11.016Z",
+  "updatedAt": "2026-09-29T07:45:11.016Z"
+}

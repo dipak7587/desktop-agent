@@ -5,7 +5,7 @@ import type { ProviderRouter } from '../services/providers/router';
 import type { CustomToolService } from '../services/tools/custom';
 import type { AgentRunDatabase } from '../database/agent-runs';
 import { readText } from '../services/filesystem/walk';
-import { app, ipcMain, dialog, shell, BrowserWindow } from 'electron';
+import { app, ipcMain, dialog, shell, BrowserWindow, clipboard } from 'electron';
 import { z } from 'zod';
 import { realpath } from 'node:fs/promises';
 import {
@@ -31,6 +31,13 @@ import type { MCPService } from '../services/mcp/mcp';
 import type { AgentService } from '../services/agents/agents';
 import type { SecretStore } from '../security/secrets';
 import { atomicWrite } from '../services/filesystem/storage';
+import { errorMessage } from '../../shared/error-message';
+import {
+  parseWorkspaceBackup,
+  stringifyWorkspaceBackup,
+  workspaceBackupFormatSchema,
+  workspaceBackupSchema,
+} from '../../shared/workspace-backup';
 export interface Services {
   workflows: WorkflowService;
   workflowDb: WorkflowRunDatabase;
@@ -65,12 +72,15 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       try {
         return await fn(...parsed);
       } catch (e) {
-        throw new Error(s.secrets.redact((e as Error).message));
+        throw new Error(s.secrets.redact(errorMessage(e)));
       }
     });
   }
   const none = z.tuple([]),
     id = z.tuple([idSchema]);
+  handle('clipboard:write-text', z.tuple([z.string().max(2_000_000)]), (text) =>
+    clipboard.writeText(text),
+  );
   handle('settings:get', none, () => s.settings.get());
   handle('settings:path', none, () => s.settings.root);
   handle(
@@ -122,6 +132,40 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('chat:rename', z.tuple([idSchema, z.string().trim().min(1).max(200)]), (id, title) =>
     s.db.rename(id, title),
   );
+  handle('chat:export-markdown', id, async (id) => {
+    const conversation = s.db.get(id);
+    const messages = s.db.messages(id);
+    const safeTitle = Array.from(conversation.title, (character) =>
+      /[<>:"/\\|?*]/.test(character) || character.charCodeAt(0) < 32 ? '-' : character,
+    )
+      .join('')
+      .trim();
+    const result = await dialog.showSaveDialog({
+      defaultPath: `${safeTitle || 'conversation'}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (result.canceled || !result.filePath) return;
+
+    const markdown = [
+      `# ${conversation.title}`,
+      '',
+      `- Created: ${new Date(conversation.createdAt).toLocaleString()}`,
+      `- Updated: ${new Date(conversation.updatedAt).toLocaleString()}`,
+      `- Model: ${conversation.model || 'Not selected'}`,
+      '',
+      ...messages.flatMap((message) => [
+        `## ${message.role === 'assistant' ? 'Assistant' : message.role === 'user' ? 'User' : message.role}`,
+        '',
+        message.content ||
+          (message.metadata?.error ? `_${message.metadata.error}_` : '_No content_'),
+        ...(message.metadata?.error && message.content
+          ? ['', `> Error: ${message.metadata.error}`]
+          : []),
+        '',
+      ]),
+    ].join('\n');
+    await atomicWrite(result.filePath, markdown);
+  });
   handle('chat:remove', id, (id) => {
     if (s.chat.isActive(id)) throw new Error('Stop generation before deleting this conversation');
     s.db.remove(id);
@@ -296,6 +340,104 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   );
   handle('secrets:remove', z.tuple([secretName]), (name) => s.secrets.remove(name));
   handle('system:ollama-docs', none, () => shell.openExternal('https://ollama.com/download'));
+  handle('system:export-workspace', z.tuple([workspaceBackupFormatSchema]), async (format) => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: `localai-workspace-backup.${format === 'yaml' ? 'yaml' : format}`,
+      filters: [
+        { name: format === 'md' ? 'Markdown' : format.toUpperCase(), extensions: [format] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return;
+
+    const settings = s.settings.get();
+    const backup = workspaceBackupSchema.parse({
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      settings: {
+        ...settings,
+        apiKey: '',
+        providers: settings.providers.map((provider) => ({
+          ...provider,
+          apiKey: '',
+          credentialRef: undefined,
+          hasCredential: false,
+        })),
+      },
+      libraries: {
+        skills: await s.library.list('skills'),
+        'saved-text': await s.library.list('saved-text'),
+        agents: await s.library.list('agents'),
+        mcp: await s.library.list('mcp'),
+        tools: await s.library.list('tools'),
+      },
+      workflows: await s.workflows.definitions.list(),
+      conversations: s.db.exportAll(),
+    });
+    await atomicWrite(result.filePath, stringifyWorkspaceBackup(backup, format));
+  });
+  handle('system:import-workspace', none, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'showHiddenFiles'],
+      filters: [{ name: 'Workspace backup', extensions: ['json', 'yaml', 'yml', 'md'] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const path = result.filePaths[0];
+    const raw = await readText(path, 50_000_000);
+    const extension = path.split('.').pop()?.toLowerCase();
+    const format =
+      extension === 'md' ? 'md' : extension === 'yaml' || extension === 'yml' ? 'yaml' : 'json';
+    const backup = parseWorkspaceBackup(raw, format);
+
+    const currentSettings = s.settings.get();
+    const importedProviderIds = new Set(backup.settings.providers.map((provider) => provider.id));
+    const mergedSettings = {
+      ...backup.settings,
+      providers: [
+        ...currentSettings.providers.filter((provider) => !importedProviderIds.has(provider.id)),
+        ...backup.settings.providers,
+      ],
+      activeProviderId: backup.settings.providers.some(
+        (provider) => provider.id === backup.settings.activeProviderId,
+      )
+        ? backup.settings.activeProviderId
+        : currentSettings.activeProviderId,
+    };
+    if (
+      !mergedSettings.providers.some((provider) => provider.id === mergedSettings.activeProviderId)
+    )
+      throw new Error('The backup does not contain a provider configuration.');
+
+    const currentAgents = await s.library.list('agents');
+    const agentIds = new Set([
+      ...currentAgents.map((agent) => agent.id),
+      ...backup.libraries.agents.map((agent) => agent.id),
+    ]);
+    for (const workflow of backup.workflows)
+      for (const node of workflow.agents)
+        if (!agentIds.has(node.agentId))
+          throw new Error(`Workflow “${workflow.name}” references missing agent “${node.name}”.`);
+
+    await s.settings.save(mergedSettings);
+    for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools'] as const) {
+      for (const item of backup.libraries[kind]) {
+        if (kind === 'mcp') await s.mcp.stop(item.id);
+        await s.library.save(kind, item);
+      }
+    }
+    for (const workflow of backup.workflows) await s.workflows.definitions.save(workflow);
+    s.db.importConversations(backup.conversations);
+    return {
+      conversations: backup.conversations.length,
+      workflows: backup.workflows.length,
+      libraries: {
+        skills: backup.libraries.skills.length,
+        'saved-text': backup.libraries['saved-text'].length,
+        agents: backup.libraries.agents.length,
+        mcp: backup.libraries.mcp.length,
+        tools: backup.libraries.tools.length,
+      },
+    };
+  });
   handle('system:export-settings', none, async () => {
     const result = await dialog.showSaveDialog({ defaultPath: 'localai-settings.json' });
     if (!result.canceled && result.filePath)

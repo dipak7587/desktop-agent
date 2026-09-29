@@ -12,13 +12,13 @@ toolConfig:
     - name: release
       type: string
       required: true
-  url: ""
+  url: ''
   method: GET
   headers: {}
 ---
 
 const findings = Array.isArray(input.findings) ? input.findings : [];
-const release = String(input.release || ' 이번 release').trim();
+const release = String(input.release || 'this release').trim();
 
 return {
   release,

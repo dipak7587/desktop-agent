@@ -1,6 +1,6 @@
 import { Workflows } from './features/workflows';
 import { useWorkflows } from './stores/workflows';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   MessageSquare,
   Plug,
@@ -45,10 +45,15 @@ const nav = [
 ] as const;
 export function App() {
   const { section, setSection, error, notice } = useUI();
+  const errorToastRef = useRef<HTMLDivElement>(null);
   const { settings, status } = useSettings();
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState(false);
   const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const toast = errorToastRef.current;
+    if (error && toast && !toast.matches(':popover-open')) toast.showPopover();
+  }, [error]);
   useEffect(() => {
     void attempt(async () => {
       await useSettings.getState().load();
@@ -239,7 +244,7 @@ export function App() {
         )}
       </main>
       {error && (
-        <div className="toast error" role="alert">
+        <div ref={errorToastRef} className="toast error" role="alert" popover="manual">
           <span>{error}</span>
           <button
             className="icon"

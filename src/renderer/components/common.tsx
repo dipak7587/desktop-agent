@@ -154,7 +154,7 @@ export function CopyButton({ text }: { text: string }) {
       className="text-button"
       onClick={() =>
         void attempt(async () => {
-          await navigator.clipboard.writeText(text);
+          await window.workspace.clipboard.writeText(text);
           useUI.setState({ notice: 'Copied to clipboard' });
         })
       }

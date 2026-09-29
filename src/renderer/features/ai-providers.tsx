@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ProviderProfile, LLMProviderName } from '../../shared/types';
 import { providerProfileSchema } from '../../shared/schemas';
 import { useSettings, useUI, attempt } from '../stores';
+import { errorMessage } from '../../shared/error-message';
 import { Confirm, Modal } from '../components/common';
 const defaults: Record<LLMProviderName, string> = {
   ollama: 'http://localhost:11434',
@@ -41,7 +42,7 @@ export function AIProviders() {
           return load();
         })
         .catch((e) =>
-          setStatuses((s) => ({ ...s, [p.id]: `Unavailable: ${(e as Error).message}` })),
+          setStatuses((s) => ({ ...s, [p.id]: `Unavailable: ${errorMessage(e)}` })),
         );
     }
     // Probe saved configurations when the page opens; edits explicitly trigger another test.
@@ -70,7 +71,7 @@ export function AIProviders() {
       setEditing(useSettings.getState().settings!.providers.find((p) => p.id === profile.id)!);
       setStatuses((s) => ({ ...s, [profile.id]: `Connected · ${models.length} models` }));
     } catch (e) {
-      setStatuses((s) => ({ ...s, [editing.id]: `Unavailable: ${(e as Error).message}` }));
+      setStatuses((s) => ({ ...s, [editing.id]: `Unavailable: ${errorMessage(e)}` }));
     } finally {
       setBusy(false);
     }

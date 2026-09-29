@@ -1,0 +1,13 @@
+{
+  "id": "video-story-studio",
+  "name": "Video Story Studio",
+  "description": "Live Wikisource research and versioned local video production packs.",
+  "command": "/Users/dipakgupta/.nvm/versions/node/v22.22.3/bin/node",
+  "args": [
+    "/Users/dipakgupta/workspace/project/agent-desktop/examples/video-story-studio/server.mjs",
+    "/Users/dipakgupta/Library/Application Support/local-ai-workspace/video-projects"
+  ],
+  "env": {},
+  "enabled": true,
+  "autoStart": false
+}

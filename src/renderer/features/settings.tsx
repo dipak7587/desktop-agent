@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound, Download, Upload } from 'lucide-react';
 import { useSettings, useAgents, useUI, attempt } from '../stores';
 import type { Settings as SettingsType } from '../../shared/types';
+import type { WorkspaceBackupFormat } from '../../shared/workspace-backup';
 import { PageHeader } from '../components/common';
 export function Settings() {
   const state = useSettings();
@@ -12,7 +13,9 @@ export function Settings() {
   const [keyName, setKeyName] = useState('');
   const [secret, setSecret] = useState('');
   const [path, setPath] = useState('');
-  const [tab, setTab] = useState<'general' | 'providers'>('general');
+  const [tab, setTab] = useState<'general' | 'providers' | 'backup'>('general');
+  const [backupFormat, setBackupFormat] = useState<WorkspaceBackupFormat>('json');
+  const [importing, setImporting] = useState(false);
   useEffect(() => {
     setValue(state.settings);
   }, [state.settings]);
@@ -30,25 +33,6 @@ export function Settings() {
         eyebrow="MAKE IT YOURS"
         title="Settings"
         description="Your workspace, models, and local preferences."
-        actions={
-          <>
-            <button
-              onClick={() =>
-                void attempt(async () => {
-                  await window.workspace.system.importSettings();
-                  await state.load();
-                })
-              }
-            >
-              <Upload size={15} />
-              Import
-            </button>
-            <button onClick={() => void attempt(() => window.workspace.system.exportSettings())}>
-              <Download size={15} />
-              Export
-            </button>
-          </>
-        }
       />
       <nav className="actions settings-tabs" aria-label="Settings pages">
         <button type="button" aria-pressed={tab === 'general'} onClick={() => setTab('general')}>
@@ -61,9 +45,81 @@ export function Settings() {
         >
           AI Providers
         </button>
+        <button type="button" aria-pressed={tab === 'backup'} onClick={() => setTab('backup')}>
+          Import / Export
+        </button>
       </nav>
       {tab === 'providers' ? (
         <AIProviders />
+      ) : tab === 'backup' ? (
+        <section className="settings-section workspace-backup">
+          <div>
+            <h2>Workspace backup</h2>
+            <p>Export or restore your app-managed workspace data.</p>
+          </div>
+          <div className="settings-fields">
+            <p>
+              Includes settings, chat history, agents, skills, saved text, MCP server definitions,
+              custom tool definitions and code, and workflows. Same-ID records are replaced on
+              import; other local records are kept.
+            </p>
+            <p className="callout">
+              Backups include private chat content, executable MCP/tool definitions, and literal
+              values saved in MCP environment configuration. OS-stored API keys and imported .env
+              contents are not included. External project/server folders are not copied, so
+              gitignored folders are never copied either. Matching provider IDs keep credentials
+              already stored on this device.
+            </p>
+            <div className="field-row backup-controls">
+              <label>
+                Export format
+                <select
+                  aria-label="Export format"
+                  value={backupFormat}
+                  onChange={(e) => setBackupFormat(e.target.value as WorkspaceBackupFormat)}
+                >
+                  <option value="json">JSON</option>
+                  <option value="yaml">YAML</option>
+                  <option value="md">Markdown</option>
+                </select>
+              </label>
+              <div className="actions">
+                <button
+                  className="primary"
+                  onClick={() =>
+                    void attempt(() => window.workspace.system.exportWorkspace(backupFormat))
+                  }
+                >
+                  <Download size={15} /> Export workspace
+                </button>
+                <button
+                  disabled={importing}
+                  onClick={() =>
+                    void attempt(async () => {
+                      setImporting(true);
+                      try {
+                        const result = await window.workspace.system.importWorkspace();
+                        if (!result) return;
+                        await Promise.all([state.load(), useAgents.getState().load()]);
+                        useUI.setState({
+                          notice: `Imported ${result.conversations} chats, ${result.workflows} workflows, and ${Object.values(result.libraries).reduce((sum, count) => sum + count, 0)} definitions.`,
+                        });
+                      } finally {
+                        setImporting(false);
+                      }
+                    })
+                  }
+                >
+                  <Upload size={15} /> {importing ? 'Importing…' : 'Import backup'}
+                </button>
+              </div>
+            </div>
+            <p className="small muted">
+              Import accepts `.json`, `.yaml`, `.yml`, or `.md` workspace backups. Chat histories
+              with matching IDs are replaced; histories not present in the backup remain unchanged.
+            </p>
+          </div>
+        </section>
       ) : (
         <form
           onSubmit={(e) => {
@@ -275,99 +331,103 @@ export function Settings() {
           </div>
         </form>
       )}
-      <section className="settings-section">
-        <div>
-          <h2>Credentials</h2>
-          <p>Encrypted using your operating system. Values never return to the interface.</p>
-        </div>
-        <div className="settings-fields">
-          {keys.map((k) => (
-            <div className="secret-row" key={k}>
-              <KeyRound size={16} />
-              <strong>{k}</strong>
-              <span>••••••••</span>
-              <button
-                onClick={() =>
-                  void attempt(async () => {
-                    await window.workspace.secrets.remove(k);
-                    setKeys(await window.workspace.secrets.list());
-                  })
-                }
-              >
-                Remove
-              </button>
+      {tab === 'general' && (
+        <>
+          <section className="settings-section">
+            <div>
+              <h2>Credentials</h2>
+              <p>Encrypted using your operating system. Values never return to the interface.</p>
             </div>
-          ))}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void attempt(async () => {
-                await window.workspace.secrets.set(keyName, secret);
-                setSecret('');
-                setKeys(await window.workspace.secrets.list());
-                useUI.setState({ notice: 'Credential stored securely' });
-              });
-            }}
-          >
-            <label>
-              Reference name
-              <input
-                required
-                pattern="[A-Za-z_][A-Za-z0-9_]*"
-                placeholder="GITHUB_TOKEN"
-                value={keyName}
-                onChange={(e) => setKeyName(e.target.value)}
-              />
-            </label>
-            <label>
-              API key
-              <input
-                required
-                type="password"
-                autoComplete="new-password"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-            </label>
-            <button>Store / update key</button>
-          </form>
-          <p className="small muted">
-            MCP resolves {'${NAME}'} from stored credentials, a selected .env file, then the
-            application process environment. No environment values are displayed.
-          </p>
-          <div className="actions">
-            <button
-              onClick={() =>
-                void attempt(async () => {
-                  const names = await window.workspace.secrets.importEnv();
-                  useUI.setState({
-                    notice: `Environment file loaded: ${names.length} references. Restart MCP servers to use it.`,
+            <div className="settings-fields">
+              {keys.map((k) => (
+                <div className="secret-row" key={k}>
+                  <KeyRound size={16} />
+                  <strong>{k}</strong>
+                  <span>••••••••</span>
+                  <button
+                    onClick={() =>
+                      void attempt(async () => {
+                        await window.workspace.secrets.remove(k);
+                        setKeys(await window.workspace.secrets.list());
+                      })
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void attempt(async () => {
+                    await window.workspace.secrets.set(keyName, secret);
+                    setSecret('');
+                    setKeys(await window.workspace.secrets.list());
+                    useUI.setState({ notice: 'Credential stored securely' });
                   });
-                })
-              }
-            >
-              Use .env file
-            </button>
-            <button
-              onClick={() =>
-                void attempt(async () => {
-                  await window.workspace.secrets.clearEnv();
-                  useUI.setState({ notice: 'Environment file disconnected' });
-                })
-              }
-            >
-              Disconnect .env file
-            </button>
-          </div>
-        </div>
-      </section>
-      <section className="settings-section">
-        <div>
-          <h2>Local data</h2>
-          <p>Portable definitions and private local history.</p>
-        </div>
-        <code className="data-path">{path}</code>
-      </section>
+                }}
+              >
+                <label>
+                  Reference name
+                  <input
+                    required
+                    pattern="[A-Za-z_][A-Za-z0-9_]*"
+                    placeholder="GITHUB_TOKEN"
+                    value={keyName}
+                    onChange={(e) => setKeyName(e.target.value)}
+                  />
+                </label>
+                <label>
+                  API key
+                  <input
+                    required
+                    type="password"
+                    autoComplete="new-password"
+                    value={secret}
+                    onChange={(e) => setSecret(e.target.value)}
+                  />
+                </label>
+                <button>Store / update key</button>
+              </form>
+              <p className="small muted">
+                MCP resolves {'${NAME}'} from stored credentials, a selected .env file, then the
+                application process environment. No environment values are displayed.
+              </p>
+              <div className="actions">
+                <button
+                  onClick={() =>
+                    void attempt(async () => {
+                      const names = await window.workspace.secrets.importEnv();
+                      useUI.setState({
+                        notice: `Environment file loaded: ${names.length} references. Restart MCP servers to use it.`,
+                      });
+                    })
+                  }
+                >
+                  Use .env file
+                </button>
+                <button
+                  onClick={() =>
+                    void attempt(async () => {
+                      await window.workspace.secrets.clearEnv();
+                      useUI.setState({ notice: 'Environment file disconnected' });
+                    })
+                  }
+                >
+                  Disconnect .env file
+                </button>
+              </div>
+            </div>
+          </section>
+          <section className="settings-section">
+            <div>
+              <h2>Local data</h2>
+              <p>Portable definitions and private local history.</p>
+            </div>
+            <code className="data-path">{path}</code>
+          </section>
+        </>
+      )}
     </div>
   );
 }

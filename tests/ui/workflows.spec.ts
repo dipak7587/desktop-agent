@@ -55,6 +55,11 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   await page.getByLabel('Text', { exact: true }).fill('# Design\nPrivate local notes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Architecture notes' })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Copied to clipboard');
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    '# Design\nPrivate local notes.',
+  );
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Updated notes');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -139,6 +144,120 @@ test('agent, MCP, skill, and tool editors create definitions from JSON and YAML'
     await expect(modal).not.toBeVisible();
     await expect(page.getByText(entry.name, { exact: true })).toBeVisible();
   }
+});
+test('chat title double-click renames and exports the conversation as Markdown', async () => {
+  const exportPath = join(root, 'chat-export.md');
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
+  }, exportPath);
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  const title = page.getByRole('heading', { name: 'New conversation', exact: true });
+  await title.dblclick();
+  const renameDialog = page.getByRole('dialog', { name: 'Rename conversation' });
+  await renameDialog.getByLabel('Title', { exact: true }).fill('Planning session');
+  await renameDialog.getByRole('button', { name: 'Save title', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Planning session', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Export .md', exact: true }).click();
+  const markdown = await readFile(exportPath, 'utf8');
+  expect(markdown).toContain('# Planning session');
+  expect(markdown).toContain('- Model: ui-test-model');
+});
+test('Settings imports and exports complete workspace backups', async () => {
+  const exportPath = join(root, 'workspace-backup.yaml');
+  const importPath = join(root, 'restore.json');
+  await writeFile(
+    importPath,
+    JSON.stringify({
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      settings: {
+        ...(await page.evaluate(() => window.workspace.settings.get())),
+        providers: (await page.evaluate(() => window.workspace.settings.get())).providers.map(
+          (provider) => ({
+            ...provider,
+            apiKey: '',
+            credentialRef: undefined,
+            hasCredential: false,
+          }),
+        ),
+        apiKey: '',
+      },
+      libraries: {
+        skills: [
+          {
+            id: 'restored-skill',
+            name: 'Restored skill',
+            description: 'Imported from backup',
+            content: 'Backup instructions',
+          },
+        ],
+        'saved-text': [],
+        agents: [],
+        mcp: [],
+        tools: [],
+      },
+      workflows: [],
+      conversations: [
+        {
+          conversation: {
+            id: 'restored-chat',
+            title: 'Restored conversation',
+            model: 'ui-test-model',
+            providerId: 'ollama-local',
+            createdAt: 100,
+            updatedAt: 200,
+          },
+          messages: [
+            {
+              id: 'restored-message',
+              conversationId: 'restored-chat',
+              role: 'user',
+              content: 'Backup question',
+              createdAt: 101,
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  await app.evaluate(
+    ({ dialog }, paths) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: paths.exportPath });
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [paths.importPath] });
+    },
+    { exportPath, importPath },
+  );
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await page.getByLabel('Export format', { exact: true }).selectOption('yaml');
+  await page.getByRole('button', { name: 'Export workspace', exact: true }).click();
+  await expect
+    .poll(async () => readFile(exportPath, 'utf8').catch(() => ''))
+    .toContain('formatVersion: 1');
+
+  await page.getByRole('button', { name: 'Import backup', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('1 chats');
+  expect(await page.evaluate(() => window.workspace.chat.list())).toContainEqual(
+    expect.objectContaining({ id: 'restored-chat', title: 'Restored conversation' }),
+  );
+  expect(await page.evaluate(() => window.workspace.library.list('skills'))).toContainEqual(
+    expect.objectContaining({ id: 'restored-skill', name: 'Restored skill' }),
+  );
+});
+test('global errors stay above an open editor dialog', async () => {
+  await page.getByRole('button', { name: 'Skills', exact: true }).click();
+  await page.getByRole('button', { name: 'New skill', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await modal.getByRole('button', { name: 'YAML', exact: true }).click();
+  await modal.getByRole('textbox', { name: 'Definition · YAML', exact: true }).fill('not: [valid');
+  await modal.getByRole('button', { name: 'Form', exact: true }).click();
+
+  const alert = page.getByRole('alert');
+  await expect(alert).toBeVisible();
+  await expect(modal).toBeVisible();
+  await expect(alert).toHaveJSProperty('popover', 'manual');
+  expect(await alert.evaluate((element) => element.matches(':popover-open'))).toBe(true);
 });
 test('chat slash commands offer searchable selections, keyboard navigation and removable chips', async () => {
   for (const entry of [

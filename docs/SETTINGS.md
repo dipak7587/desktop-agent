@@ -55,6 +55,20 @@ folder explicitly selected for that run; folder selection is optional for other 
 
 ## Credentials and local data
 
+## Workspace import and export
+
+Open **Settings → Import / Export** to export the workspace as JSON, YAML, or Markdown, or import
+a `.json`, `.yaml`, `.yml`, or `.md` backup. The archive includes settings, chat history, agents,
+skills, Saved Text, MCP definitions, custom Tool definitions and JavaScript, and workflows.
+Import merges by ID: matching definitions and conversations are replaced; local records absent
+from the archive remain.
+
+Backups include chat content and executable MCP/Tool definitions. Literal environment values saved
+inside MCP definitions are included; OS-stored credentials and selected `.env` file contents are
+not. Provider IDs that match the current installation retain their locally stored credentials.
+External project and server folders are not copied, including files excluded by `.gitignore` or
+the configured ignore patterns.
+
 Store supported credentials using OS encryption or explicitly select a `.env` file. MCP
 definitions reference environment variable names rather than containing secret values. Custom
 API Tool headers can use `${NAME}` references resolved at execution time. Keep literal credentials

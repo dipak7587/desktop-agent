@@ -1,5 +1,17 @@
 # Example definitions
 
+For recurring video creation, see [Video Story Studio](video-story-studio/README.md):
+live story discovery, your selection, six specialist agents, configurable clip timing,
+and versioned Google Flow prompt packs. Both workflows can be run from the desktop UI.
+
+For an end-to-end example you can run immediately with local Ollama, see
+[Order support](order-support/README.md): one MCP server, one custom Tool, one
+agent, and a two-stage workflow, with desktop definitions and a smoke test.
+
+```sh
+node examples/order-support/workflow.mjs "Where is my order ORD-123?"
+```
+
 This folder contains a small, matching example set for a release-review
 workflow:
 

@@ -96,6 +96,57 @@ export class ChatDatabase {
         metadata: row.metadata ? JSON.parse(String(row.metadata)) : undefined,
       })) as unknown as Message[];
   }
+  exportAll() {
+    const conversations = this.db
+      .prepare('SELECT * FROM conversations ORDER BY updatedAt DESC')
+      .all() as unknown as Conversation[];
+    return conversations.map((conversation) => ({
+      conversation,
+      messages: this.messages(conversation.id),
+    }));
+  }
+  importConversations(entries: { conversation: Conversation; messages: Message[] }[]) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const saveConversation = this.db.prepare(
+        'INSERT OR REPLACE INTO conversations(id,title,model,createdAt,updatedAt,providerId,agentId) VALUES(?,?,?,?,?,?,?)',
+      );
+      const removeMessages = this.db.prepare('DELETE FROM messages WHERE conversationId=?');
+      const messageOwner = this.db.prepare('SELECT conversationId FROM messages WHERE id=?');
+      const saveMessage = this.db.prepare(
+        'INSERT OR REPLACE INTO messages(id,conversationId,role,content,createdAt,metadata) VALUES(?,?,?,?,?,?)',
+      );
+      for (const { conversation, messages } of entries) {
+        saveConversation.run(
+          conversation.id,
+          conversation.title,
+          conversation.model,
+          conversation.createdAt,
+          conversation.updatedAt,
+          conversation.providerId ?? '',
+          conversation.agentId ?? '',
+        );
+        removeMessages.run(conversation.id);
+        for (const message of messages) {
+          const owner = messageOwner.get(message.id) as { conversationId?: string } | undefined;
+          const messageId =
+            owner && owner.conversationId !== conversation.id ? randomUUID() : message.id;
+          saveMessage.run(
+            messageId,
+            conversation.id,
+            message.role,
+            message.content,
+            message.createdAt,
+            message.metadata ? JSON.stringify(message.metadata) : null,
+          );
+        }
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
   add(id: string, role: Message['role'], content: string, metadata?: Message['metadata']): Message {
     this.get(id);
     const m = {

@@ -1,4 +1,5 @@
 import { defaultChatSelection } from '../../shared/chat-selection';
+import { errorMessage } from '../../shared/error-message';
 import { create } from 'zustand';
 import type {
   Settings,
@@ -34,7 +35,7 @@ export async function attempt<T>(action: () => Promise<T>): Promise<T | undefine
     return await action();
   } catch (e) {
     useUI.setState({
-      error: (e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, ''),
+      error: errorMessage(e).replace(/^Error invoking remote method '[^']+': Error: /, ''),
     });
   }
 }

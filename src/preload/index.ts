@@ -3,6 +3,7 @@ import type { WorkspaceAPI } from '../shared/api';
 import type { MemoryEntry } from '../shared/types';
 const invoke = (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 const api: WorkspaceAPI = {
+  clipboard: { writeText: (text) => invoke('clipboard:write-text', text) },
   workflows: {
     list: () => invoke('workflows:list'),
     save: (workflow) => invoke('workflows:save', workflow),
@@ -32,6 +33,7 @@ const api: WorkspaceAPI = {
     create: (m, p, a) => invoke('chat:create', m, p, a),
     selection: (id, p, m, a) => invoke('chat:selection', id, p, m, a),
     rename: (id, t) => invoke('chat:rename', id, t),
+    exportMarkdown: (id) => invoke('chat:export-markdown', id),
     remove: (id) => invoke('chat:remove', id),
     clear: () => invoke('chat:clear'),
     messages: (id) => invoke('chat:messages', id),
@@ -82,6 +84,8 @@ const api: WorkspaceAPI = {
     openOllamaDocs: () => invoke('system:ollama-docs'),
     exportSettings: () => invoke('system:export-settings'),
     importSettings: () => invoke('system:import-settings'),
+    exportWorkspace: (format) => invoke('system:export-workspace', format),
+    importWorkspace: () => invoke('system:import-workspace'),
   },
   onEvent: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]) =>

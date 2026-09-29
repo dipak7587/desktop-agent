@@ -1,4 +1,5 @@
 import type { AgentWorkflow, WorkflowRun, WorkflowRunInput } from './workflows';
+import type { WorkspaceBackupFormat } from './workspace-backup';
 import type {
   Settings,
   Model,
@@ -15,6 +16,9 @@ import type {
   MemoryEntry,
 } from './types';
 export interface WorkspaceAPI {
+  clipboard: {
+    writeText(text: string): Promise<void>;
+  };
   workflows: {
     list(): Promise<AgentWorkflow[]>;
     save(workflow: AgentWorkflow): Promise<AgentWorkflow>;
@@ -43,6 +47,7 @@ export interface WorkspaceAPI {
     create(model: string, providerId?: string, agentId?: string): Promise<Conversation>;
     selection(id: string, providerId: string, model: string, agentId?: string): Promise<void>;
     rename(id: string, title: string): Promise<void>;
+    exportMarkdown(id: string): Promise<void>;
     remove(id: string): Promise<void>;
     clear(): Promise<void>;
     messages(id: string): Promise<Message[]>;
@@ -104,6 +109,12 @@ export interface WorkspaceAPI {
     openOllamaDocs(): Promise<void>;
     exportSettings(): Promise<void>;
     importSettings(): Promise<void>;
+    exportWorkspace(format: WorkspaceBackupFormat): Promise<void>;
+    importWorkspace(): Promise<{
+      conversations: number;
+      workflows: number;
+      libraries: Record<LibraryKind, number>;
+    } | null>;
   };
   onEvent(callback: (event: AppEvent) => void): () => void;
 }

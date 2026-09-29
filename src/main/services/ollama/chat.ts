@@ -5,6 +5,7 @@ import type { ChatDatabase } from '../../database/chat';
 import type { LLMProvider } from './provider';
 import type { MemoryService } from '../ai/memory';
 import { ChatTurnGraph, type ChatGraphDeps } from '../ai/chat-graph';
+import { errorMessage } from '../../../shared/error-message';
 
 export interface ChatServiceOptions {
   /** LangGraph checkpointer; keys durable thread state by conversation id. */
@@ -173,7 +174,7 @@ export class ChatService {
       for (const event of result.activity) activity.push(event);
       if (!content) content = '';
     } catch (e) {
-      if (!controller.signal.aborted) failure = this.redact((e as Error).message);
+      if (!controller.signal.aborted) failure = this.redact(errorMessage(e));
     } finally {
       if (!controller.signal.aborted && content)
         void this.memory
