@@ -477,3 +477,57 @@ it.each(['empty', 'not-ready', 'skipped'] as const)(
     );
   },
 );
+
+it('codes in a persisted workspace without a configured agent and reviews writes', async () => {
+  const { realpath } = await import('node:fs/promises');
+  const project = await realpath(join(root, 'project'));
+  const request = input();
+  db.connectCodeWorkspace(request.id, project);
+  db.add(request.id, 'user', 'Keep the existing public API.');
+  const complete = vi
+    .spyOn(llm, 'complete')
+    .mockResolvedValueOnce(
+      toolReply('filesystem.write', {
+        path: 'direct.txt',
+        content: 'direct coding works',
+        expectedHash: 'missing',
+      }),
+    )
+    .mockResolvedValueOnce({ role: 'assistant', content: 'Created direct.txt; tests not run.' });
+  await chat.send(request);
+  await expect.poll(() => events.some((event) => event.activity?.approval)).toBe(true);
+  await expect(readFile(join(project, 'direct.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+  agents.approve(events.find((event) => event.activity?.approval)!.activity!.approval!.id, true);
+  await settle(request.id);
+  expect(await readFile(join(project, 'direct.txt'), 'utf8')).toBe('direct coding works');
+  expect(await library.list('agents')).toEqual([]);
+  expect(agents.runs()[0]).toMatchObject({ folderPath: project, status: 'Completed' });
+  expect(complete.mock.calls[0][0].messages[0].content).toContain('Keep the existing public API.');
+  expect(db.messages(request.id).at(-1)?.metadata?.command?.kind).toBe('code');
+  await expect(chat.send({ ...request, regenerate: true })).rejects.toThrow(
+    'cannot be regenerated',
+  );
+  db.disconnectCodeWorkspace(request.id);
+  const prepare = vi.spyOn(commands, 'prepareCoding');
+  await chat.send({ ...request, text: 'Explain this concept.' });
+  await settle(request.id);
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it('restores linked folders for selected agents and rejects missing direct workspaces', async () => {
+  const { realpath } = await import('node:fs/promises');
+  const project = await realpath(join(root, 'project'));
+  const request = input();
+  const workspace = db.connectCodeWorkspace(request.id, project);
+  await library.save(
+    'agents',
+    librarySchema.parse({ id: 'reviewer', name: 'Reviewer', model: 'test' }),
+  );
+  vi.spyOn(llm, 'complete').mockResolvedValue({ role: 'assistant', content: 'Reviewed.' });
+  await chat.send({ ...request, command: { kind: 'agent', id: 'reviewer' } });
+  await settle(request.id);
+  expect(agents.runs()[0].folderPath).toBe(project);
+  db.relinkCodeWorkspace(workspace.id, request.id, join(project, 'missing'));
+  await expect(chat.send(request)).rejects.toThrow();
+  expect(chat.isActive(request.id)).toBe(false);
+});

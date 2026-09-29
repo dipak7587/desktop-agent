@@ -8,22 +8,6 @@ import { AgentRuns } from './libraries';
 const testFixTask =
   'Inspect the project and identify the failing test. Reproduce the failure, trace it to the root cause, make the smallest correct code change, then rerun the relevant test and report the exact command and result. Do not weaken or delete the test to make it pass.';
 
-function isLoopbackOllama(url: string) {
-  try {
-    const hostname = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '::1')
-      return true;
-    const octets = hostname.split('.').map(Number);
-    return (
-      octets.length === 4 &&
-      octets[0] === 127 &&
-      octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export function CodeWorkspace() {
   const chat = useChat((state) => state);
   const agents = useAgents((state) => state.items);
@@ -36,26 +20,24 @@ export function CodeWorkspace() {
   const [workspaces, setWorkspaces] = useState<
     Awaited<ReturnType<typeof window.workspace.code.list>>
   >([]);
-  const localProviders = (settings?.providers ?? []).filter(
-    (provider) =>
-      provider.provider === 'ollama' &&
-      provider.enabled !== false &&
-      isLoopbackOllama(provider.ollamaUrl),
+  const enabledProviders = (settings?.providers ?? []).filter(
+    (provider) => provider.enabled !== false,
   );
-  const localAgents = agents.filter(
+  const availableAgents = agents.filter(
     (agent) =>
       agent.enabled &&
-      localProviders.some(
+      enabledProviders.some(
         (provider) => provider.id === agent.providerId && provider.modelIds?.includes(agent.model),
       ),
   );
-  const selectedAgent = localAgents.find((agent) => agent.id === agentId) ?? localAgents[0];
-  const provider = localProviders.find((item) => item.id === selectedAgent?.providerId);
+  const selectedAgent = availableAgents.find((agent) => agent.id === agentId) ?? availableAgents[0];
+  const provider = enabledProviders.find((item) => item.id === selectedAgent?.providerId);
   const agentRunIds = runs.filter((run) => run.agentId === selectedAgent?.id).map((run) => run.id);
 
   useEffect(() => {
-    if (!localAgents.some((agent) => agent.id === agentId)) setAgentId(localAgents[0]?.id ?? '');
-  }, [agentId, localAgents]);
+    if (!availableAgents.some((agent) => agent.id === agentId))
+      setAgentId(availableAgents[0]?.id ?? '');
+  }, [agentId, availableAgents]);
 
   useEffect(() => {
     void attempt(async () => setWorkspaces(await window.workspace.code.list()));
@@ -80,7 +62,7 @@ export function CodeWorkspace() {
 
   async function startRun(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedAgent) throw new Error('Choose an enabled local Ollama agent.');
+    if (!selectedAgent) throw new Error('Choose an enabled agent.');
     if (!project) throw new Error('Select a project folder before starting a coding task.');
     setBusy(true);
     try {
@@ -98,7 +80,7 @@ export function CodeWorkspace() {
   return (
     <div className="page code-page">
       <PageHeader
-        eyebrow="LOCAL DEVELOPMENT"
+        eyebrow="DEVELOPMENT"
         title="Code"
         description="Connect a project to Chat, then optionally run an agent."
       />
@@ -106,7 +88,9 @@ export function CodeWorkspace() {
         <div className="code-workspaces-heading">
           <div>
             <h2>Project workspaces</h2>
-            <p className="small muted">Folder selection does not grant file or command access.</p>
+            <p className="small muted">
+              Use Chat to inspect and edit this project through reviewed operations.
+            </p>
           </div>
           <button className="secondary" onClick={() => void attempt(connectFolder)}>
             <FolderOpen size={14} /> Open folder
@@ -124,7 +108,7 @@ export function CodeWorkspace() {
                   <span className="small muted">
                     {workspace.available ? 'Folder available' : 'Folder missing or inaccessible'}
                     {' · '}
-                    No project permissions granted
+                    Project operations require approval
                   </span>
                 </div>
                 {workspace.available ? (
@@ -157,14 +141,14 @@ export function CodeWorkspace() {
             onSubmit={(event) => void attempt(() => startRun(event))}
           >
             <label>
-              Local coding agent
+              Coding agent
               <select
-                aria-label="Local coding agent"
+                aria-label="Coding agent"
                 value={selectedAgent.id}
                 onChange={(event) => setAgentId(event.target.value)}
               >
-                {localAgents.map((agent) => {
-                  const profile = localProviders.find((item) => item.id === agent.providerId);
+                {availableAgents.map((agent) => {
+                  const profile = enabledProviders.find((item) => item.id === agent.providerId);
                   return (
                     <option value={agent.id} key={agent.id}>
                       {agent.name} · {profile?.name} / {agent.model}
@@ -175,9 +159,9 @@ export function CodeWorkspace() {
             </label>
             <div className="code-model-status">
               <span className="status-dot" />
-              {provider?.name} · {selectedAgent.model} · Ollama local
+              {provider?.name} · {selectedAgent.model}
             </div>
-            <FolderSelection value={project} onChange={setProject} />
+            <FolderSelection value={project} onChange={setProject} required />
             <div className="code-task-heading">
               <label htmlFor="code-task">Task</label>
               <button type="button" onClick={() => setTask(testFixTask)}>
@@ -220,13 +204,13 @@ export function CodeWorkspace() {
         <section className="code-agent-empty">
           <Settings2 size={22} />
           <div>
-            <h2>No local coding agent is ready</h2>
+            <h2>No configured coding agent is ready</h2>
             <p>
-              Create an enabled agent with an installed Ollama model and project tools for reading,
-              editing, writing, and running tests.
+              Use Open folder to code directly in Chat, or create an agent with a configured model
+              and tools for reading, editing, writing, and running tests.
             </p>
             <button className="primary" onClick={() => useUI.getState().setSection('Agents')}>
-              Configure local agent <ArrowRight size={15} />
+              Configure agent <ArrowRight size={15} />
             </button>
           </div>
         </section>

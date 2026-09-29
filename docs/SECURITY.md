@@ -44,17 +44,27 @@ produce a diff, and recheck the hash after approval. The final written content i
 Default approval mode asks before every file change. Safe mode approves common source/document
 edits but asks for configuration/other file types; full auto permits allowed writes/scripts.
 
-Package scripts require approval except in full-auto mode. Only npm/pnpm/yarn test, lint, build,
-and typecheck commands are permitted. Shell interpreters, arbitrary arguments, destructive
-commands, git push/reset and deletion tools are unavailable through built-in tools. Child processes run with bounded
-output, a timeout, cancellation and a reduced environment. Project scripts themselves are
-arbitrary code: inspect/trust the selected project before approving them. MCP calls ask by default; per-capability Always allow skips approval.
+The existing npm/pnpm/yarn test, lint, build and typecheck categories follow configured
+approval settings. Additional package scripts, formatters and development executables
+(Node, Python/pytest/uv/ruff, Cargo, Go, .NET, Java/Maven/Gradle, Make/CMake/CTest,
+Ruby/Bundler and PHP/Composer) always require explicit approval of the executable,
+argument array, reason and working directory. Commands use argument arrays without a shell;
+their working directory must be inside the selected root. Child processes have bounded output,
+timeout, cancellation and a reduced environment. Approved development programs and scripts can
+execute arbitrary code; the working directory is not an OS sandbox. MCP calls ask by default.
 
-The persistent Code workspace registry uses a native directory picker and canonical paths, but
-linking a workspace to Chat is not a permission grant. Normal Chat does not yet dispatch project
-file/search/Git/terminal capabilities from this workspace link. The legacy optional agent-folder
-flow remains independent and continues to use its existing capability checks and approval policy;
-do not treat workspace metadata or its empty default permission policy as authorization.
+Individual text-file deletion requires a read hash, deletion diff and explicit approval even in
+full-auto mode. Directories, protected paths and symlinks are rejected, and the hash/path are
+checked again after approval. No recursive deletion or direct Git mutation tool is provided.
+
+The persistent Code registry uses native folder selection and canonical paths. Linked Chat now
+uses the existing agent capability router with the current provider/model, without requiring a
+saved agent. An empty workspace policy defaults project operations to Ask; selecting a folder
+alone does not execute or approve a tool. Direct coding always reviews writes and commands.
+Existing workspace denials and selected-agent denials win over allows. Selected agents inherit
+the linked folder if no one-run folder was explicitly selected. Missing or replaced roots must
+be relinked. Disconnecting restores ordinary folderless Chat. Workspace permission editing and
+conversation-scoped grants are not implemented.
 
 This is an application-level policy boundary, not an OS sandbox around agent child processes.
 The Electron renderer is sandboxed, but trusted MCP servers/package scripts run as the current

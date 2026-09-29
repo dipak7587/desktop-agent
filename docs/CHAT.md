@@ -89,7 +89,7 @@ hash checks. Stop generation cancels the associated run, including pending appro
 
 Results, command names, and the latest 100 activity events persist with the conversation.
 Historical approval controls cannot execute again. Commands cannot use Regenerate; send a
-new command to repeat a task deliberately. Ordinary messages use normal chat unless an agent context is active.
+new command to repeat a task deliberately. Ordinary messages use normal chat unless an agent or linked workspace is active.
 
 ### Linked Code workspaces
 
@@ -100,10 +100,16 @@ the native folder picker; **Connect project** in the Chat header also opens it.
 Recent linked workspaces can also be reconnected from Code in another
 conversation, and missing folders can be relinked through the native picker. Reopening a
 conversation restores its workspace indicator. Disconnecting removes only that conversation's
-link. Workspace selection grants no project-tool permissions and does
-not currently provide project files or retrieval to normal Chat; the indicator shows **Restricted**.
-The separate local-agent task form in Code continues to use the existing agent tool and approval
-flow. See [Code Workspaces](CODE.md) for implementation status and planned boundaries.
+link. Send a task to use the built-in coding assistant with the current provider/model; no saved
+agent is needed. It can inspect, search, edit, create and delete individual project files, inspect
+Git, and run approved development commands. Project operations require approval by default;
+file changes show diffs. Progress, approvals, results and failures use the existing Chat activity
+and execution history. Recent conversation text is provided as bounded context, and files are
+read only through tools. Reopening a linked conversation retains its project context.
+
+A selected saved agent inherits the linked folder unless a one-run folder is explicitly selected,
+and keeps its capability restrictions. Code's optional task form offers all enabled providers.
+Disconnect the workspace to return to ordinary Chat. See [Code Workspaces](CODE.md) for status.
 
 ## Conversation history
 

@@ -119,3 +119,15 @@ stores. Markdown renders without raw HTML. Dark/light/system color schemes use n
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Linked coding conversations
+
+Chat resolves its persisted workspace in the main process. `ChatCommands.prepareCoding` creates
+a transient coding configuration using the captured provider/model and existing project tools;
+no agent definition is written. `AgentService` runs it through the same capability router,
+review UI, cancellation, iteration limits and persistent execution history as saved agents.
+`services/agents/coding.ts` supplies shared coding instructions, canonical-root validation and
+workspace/agent permission intersection. Recent conversation text is bounded context, not a
+permission grant. Project reads default to Ask for linked conversations; direct writes and
+commands are reviewed. Folderless chat and explicitly selected one-run folders retain their
+existing paths.

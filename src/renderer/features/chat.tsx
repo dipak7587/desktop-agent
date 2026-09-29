@@ -1,3 +1,4 @@
+import { FolderSelection } from '../components/folder-selection';
 import { ChatLanding } from '../components/chat-landing';
 import { defaultLanding } from '../../shared/landing';
 import { defaultChatSelection } from '../../shared/chat-selection';
@@ -248,6 +249,24 @@ export function Chat() {
               {(providerId !== agent.providerId || model !== agent.model) && (
                 <span className="badge">Conversation override</span>
               )}
+              {(providerId !== agent.providerId || model !== agent.model) && (
+                <button
+                  type="button"
+                  disabled={!validSelection || busy || !!chat.generating}
+                  onClick={() =>
+                    void attempt(async () => {
+                      await window.workspace.library.save('agents', {
+                        ...agent,
+                        providerId,
+                        model,
+                      });
+                      await useAgents.getState().load();
+                    })
+                  }
+                >
+                  Save to Agent
+                </button>
+              )}
             </div>
           )}
           <div className="chat-heading-controls">
@@ -418,6 +437,9 @@ export function Chat() {
               </div>
             )}
 
+            {(/^\/(agent|workflow)(?:\s|$)/.test(draft) ||
+              ['agent', 'workflow'].includes(commands.selected?.kind ?? '') ||
+              !!chat.agentId) && <FolderSelection value={project} onChange={setProject} />}
             {commands.picker}
             <textarea
               ref={commands.inputRef}

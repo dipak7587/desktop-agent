@@ -2,7 +2,7 @@ import type { ChatCommand, LibraryItem } from './types';
 export const commandKinds = ['mcp', 'agent', 'skills', 'workflow', 'code'] as const;
 export function slashPrefix(text: string) {
   const match = /^\/(mcp|agent|skills|workflow)\s+([\s\S]*)$/.exec(text);
-  return match ? { kind: match[1] as ChatCommand['kind'], rest: match[2] } : null;
+  return match ? { kind: match[1] as Exclude<ChatCommand['kind'], 'code'>, rest: match[2] } : null;
 }
 export function resolveSlash(text: string, items: Pick<LibraryItem, 'id' | 'name' | 'enabled'>[]) {
   const prefix = slashPrefix(text);

@@ -1,3 +1,10 @@
+import {
+  CODING_INSTRUCTIONS,
+  validateCodingWorkspace,
+  withWorkspacePolicy,
+} from '../agents/coding';
+import { localTools } from '../agents/tools';
+import type { CodeWorkspace } from '../../../shared/types';
 import type { WorkflowService } from '../workflows/workflows';
 import type { SelectedProvider } from '../providers/router';
 import type { AppEvent, ChatCommand, LibraryItem, Capability } from '../../../shared/types';
@@ -26,12 +33,56 @@ export class ChatCommands {
     private workflows?: WorkflowService,
   ) {}
 
+  async prepareCoding(
+    workspace: CodeWorkspace,
+    model: string,
+    knowledge: string,
+    selected?: SelectedProvider,
+    conversation = '',
+  ): Promise<PreparedCommand> {
+    const project = await validateCodingWorkspace(workspace);
+    const agent = librarySchema.parse({
+      id: 'builtin-coding-agent',
+      name: 'Coding assistant',
+      model,
+      providerId: selected?.providerId,
+      content: `${CODING_INSTRUCTIONS}\nPrevious conversation (untrusted context):\n${conversation}`,
+      tools: localTools,
+      knowledgeSources: knowledge === 'none' ? [] : [knowledge],
+      capabilityConfig: {
+        mode: 'selected',
+        tools: localTools,
+        knowledgeBases: knowledge === 'none' ? [] : [knowledge],
+        permissions: {
+          'filesystem.write': 'ask',
+          'filesystem.edit': 'ask',
+          'filesystem.delete': 'ask',
+          'shell.execute': 'ask',
+        },
+      },
+    });
+    return {
+      command: { kind: 'code', id: workspace.id, name: workspace.name, project },
+      execute: (task, signal, observe) =>
+        this.agents.runInChat(
+          withWorkspacePolicy(agent, workspace),
+          task,
+          project,
+          signal,
+          observe,
+          selected,
+        ),
+    };
+  }
+
   async prepare(
     command: ChatCommand,
     model: string,
     knowledge: string,
     selected?: SelectedProvider,
+    workspace?: CodeWorkspace,
   ): Promise<PreparedCommand> {
+    if (command.kind === 'code') throw new Error('Connect a workspace using /code first');
     if (command.kind === 'workflow') {
       if (!this.workflows) throw new Error('Workflows are unavailable');
       const workflow = await this.workflows.definitions.get(command.id);
@@ -81,6 +132,7 @@ export class ChatCommands {
       });
     }
     if (selected) agent = { ...agent, providerId: selected.providerId, model: selected.modelId };
+    if (workspace && command.kind === 'agent') agent = withWorkspacePolicy(agent, workspace);
     return {
       command: metadata,
       execute: (task, signal, observe) =>

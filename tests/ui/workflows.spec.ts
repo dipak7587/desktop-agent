@@ -158,7 +158,10 @@ for (const [kind, section] of [
     expect(
       await neighbor.evaluate((element) => element.getBoundingClientRect().height),
     ).toBeCloseTo(closedHeight, 0);
-    await expect(cards.first().locator(':scope > summary')).toHaveCSS('display', 'flex');
+    await expect(cards.first().locator(':scope > summary')).toHaveCSS(
+      'display',
+      kind === 'skills' ? 'flex' : 'grid',
+    );
     await page.screenshot({ path: `test-results/accordion-${kind}.png` });
     await cards.first().locator(':scope > summary').click();
     if (kind === 'mcp') {
@@ -319,7 +322,7 @@ test('agent, MCP, skill, and tool editors create definitions from JSON and YAML'
     await expect(page.getByText(entry.name, { exact: true })).toBeVisible();
   }
 });
-test('Code workspace offers only local agents and prepares a test-fix run', async () => {
+test('Code workspace offers local and remote agents and prepares a test-fix run', async () => {
   await app.evaluate(({ dialog }, project) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
   }, root);
@@ -385,10 +388,10 @@ test('Code workspace offers only local agents and prepares a test-fix run', asyn
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Good ideas start here.' })).toBeVisible();
   await page.getByRole('button', { name: 'Code', exact: true }).click();
-  const agentSelect = page.getByLabel('Local coding agent', { exact: true });
-  await expect(agentSelect.locator('option')).toHaveCount(1);
+  const agentSelect = page.getByLabel('Coding agent', { exact: true });
+  await expect(agentSelect.locator('option')).toHaveCount(2);
   await expect(agentSelect).toContainText('Local coder');
-  await expect(agentSelect).not.toContainText('Remote coder');
+  await expect(agentSelect).toContainText('Remote coder');
 
   await page.getByRole('button', { name: 'Fix failing tests', exact: true }).click();
   const task = page.getByLabel('Coding task', { exact: true });
@@ -398,6 +401,7 @@ test('Code workspace offers only local agents and prepares a test-fix run', asyn
   await page.getByRole('button', { name: 'Select Folder', exact: true }).click();
   await expect(page.locator('.folder-selection .folder-path')).toContainText('localai-workflows-');
   await expect(runButton).toBeEnabled();
+  await page.screenshot({ path: 'test-results/code-workspace.png' });
 });
 test('/code lists and selects saved folders without leaving Chat', async () => {
   const input = page.getByLabel('Message', { exact: true });
@@ -443,7 +447,7 @@ test('/code lists and selects saved folders without leaving Chat', async () => {
   await expect(folders).toBeVisible();
   await expect(page.locator('.message.user')).toHaveCount(0);
 });
-test('Code workspaces persist and reconnect to conversations without granting project access', async () => {
+test('Code workspaces persist and reconnect to conversations with guarded project access', async () => {
   await app.evaluate(({ dialog }, project) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
   }, root);
@@ -451,7 +455,7 @@ test('Code workspaces persist and reconnect to conversations without granting pr
   await page.getByRole('button', { name: 'Code', exact: true }).click();
   await page.getByRole('button', { name: 'Open folder', exact: true }).click();
   const workspace = page.getByRole('region', { name: 'Project workspaces' });
-  await expect(workspace.getByText('No project permissions granted')).toBeVisible();
+  await expect(workspace.getByText('Project operations require approval')).toBeVisible();
   await expect(workspace.getByText(/^localai-workflows-/)).toBeVisible();
   await workspace.getByRole('button', { name: 'Open in Chat' }).click();
   await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');

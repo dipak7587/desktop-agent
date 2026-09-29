@@ -29,13 +29,16 @@ Bulk grouping changes metadata only and does not restart MCP servers or run agen
 
 ## Code side menu
 
-**Code** starts coding tasks through enabled agents whose model belongs to an Ollama provider
-running on loopback (`localhost`, `127.x.x.x`, or `::1`). Hosted providers and network-hosted
-Ollama endpoints are not offered there. Select a project folder, choose a task, and use **Fix
-failing tests** to request reproducing a failure, correcting its cause, and rerunning the relevant
-test without weakening it. Create an agent with filesystem read/write/edit/search and shell test
-tools first. Runs use the normal agent iteration limits, capability permissions, approval policy,
-diff review, and execution history.
+**Code** connects saved project folders to Chat. Ordinary messages in a linked conversation
+use the built-in coding assistant and the current Chat provider/model; no saved agent is required.
+Project operations default to per-operation approval, with file diffs for changes. Workspace
+rules and selected-agent permissions are intersected; denial always wins. A selected agent
+inherits the linked folder unless an explicit one-run folder is supplied.
+
+The optional task form accepts enabled agents from any enabled provider with a configured model.
+Select a project and task, or use **Fix failing tests** to reproduce, correct and rerun a failing
+test without weakening it. Both paths reuse capability routing, iteration limits, cancellation,
+diff review and execution history. Linked-folder tasks cannot be regenerated accidentally.
 
 To let an agent retrieve saved notes, select the **Saved Text** knowledge source in its editor
 and ensure that source is ready in [Knowledge Base](KNOWLEDGE_BASE.md). Agent knowledge choices

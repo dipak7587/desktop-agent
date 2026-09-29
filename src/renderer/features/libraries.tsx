@@ -56,6 +56,7 @@ const builtinTools = [
   'filesystem.read',
   'filesystem.write',
   'filesystem.edit',
+  'filesystem.delete',
   'filesystem.list',
   'filesystem.search',
   'filesystem.exists',

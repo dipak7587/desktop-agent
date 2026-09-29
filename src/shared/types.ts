@@ -129,7 +129,7 @@ export interface Message {
   };
 }
 export interface ChatCommand {
-  kind: 'skills' | 'agent' | 'mcp' | 'workflow';
+  kind: 'skills' | 'agent' | 'mcp' | 'workflow' | 'code';
   id: string;
   project?: string;
 }

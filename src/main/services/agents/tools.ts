@@ -1,4 +1,4 @@
-import { lstat, realpath, readFile, readdir, mkdir } from 'node:fs/promises';
+import { lstat, realpath, readFile, readdir, mkdir, unlink } from 'node:fs/promises';
 import { resolve, relative, join, dirname, isAbsolute, sep, extname, basename } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createTwoFilesPatch } from 'diff';
@@ -10,6 +10,7 @@ export const localTools = [
   'filesystem.read',
   'filesystem.write',
   'filesystem.edit',
+  'filesystem.delete',
   'filesystem.list',
   'filesystem.search',
   'filesystem.exists',
@@ -162,6 +163,23 @@ export class AgentTools {
         }
         return results;
       }
+      case 'filesystem.delete': {
+        const expected = z.string().min(1).parse(args.expectedHash);
+        if (!(await lstat(target)).isFile())
+          throw new Error('Only individual files can be deleted');
+        const original = await readText(target, 1_000_000);
+        if (hash(original) !== expected) throw new Error('File changed since it was read');
+        const diff = createTwoFilesPatch(pathArg, '/dev/null', original, '');
+        // Deletion always needs explicit approval, even under full-auto settings.
+        if (!(await approve(tool, `Delete file ${pathArg} from ${root}`, diff)))
+          return { rejected: true };
+        signal.throwIfAborted();
+        await safePath(root, pathArg);
+        if ((await this.currentHash(target)) !== expected)
+          throw new Error('File changed while awaiting approval; deletion aborted');
+        await unlink(target);
+        return { path: pathArg, deleted: true, diff };
+      }
       case 'filesystem.write':
       case 'filesystem.edit': {
         const expected = z.string().min(1).parse(args.expectedHash);
@@ -233,22 +251,75 @@ export class AgentTools {
         return runCommand('git', gitArgs[tool], root, this.settings().commandTimeout, signal);
       }
       case 'shell.execute': {
-        const command = z.enum(['npm', 'pnpm', 'yarn']).parse(args.command);
-        const commandArgs = z.array(z.string()).min(1).max(2).parse(args.args);
-        const action = commandArgs[0] === 'run' ? commandArgs[1] : commandArgs[0];
-        if (
-          !['test', 'lint', 'build', 'typecheck'].includes(action) ||
-          !(commandArgs.length === 1 || commandArgs[0] === 'run')
-        )
-          throw new Error('Only test, lint, build and typecheck scripts are allowed');
-        const description = `${command} ${commandArgs.join(' ')} in ${root}. Project scripts can execute arbitrary code.`;
-        if (approvalMode !== 'auto' && !(await approve(tool, description)))
+        const command = z
+          .enum([
+            'npm',
+            'pnpm',
+            'yarn',
+            'node',
+            'python',
+            'python3',
+            'pytest',
+            'uv',
+            'ruff',
+            'cargo',
+            'go',
+            'dotnet',
+            'java',
+            'javac',
+            'mvn',
+            'gradle',
+            'make',
+            'cmake',
+            'ctest',
+            'ruby',
+            'bundle',
+            'php',
+            'composer',
+          ])
+          .parse(args.command);
+        const commandArgs = z
+          .array(
+            z
+              .string()
+              .max(4096)
+              .refine((arg) => !arg.includes('\0')),
+          )
+          .min(1)
+          .max(100)
+          .parse(args.args);
+        const cwd = await safePath(
+          root,
+          z
+            .string()
+            .max(4096)
+            .parse(args.cwd ?? '.'),
+        );
+        if (!(await lstat(cwd)).isDirectory())
+          throw new Error('Working directory must be a folder');
+        const reason = z
+          .string()
+          .max(2000)
+          .parse(args.reason ?? 'Run a project development command');
+        const familiarScript =
+          ['npm', 'pnpm', 'yarn'].includes(command) &&
+          ((commandArgs.length === 1 &&
+            ['test', 'lint', 'build', 'typecheck'].includes(commandArgs[0])) ||
+            (commandArgs.length === 2 &&
+              commandArgs[0] === 'run' &&
+              ['test', 'lint', 'build', 'typecheck'].includes(commandArgs[1])));
+        const description = `${JSON.stringify([command, ...commandArgs])} in ${cwd}. ${reason}. Commands can execute arbitrary code and are not an operating-system sandbox.`;
+        // Only the existing narrow script categories may use remembered automatic approval.
+        if ((!familiarScript || approvalMode !== 'auto') && !(await approve(tool, description)))
           return { rejected: true };
         signal.throwIfAborted();
+        await safePath(root, z.string().parse(args.cwd ?? '.'));
         return runCommand(
-          process.platform === 'win32' ? `${command}.cmd` : command,
+          process.platform === 'win32' && ['npm', 'pnpm', 'yarn', 'mvn', 'gradle'].includes(command)
+            ? `${command}.cmd`
+            : command,
           commandArgs,
-          root,
+          cwd,
           this.settings().commandTimeout,
           signal,
         );

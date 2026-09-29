@@ -13,7 +13,7 @@ The experience is conversational, not a CLI embedded in Chat. `/code` lists save
 Read these documents and inspect the current implementation before changing code:
 
 - [Architecture](ARCHITECTURE.md): Electron main process owns data and tools; renderer uses a sandboxed preload API; model providers and agent execution are behind application services.
-- [Chat](CHAT.md): `/agent` currently accepts an optional folder for one run. That folder selection clears after the run or conversation change and is not a persistent default. Normal Chat does not currently gain filesystem tools through `/code`.
+- [Chat](CHAT.md): `/agent` currently accepts an optional folder for one run. That folder selection clears after the run or conversation change and is not a persistent default. Normal Chat now dispatches guarded coding tools through the linked workspace.
 - [Capability decisions](CAPABILITIES.md): model-proposed agent capabilities are subject to hard mode, selection, availability, permission, relevance and approval checks through the central router.
 - [Security](SECURITY.md): built-in project tools enforce path boundaries, ignore sensitive/generated paths, bound reads and search, and use content hashes plus reviewable diffs for writes. Built-in commands are allowlisted; this is not an OS sandbox.
 - [Agents](AGENTS.md): saved agents and their capabilities are optional configurations, not a prerequisite for normal Chat.
@@ -24,7 +24,19 @@ The existing optional agent folder is not the requested persistent workspace. Im
 
 Initial implementation (2026-09-29): the app persists workspace metadata in the existing local SQLite database, links a workspace ID to a conversation, opens folders through Electron's native picker, lists, reconnects, and relinks recent workspaces, and supports `/code` as an inline saved-folder chooser in Chat. Reopening a linked conversation refreshes workspace availability and its last-opened time. Relinking retains identity but clears permissions and provider/agent preferences for the replacement path. Disconnecting affects only that conversation; removing a workspace record does not delete project files and clears conversation links. New workspaces start with an empty permission policy, and the Chat indicator reports restricted access.
 
-This initial slice does **not** expose workspace files, search, Git, terminal, network, or project context to normal Chat. It does not yet provide workspace permission editing, once/conversation grants, workspace activity audit, project memory, or a workspace-linked agent selector. The existing Code page's optional local-agent task form remains the separate, pre-existing agent-run flow. Do not describe workspace selection as granting access or the complete requirements below as shipped until the capability, approval, retrieval and user-interface requirements are implemented and tested.
+Coding runtime update: linked Chat now executes coding tasks through the existing agent runtime
+with the selected provider/model and no saved-agent prerequisite. The empty workspace policy
+requires approval for project operations. Direct coding reviews writes and commands; selected
+agents inherit the linked folder and intersect their project-tool permissions with workspace
+rules. Deny wins. File deletion is hash-checked and always reviewed. Development commands use
+validated executable/argument arrays, reviewed execution and a workspace-relative working directory.
+Code's optional task form accepts configured agents from all enabled providers. Existing run
+history, diffs, cancellation, limits and Chat activity are reused; bounded recent conversation
+text supplies follow-up context. Missing/replaced roots fail before execution.
+
+The fuller specification below still includes unimplemented workspace permission editing,
+once/conversation/workspace grant controls, workspace-specific activity filtering, project memory
+and a workspace-linked agent selector. This update does not claim those features are shipped.
 
 ## Product Requirements
 

@@ -1,3 +1,4 @@
+import { validateCodingWorkspace } from '../agents/coding';
 import type { ProviderRouter, SelectedProvider } from '../providers/router';
 import type { AppEvent, SearchResult, ChatInput, KnowledgeSource } from '../../../shared/types';
 import type { ChatCommands, PreparedCommand } from './commands';
@@ -62,7 +63,10 @@ export class ChatService {
   }
   async send(input: ChatInput) {
     if (this.active.has(input.id)) throw new Error('This conversation is already generating');
-    this.db.get(input.id);
+    const conversation = this.db.get(input.id);
+    const workspace = conversation.workspaceId
+      ? this.db.getCodeWorkspace(conversation.workspaceId)
+      : undefined;
     const selected =
       input.command?.kind === 'workflow'
         ? undefined
@@ -89,13 +93,37 @@ export class ChatService {
             .at(-1)?.metadata?.command)
       )
         throw new Error('Send the command again to repeat it. Command runs cannot be regenerated.');
+      const usesWorkspace =
+        workspace &&
+        (!input.command ||
+          (input.command.kind === 'agent' &&
+            (!input.command.project || input.command.project === workspace.canonicalPath)));
+      if (usesWorkspace) await validateCodingWorkspace(workspace);
       if (input.command) {
         if (!this.commands) throw new Error('Chat commands are unavailable');
         prepared = await this.commands.prepare(
-          input.command,
+          workspace && input.command.kind === 'agent'
+            ? { ...input.command, project: input.command.project || workspace.canonicalPath }
+            : input.command,
           input.model,
           input.knowledge,
           selected,
+          usesWorkspace ? workspace : undefined,
+        );
+      }
+      if (!input.command && workspace) {
+        if (!this.commands) throw new Error('Coding tools are unavailable');
+        prepared = await this.commands.prepareCoding(
+          workspace,
+          input.model,
+          input.knowledge,
+          selected,
+          this.db
+            .messages(input.id)
+            .slice(-12)
+            .map((message) => `${message.role}: ${message.content}`)
+            .join('\n')
+            .slice(-16000),
         );
       }
       controller.signal.throwIfAborted();

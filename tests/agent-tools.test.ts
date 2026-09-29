@@ -69,3 +69,95 @@ it('applies replacement content literally, including dollar substitution charact
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it('always reviews individual file deletion and rejects stale content or directories', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agent-delete-'));
+  const path = join(root, 'obsolete.txt');
+  const tools = new AgentTools(() => settingsSchema.parse({ approvalMode: 'auto' }));
+  const signal = new AbortController().signal;
+  const args = { path: 'obsolete.txt', expectedHash: hash('old') };
+  try {
+    await writeFile(path, 'old');
+    expect(
+      await tools.execute(
+        'filesystem.delete',
+        args,
+        root,
+        signal,
+        async () => false,
+        'always_allow',
+      ),
+    ).toEqual({ rejected: true });
+    expect(await readFile(path, 'utf8')).toBe('old');
+    await expect(
+      tools.execute('filesystem.delete', args, root, signal, async (_tool, _reason, diff) => {
+        expect(diff).toContain('-old');
+        await writeFile(path, 'changed');
+        return true;
+      }),
+    ).rejects.toThrow('changed');
+    await expect(
+      tools.execute(
+        'filesystem.delete',
+        { path: '.', expectedHash: hash('') },
+        root,
+        signal,
+        async () => true,
+      ),
+    ).rejects.toThrow('individual files');
+    expect(
+      await tools.execute(
+        'filesystem.delete',
+        { ...args, expectedHash: hash('changed') },
+        root,
+        signal,
+        async () => true,
+      ),
+    ).toMatchObject({ deleted: true });
+    await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('requires approval for broader commands and confines their working directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agent-command-'));
+  const tools = new AgentTools(() => settingsSchema.parse({ approvalMode: 'auto' }));
+  const signal = new AbortController().signal;
+  try {
+    const args = {
+      command: 'node',
+      args: ['-e', 'process.stdout.write(process.cwd())'],
+      reason: 'Check command working directory',
+    };
+    expect(
+      await tools.execute('shell.execute', args, root, signal, async () => false, 'always_allow'),
+    ).toEqual({ rejected: true });
+    const result = await tools.execute(
+      'shell.execute',
+      args,
+      root,
+      signal,
+      async (_tool, description) => {
+        expect(description).toContain(root);
+        expect(description).toContain(args.reason);
+        return true;
+      },
+    );
+    expect(result).toMatchObject({ exitCode: 0 });
+    await expect(
+      tools.execute('shell.execute', { ...args, cwd: '..' }, root, signal, async () => true),
+    ).rejects.toThrow('outside');
+    expect(
+      await tools.execute(
+        'shell.execute',
+        { command: 'pnpm', args: ['run', 'format'] },
+        root,
+        signal,
+        async () => false,
+      ),
+    ).toEqual({ rejected: true });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

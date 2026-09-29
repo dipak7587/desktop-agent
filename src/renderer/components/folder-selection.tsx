@@ -4,8 +4,10 @@ export function FolderSelection({
   value,
   onChange,
   controlsOnly = false,
+  required = false,
 }: {
   controlsOnly?: boolean;
+  required?: boolean;
   value: string;
   onChange: (path: string) => void;
 }) {
@@ -39,7 +41,7 @@ export function FolderSelection({
   if (controlsOnly) return controls;
   return (
     <fieldset className="folder-selection">
-      <legend>Project folder (optional)</legend>
+      <legend>Project folder ({required ? 'required' : 'optional'})</legend>
       <p className="folder-path">{value || 'No folder selected'}</p>
       {controls}
     </fieldset>
