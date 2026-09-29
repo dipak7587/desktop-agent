@@ -5,6 +5,7 @@ import type {
   Settings,
   Model,
   Conversation,
+  CodeWorkspace,
   Message,
   LibraryItem,
   LibraryKind,
@@ -81,6 +82,7 @@ export const useSettings = create<{
 }));
 export const useChat = create<{
   conversations: Conversation[];
+  workspace: CodeWorkspace | null;
   current: string | null;
   messages: Message[];
   stream: string;
@@ -94,11 +96,16 @@ export const useChat = create<{
   model: string;
   agentId: string;
   choose: (providerId: string, model: string, agentId?: string) => Promise<void>;
+  connectWorkspace: () => Promise<void>;
+  reconnectWorkspace: (workspaceId: string) => Promise<void>;
+  relinkWorkspace: (workspaceId: string) => Promise<void>;
+  disconnectWorkspace: () => Promise<void>;
   newChat: (selection?: { providerId: string; model: string; agentId?: string }) => Promise<void>;
   clear: () => Promise<void>;
   event: (event: AppEvent) => void;
 }>((set, get) => ({
   conversations: [],
+  workspace: null,
   current: null,
   providerId: '',
   model: '',
@@ -115,8 +122,13 @@ export const useChat = create<{
     const messages = await window.workspace.chat.messages(id);
     if (get().current !== id) useUI.setState({ chatCommand: null });
     const c = get().conversations.find((c) => c.id === id);
+    let workspace = c?.workspaceId
+      ? ((await window.workspace.code.list()).find((item) => item.id === c.workspaceId) ?? null)
+      : null;
+    if (workspace?.available) workspace = await window.workspace.code.reconnect(workspace.id, id);
     set({
       current: id,
+      workspace,
       messages,
       stream: get().generating === id ? get().stream : '',
       ...(c ? { providerId: c.providerId ?? '', model: c.model, agentId: c.agentId ?? '' } : {}),
@@ -132,9 +144,10 @@ export const useChat = create<{
       selection?.providerId ?? (defaults.providerId || undefined),
       selection?.agentId,
     );
-    useUI.setState({ chatCommand: null });
+    useUI.setState({ chatCommand: null, draft: '' });
     set({
       current: c.id,
+      workspace: null,
       messages: [],
       stream: '',
       providerId: c.providerId ?? '',
@@ -160,11 +173,45 @@ export const useChat = create<{
       useSettings.setState({ settings });
     }
   },
+  connectWorkspace: async () => {
+    if (!get().current) await get().newChat();
+    const conversationId = get().current;
+    if (!conversationId) throw new Error('Create a conversation before connecting a workspace');
+    const workspace = await window.workspace.code.chooseAndConnect(conversationId);
+    if (!workspace) return;
+    if (get().current === conversationId) set({ workspace });
+    await get().load();
+  },
+  reconnectWorkspace: async (workspaceId) => {
+    if (!get().current) await get().newChat();
+    const conversationId = get().current;
+    if (!conversationId) throw new Error('Create a conversation before connecting a workspace');
+    const workspace = await window.workspace.code.reconnect(workspaceId, conversationId);
+    if (get().current === conversationId) set({ workspace });
+    await get().load();
+  },
+  relinkWorkspace: async (workspaceId) => {
+    if (!get().current) await get().newChat();
+    const conversationId = get().current;
+    if (!conversationId) throw new Error('Create a conversation before relinking a workspace');
+    const workspace = await window.workspace.code.chooseAndRelink(workspaceId, conversationId);
+    if (!workspace) return;
+    if (get().current === conversationId) set({ workspace });
+    await get().load();
+  },
+  disconnectWorkspace: async () => {
+    const conversationId = get().current;
+    if (!conversationId) return;
+    await window.workspace.code.disconnect(conversationId);
+    if (get().current === conversationId) set({ workspace: null });
+    await get().load();
+  },
   clear: async () => {
     await window.workspace.chat.clear();
     useUI.setState({ chatCommand: null });
     set({
       current: null,
+      workspace: null,
       messages: [],
       stream: '',
       generating: null,

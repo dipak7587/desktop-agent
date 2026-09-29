@@ -94,6 +94,21 @@ export class LibraryService {
         `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${agents.map((a) => a.name).join(', ')}. Remove it from these Agents before deleting it.`,
       );
   }
+  async setGroup(kind: LibraryKind, ids: string[], group: string) {
+    const name = librarySchema.shape.group.parse(group);
+    const items = await Promise.all([...new Set(ids)].map((id) => this.get(kind, id)));
+    // Grouping changes organization only, without restarting servers or changing runtime settings.
+    for (const item of items) {
+      await atomicWrite(
+        this.path(kind, item.id),
+        this.serialize(kind, {
+          ...item,
+          group: name,
+          updatedAt: Date.now(),
+        }),
+      );
+    }
+  }
   async remove(kind: LibraryKind, id: string) {
     await this.assertRemovable(kind, id);
     await rm(this.path(kind, id), { force: true });

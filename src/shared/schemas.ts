@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { landingSchema } from './landing';
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
 export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools']);
 export const providerURLSchema = z
@@ -67,6 +68,16 @@ export const providerProfileSchema = z.object({
 export const settingsSchema = z
   .object({
     appName: z.string().trim().min(1).max(80).default('LocalAI Workspace'),
+    appLogo: z
+      .string()
+      .max(1_400_000)
+      .refine(
+        (value) =>
+          value === '' || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value),
+        'Choose a PNG, JPEG, or WebP logo up to 1 MB.',
+      )
+      .default(''),
+    landing: landingSchema.default(() => landingSchema.parse({})),
     theme: z.enum(['system', 'dark', 'light']).default('system'),
     provider: z
       .enum(['ollama', 'openai', 'anthropic', 'google', 'openrouter', 'groq', 'custom'])
@@ -131,6 +142,7 @@ export const capabilityConfigSchema = z.object({
 export const librarySchema = z.object({
   id: idSchema,
   name: z.string().trim().min(1).max(200),
+  group: z.string().trim().max(100).default(''),
   description: z.string().max(2000).default(''),
   content: text.default(''),
   version: z.string().max(80).default('1.0.0'),

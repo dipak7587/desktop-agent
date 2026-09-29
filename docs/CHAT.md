@@ -91,6 +91,20 @@ Results, command names, and the latest 100 activity events persist with the conv
 Historical approval controls cannot execute again. Commands cannot use Regenerate; send a
 new command to repeat a task deliberately. Ordinary messages use normal chat unless an agent context is active.
 
+### Linked Code workspaces
+
+Type `/code` to list saved folders directly in Chat. Type a folder name or path after `/code `
+to filter the list, then click a folder or select it with the arrow keys and Enter. Chat stays open
+and the selected workspace connects to the current conversation. **Open another folder…** opens
+the native folder picker; **Connect project** in the Chat header also opens it.
+Recent linked workspaces can also be reconnected from Code in another
+conversation, and missing folders can be relinked through the native picker. Reopening a
+conversation restores its workspace indicator. Disconnecting removes only that conversation's
+link. Workspace selection grants no project-tool permissions and does
+not currently provide project files or retrieval to normal Chat; the indicator shows **Restricted**.
+The separate local-agent task form in Code continues to use the existing agent tool and approval
+flow. See [Code Workspaces](CODE.md) for implementation status and planned boundaries.
+
 ## Conversation history
 
 Create, search, rename, delete, and reopen conversations. Use the trash button in the

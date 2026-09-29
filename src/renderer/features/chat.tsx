@@ -1,6 +1,7 @@
+import { ChatLanding } from '../components/chat-landing';
+import { defaultLanding } from '../../shared/landing';
 import { defaultChatSelection } from '../../shared/chat-selection';
 import { ProviderSelector } from '../components/provider-selector';
-import { FolderSelection } from '../components/folder-selection';
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -10,12 +11,14 @@ import {
   Search,
   Trash2,
   Pencil,
-  Orbit,
   BookOpen,
-  Terminal,
   Code2,
   RotateCcw,
   FileDown,
+  FolderOpen,
+  Unlink,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { useChat, useSettings, useKnowledge, useUI, useAgents, attempt } from '../stores';
 import { ChatActivity, useChatCommands } from './chat-commands';
@@ -27,6 +30,10 @@ export function Chat() {
   const { sources } = useKnowledge();
   const draft = useUI((s) => s.draft);
   const commands = useChatCommands(draft);
+  const showProjectControls =
+    /^\/(agent|workflow|code)(?:\s|$)/.test(draft) ||
+    ['agent', 'workflow'].includes(commands.selected?.kind ?? '') ||
+    !!chat.agentId;
   const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
   const defaults = defaultChatSelection(settings);
   const providerId = chat.current ? chat.providerId : defaults.providerId;
@@ -45,6 +52,7 @@ export function Chat() {
   }, [selectedAgentId]);
   const submitting = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [project, setProject] = useState('');
   useEffect(() => {
     setProject('');
@@ -60,6 +68,11 @@ export function Chat() {
   }, [chat.messages, chat.stream]);
   async function send(regenerate = false) {
     if (chat.generating || submitting.current) return;
+    if (!regenerate && /^\/code(?:\s|$)/.test(draft)) {
+      commands.updateDraft(draft);
+      commands.inputRef.current?.focus();
+      return;
+    }
     submitting.current = true;
     setBusy(true);
     try {
@@ -117,12 +130,22 @@ export function Chat() {
   }
   const current = chat.conversations.find((c) => c.id === chat.current);
   return (
-    <div className="chat-layout">
+    <div className={`chat-layout ${historyCollapsed ? 'history-collapsed' : ''}`}>
       <section className="history">
         <div className="history-heading">
           <span>Conversations</span>
           <div className="actions">
             <button
+              type="button"
+              className="icon"
+              aria-label="Collapse conversations"
+              title="Collapse conversations"
+              onClick={() => setHistoryCollapsed(true)}
+            >
+              <PanelLeftClose size={16} />
+            </button>
+            <button
+              type="button"
               className="icon"
               aria-label="Delete all chats"
               title="Delete all chats"
@@ -131,6 +154,7 @@ export function Chat() {
               <Trash2 size={16} />
             </button>
             <button
+              type="button"
               className="icon"
               aria-label="New chat"
               onClick={() => void attempt(chat.newChat)}
@@ -190,6 +214,17 @@ export function Chat() {
       </section>
       <section className="conversation">
         <header className="chat-heading">
+          {historyCollapsed && (
+            <button
+              type="button"
+              className="icon"
+              aria-label="Show conversations"
+              title="Show conversations"
+              onClick={() => setHistoryCollapsed(false)}
+            >
+              <PanelLeftOpen size={17} />
+            </button>
+          )}
           <div>
             <h2
               className={current ? 'conversation-title' : undefined}
@@ -216,12 +251,38 @@ export function Chat() {
             </div>
           )}
           <div className="chat-heading-controls">
+            {chat.workspace ? (
+              <div className="workspace-indicator" aria-label="Active coding workspace">
+                <Code2 size={14} />
+                <span title={chat.workspace.canonicalPath}>{chat.workspace.name}</span>
+                <span className="badge">Restricted</span>
+                <button
+                  className="icon small"
+                  aria-label="Disconnect workspace from conversation"
+                  title="Disconnect workspace from conversation"
+                  onClick={() => void attempt(chat.disconnectWorkspace)}
+                >
+                  <Unlink size={13} />
+                </button>
+              </div>
+            ) : showProjectControls ? (
+              <button
+                type="button"
+                className="secondary chat-clear-history"
+                disabled={busy || !!chat.generating}
+                onClick={() => void attempt(chat.connectWorkspace)}
+              >
+                <FolderOpen size={14} /> Connect project
+              </button>
+            ) : null}
             <button
               type="button"
-              className="secondary"
+              className="secondary chat-clear-history"
               disabled={!current}
               title="Export this conversation as a Markdown file"
-              onClick={() => current && void attempt(() => window.workspace.chat.exportMarkdown(current.id))}
+              onClick={() =>
+                current && void attempt(() => window.workspace.chat.exportMarkdown(current.id))
+              }
             >
               <FileDown size={14} /> Export .md
             </button>
@@ -255,43 +316,10 @@ export function Chat() {
         </header>
         <div className="messages">
           {!chat.messages.length && !chat.generating ? (
-            <div className="chat-welcome">
-              <div className="welcome-mark">
-                <Orbit size={38} strokeWidth={1.2} />
-              </div>
-              <div className="eyebrow">YOUR LOCAL INTELLIGENCE</div>
-              <h1>Good ideas start here.</h1>
-              <p>
-                Talk to your models. Bring your knowledge.
-                <br />
-                Choose a local model or your connected provider.
-              </p>
-              <div className="suggestions">
-                {[
-                  {
-                    icon: Code2,
-                    title: 'Build something',
-                    text: 'Help me plan a new application. Ask me about the requirements first.',
-                  },
-                  {
-                    icon: BookOpen,
-                    title: 'Explore your knowledge',
-                    text: 'Summarize the key ideas in the selected knowledge sources.',
-                  },
-                  {
-                    icon: Terminal,
-                    title: 'Think it through',
-                    text: 'Help me reason through a technical decision. Ask me what I am working on.',
-                  },
-                ].map((s) => (
-                  <button key={s.title} onClick={() => useUI.setState({ draft: s.text })}>
-                    <s.icon size={19} />
-                    <strong>{s.title}</strong>
-                    <span>{s.text}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ChatLanding
+              landing={settings?.landing ?? defaultLanding}
+              onSelect={(text) => useUI.setState({ draft: text })}
+            />
           ) : (
             <div className="message-column">
               {chat.messages
@@ -376,9 +404,6 @@ export function Chat() {
                   /{commands.selected.kind} · {commands.selected.name} · this conversation
                 </span>
                 <div className="command-chip-actions">
-                  {['agent', 'workflow'].includes(commands.selected.kind) && (
-                    <FolderSelection value={project} onChange={setProject} controlsOnly />
-                  )}
                   <button
                     type="button"
                     aria-label="Remove chat command"
@@ -392,12 +417,7 @@ export function Chat() {
                 </div>
               </div>
             )}
-            {(agent || commands.selected?.kind === 'workflow') && (
-              <p className="folder-path command-folder-path">{project || 'No folder selected'}</p>
-            )}
-            {!commands.selected && /^\/(agent|workflow)\s/.test(draft) && (
-              <FolderSelection value={project} onChange={setProject} />
-            )}
+
             {commands.picker}
             <textarea
               ref={commands.inputRef}
@@ -418,30 +438,7 @@ export function Chat() {
                 }
               }}
             />
-            {agent && (
-              <div className="actions">
-                <span className="small">
-                  Next response: {selectedProvider?.name ?? 'Unavailable provider'} /{' '}
-                  {model || 'Select model'}
-                </span>
-                <button
-                  type="button"
-                  disabled={!validSelection}
-                  onClick={() =>
-                    void attempt(async () => {
-                      await window.workspace.library.save('agents', {
-                        ...agent,
-                        providerId,
-                        model,
-                      });
-                      await useAgents.getState().load();
-                    })
-                  }
-                >
-                  Save to Agent
-                </button>
-              </div>
-            )}
+
             <div className="composer-tools">
               <div className="knowledge-select">
                 <BookOpen size={15} />

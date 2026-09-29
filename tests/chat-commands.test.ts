@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { librarySchema, settingsSchema, sendSchema } from '../src/shared/schemas';
-import { resolveSlash, slashPrefix } from '../src/shared/slash-commands';
+import { commandKinds, resolveSlash, slashPrefix } from '../src/shared/slash-commands';
 import { ChatDatabase } from '../src/main/database/chat';
 import { ChatService } from '../src/main/services/ollama/chat';
 import { ChatCommands } from '../src/main/services/ollama/commands';
@@ -102,6 +102,7 @@ async function setupMCP() {
 }
 
 it('parses quoted names, longest unquoted names, queries and rejects ambiguity', () => {
+  expect(commandKinds).toContain('code');
   const items = ['My server', 'My server two'].map((name, i) =>
     librarySchema.parse({ id: `s${i}`, name }),
   );

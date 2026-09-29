@@ -92,6 +92,14 @@ picker authorization at the IPC boundary; folderless runs cannot use built-in pr
 The same `FolderSelection` component serves Chat and Run Agent. The run stores the selected
 path for history without turning it into a default for future requests.
 
+Persistent Code workspace metadata is stored in `database/app.sqlite` alongside conversations,
+but in a separate `code_workspaces` table. Conversations have a nullable workspace ID; native
+folder selection and reconnection happen through validated main-process IPC. Workspace selection
+does not yet grant or inject project capabilities into normal Chat. Existing per-run agent folder
+selection remains a separate flow until workspace policy is connected to capability routing.
+Relinking a missing workspace uses another native folder selection, retains its ID and clears
+workspace policy/provider/agent preferences for the replacement path.
+
 The agent runtime snapshots the configured iteration maximum, counts model turns, and persists
 status, timestamps, request, tool/MCP activity and results through `AgentRunDatabase`. It emits
 safe progress labels rather than model planning fields. Interrupted persisted runs become

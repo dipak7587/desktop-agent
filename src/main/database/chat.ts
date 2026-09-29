@@ -1,6 +1,11 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
-import type { Conversation, Message } from '../../shared/types';
+import type {
+  CodeWorkspace,
+  Conversation,
+  Message,
+  WorkspacePermissionPolicy,
+} from '../../shared/types';
 export class ChatDatabase {
   private db: DatabaseSync;
   constructor(path: string) {
@@ -8,13 +13,18 @@ export class ChatDatabase {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY,title TEXT NOT NULL,model TEXT NOT NULL,createdAt INTEGER NOT NULL,updatedAt INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,conversationId TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,createdAt INTEGER NOT NULL,metadata TEXT);
+ CREATE TABLE IF NOT EXISTS code_workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,canonicalPath TEXT NOT NULL UNIQUE,createdAt TEXT NOT NULL,lastOpenedAt TEXT NOT NULL,permissions TEXT NOT NULL,selectedAgentId TEXT,preferredProviderId TEXT,preferredModelId TEXT);
  CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversationId,createdAt);`);
     const columns = this.db.prepare('PRAGMA table_info(conversations)').all();
     if (!columns.some((c) => c.name === 'providerId'))
       this.db.exec("ALTER TABLE conversations ADD COLUMN providerId TEXT NOT NULL DEFAULT ''");
     if (!columns.some((c) => c.name === 'agentId'))
       this.db.exec("ALTER TABLE conversations ADD COLUMN agentId TEXT NOT NULL DEFAULT ''");
-    this.db.exec('PRAGMA user_version=2');
+    if (!columns.some((c) => c.name === 'workspaceId'))
+      this.db.exec(
+        'ALTER TABLE conversations ADD COLUMN workspaceId TEXT REFERENCES code_workspaces(id) ON DELETE SET NULL',
+      );
+    this.db.exec('PRAGMA user_version=3');
     for (const row of this.db
       .prepare("SELECT id,metadata FROM messages WHERE role='assistant' AND metadata IS NOT NULL")
       .all()) {
@@ -61,6 +71,89 @@ export class ChatDatabase {
       )
       .run(c.id, c.title, c.model, c.createdAt, c.updatedAt, providerId, agentId);
     return c;
+  }
+  listCodeWorkspaces(): CodeWorkspace[] {
+    return this.db
+      .prepare('SELECT * FROM code_workspaces ORDER BY lastOpenedAt DESC')
+      .all()
+      .map((row) => ({
+        ...row,
+        permissions: JSON.parse(String(row.permissions)) as WorkspacePermissionPolicy,
+      })) as unknown as CodeWorkspace[];
+  }
+  getCodeWorkspace(id: string): CodeWorkspace {
+    const row = this.db.prepare('SELECT * FROM code_workspaces WHERE id=?').get(id) as
+      (Omit<CodeWorkspace, 'permissions'> & { permissions: string }) | undefined;
+    if (!row) throw new Error('Workspace no longer exists');
+    return { ...row, permissions: JSON.parse(row.permissions) as WorkspacePermissionPolicy };
+  }
+  connectCodeWorkspace(conversationId: string, canonicalPath: string): CodeWorkspace {
+    this.get(conversationId);
+    const timestamp = new Date().toISOString();
+    const existing = this.db
+      .prepare('SELECT id FROM code_workspaces WHERE canonicalPath=?')
+      .get(canonicalPath) as { id: string } | undefined;
+    const id = existing?.id ?? randomUUID();
+    if (existing) {
+      this.db.prepare('UPDATE code_workspaces SET lastOpenedAt=? WHERE id=?').run(timestamp, id);
+    } else {
+      this.db
+        .prepare(
+          'INSERT INTO code_workspaces(id,name,canonicalPath,createdAt,lastOpenedAt,permissions,selectedAgentId) VALUES(?,?,?,?,?,?,NULL)',
+        )
+        .run(
+          id,
+          canonicalPath.split(/[\\/]/).filter(Boolean).at(-1) ?? canonicalPath,
+          canonicalPath,
+          timestamp,
+          timestamp,
+          JSON.stringify({ rules: {} } satisfies WorkspacePermissionPolicy),
+        );
+    }
+    this.db.prepare('UPDATE conversations SET workspaceId=? WHERE id=?').run(id, conversationId);
+    return this.getCodeWorkspace(id);
+  }
+  reconnectCodeWorkspace(workspaceId: string, conversationId: string): CodeWorkspace {
+    this.get(conversationId);
+    this.getCodeWorkspace(workspaceId);
+    this.db
+      .prepare('UPDATE code_workspaces SET lastOpenedAt=? WHERE id=?')
+      .run(new Date().toISOString(), workspaceId);
+    this.db
+      .prepare('UPDATE conversations SET workspaceId=? WHERE id=?')
+      .run(workspaceId, conversationId);
+    return this.getCodeWorkspace(workspaceId);
+  }
+  relinkCodeWorkspace(workspaceId: string, conversationId: string, canonicalPath: string) {
+    this.get(conversationId);
+    this.getCodeWorkspace(workspaceId);
+    const collision = this.db
+      .prepare('SELECT id FROM code_workspaces WHERE canonicalPath=? AND id<>?')
+      .get(canonicalPath, workspaceId) as { id: string } | undefined;
+    if (collision) throw new Error('That folder is already linked to another workspace');
+    const timestamp = new Date().toISOString();
+    this.db
+      .prepare(
+        'UPDATE code_workspaces SET name=?,canonicalPath=?,lastOpenedAt=?,permissions=?,selectedAgentId=NULL,preferredProviderId=NULL,preferredModelId=NULL WHERE id=?',
+      )
+      .run(
+        canonicalPath.split(/[\\/]/).filter(Boolean).at(-1) ?? canonicalPath,
+        canonicalPath,
+        timestamp,
+        JSON.stringify({ rules: {} } satisfies WorkspacePermissionPolicy),
+        workspaceId,
+      );
+    this.db
+      .prepare('UPDATE conversations SET workspaceId=? WHERE id=?')
+      .run(workspaceId, conversationId);
+    return this.getCodeWorkspace(workspaceId);
+  }
+  disconnectCodeWorkspace(conversationId: string) {
+    this.get(conversationId);
+    this.db.prepare('UPDATE conversations SET workspaceId=NULL WHERE id=?').run(conversationId);
+  }
+  removeCodeWorkspace(workspaceId: string) {
+    this.db.prepare('DELETE FROM code_workspaces WHERE id=?').run(workspaceId);
   }
   setSelection(id: string, providerId: string, model: string, agentId?: string) {
     this.get(id);

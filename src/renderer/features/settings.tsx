@@ -1,5 +1,7 @@
+import { LandingEditor } from './landing-settings';
+import { defaultLanding } from '../../shared/landing';
 import { AIProviders } from './ai-providers';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyRound, Download, Upload } from 'lucide-react';
 import { useSettings, useAgents, useUI, attempt } from '../stores';
 import type { Settings as SettingsType } from '../../shared/types';
@@ -13,7 +15,11 @@ export function Settings() {
   const [keyName, setKeyName] = useState('');
   const [secret, setSecret] = useState('');
   const [path, setPath] = useState('');
-  const [tab, setTab] = useState<'general' | 'providers' | 'backup'>('general');
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [readingLogo, setReadingLogo] = useState(false);
+  const [tab, setTab] = useState<'general' | 'providers' | 'landing' | 'credentials' | 'backup'>(
+    'general',
+  );
   const [backupFormat, setBackupFormat] = useState<WorkspaceBackupFormat>('json');
   const [importing, setImporting] = useState(false);
   useEffect(() => {
@@ -21,10 +27,13 @@ export function Settings() {
   }, [state.settings]);
   useEffect(() => {
     void attempt(async () => {
-      setKeys(await window.workspace.secrets.list());
       setPath(await window.workspace.settings.dataPath());
     });
   }, []);
+  useEffect(() => {
+    if (tab === 'credentials')
+      void attempt(async () => setKeys(await window.workspace.secrets.list()));
+  }, [tab]);
   if (!value) return null;
   const update = (key: keyof SettingsType, v: unknown) => setValue((s) => s && { ...s, [key]: v });
   return (
@@ -45,11 +54,32 @@ export function Settings() {
         >
           AI Providers
         </button>
+        <button type="button" aria-pressed={tab === 'landing'} onClick={() => setTab('landing')}>
+          Landing
+        </button>
+        <button
+          type="button"
+          aria-pressed={tab === 'credentials'}
+          onClick={() => setTab('credentials')}
+        >
+          Credentials
+        </button>
         <button type="button" aria-pressed={tab === 'backup'} onClick={() => setTab('backup')}>
           Import / Export
         </button>
       </nav>
-      {tab === 'providers' ? (
+      {tab === 'landing' ? (
+        <LandingEditor
+          value={value.landing ?? defaultLanding}
+          onChange={(landing) => update('landing', landing)}
+          onSave={async (landing) => {
+            const current = useSettings.getState().settings;
+            if (!current) return;
+            await state.save({ ...current, landing });
+            useUI.setState({ notice: 'Landing page saved' });
+          }}
+        />
+      ) : tab === 'credentials' ? null : tab === 'providers' ? (
         <AIProviders />
       ) : tab === 'backup' ? (
         <section className="settings-section workspace-backup">
@@ -148,6 +178,68 @@ export function Settings() {
                   onChange={(e) => update('appName', e.target.value)}
                 />
               </label>
+              <div className="app-logo-setting">
+                <span className="small muted">Application logo</span>
+                <div className="app-logo-control">
+                  <div className="app-logo-preview">
+                    {value.appLogo ? <img src={value.appLogo} alt="Current application logo" /> : null}
+                  </div>
+                  <div>
+                    <input
+                      ref={logoInput}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        if (!file) return;
+                        setReadingLogo(true);
+                        void attempt(async () => {
+                          try {
+                            if (
+                              file.size > 1_048_576 ||
+                              !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
+                            )
+                              throw new Error('Choose a PNG, JPEG, or WebP logo up to 1 MB.');
+                            const appLogo = await new Promise<string>((resolve, reject) => {
+                              const reader = new FileReader();
+                              reader.onload = () => resolve(String(reader.result));
+                              reader.onerror = () => reject(new Error('Could not read the logo.'));
+                              reader.readAsDataURL(file);
+                            });
+                            const image = new Image();
+                            image.src = appLogo;
+                            await image.decode();
+                            update('appLogo', appLogo);
+                          } finally {
+                            setReadingLogo(false);
+                          }
+                        });
+                      }}
+                    />
+                    <div className="actions">
+                      <button
+                        type="button"
+                        disabled={readingLogo}
+                        onClick={() => logoInput.current?.click()}
+                      >
+                        <Upload size={14} /> {readingLogo ? 'Loading…' : 'Choose logo'}
+                      </button>
+                      {value.appLogo && (
+                        <button
+                          type="button"
+                          disabled={readingLogo}
+                          onClick={() => update('appLogo', '')}
+                        >
+                          Remove logo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p className="small muted">PNG, JPEG, or WebP, up to 1 MB. Save settings to apply.</p>
+              </div>
               <div className="field-row">
                 <label>
                   Theme
@@ -331,7 +423,7 @@ export function Settings() {
           </div>
         </form>
       )}
-      {tab === 'general' && (
+      {tab === 'credentials' && (
         <>
           <section className="settings-section">
             <div>
@@ -339,6 +431,7 @@ export function Settings() {
               <p>Encrypted using your operating system. Values never return to the interface.</p>
             </div>
             <div className="settings-fields">
+              {!keys.length && <p className="small muted">No stored credentials yet.</p>}
               {keys.map((k) => (
                 <div className="secret-row" key={k}>
                   <KeyRound size={16} />
@@ -419,14 +512,16 @@ export function Settings() {
               </div>
             </div>
           </section>
-          <section className="settings-section">
-            <div>
-              <h2>Local data</h2>
-              <p>Portable definitions and private local history.</p>
-            </div>
-            <code className="data-path">{path}</code>
-          </section>
         </>
+      )}
+      {tab === 'general' && (
+        <section className="settings-section">
+          <div>
+            <h2>Local data</h2>
+            <p>Portable definitions and private local history.</p>
+          </div>
+          <code className="data-path">{path}</code>
+        </section>
       )}
     </div>
   );

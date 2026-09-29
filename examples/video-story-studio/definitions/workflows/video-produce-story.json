@@ -1,7 +1,7 @@
 {
   "id": "video-produce-story",
   "name": "Video 2 · Produce selected story",
-  "description": "Paste the Video 1 Markdown report plus Option 1–5, or a selected title and URL → saved video production pack.",
+  "description": "Paste your chosen story section with its source URL → story, characters, narration, Flow prompts and saved production pack.",
   "executionMode": "mixed",
   "agents": [
     {

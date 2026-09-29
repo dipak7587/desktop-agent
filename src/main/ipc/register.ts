@@ -7,7 +7,7 @@ import type { AgentRunDatabase } from '../database/agent-runs';
 import { readText } from '../services/filesystem/walk';
 import { app, ipcMain, dialog, shell, BrowserWindow, clipboard } from 'electron';
 import { z } from 'zod';
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import {
   settingsSchema,
   idSchema,
@@ -109,6 +109,57 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       .map((c) => c.title),
   }));
   handle('chat:list', z.tuple([z.string().max(500).optional()]), (q) => s.db.list(q));
+  handle('code:list', none, async () =>
+    Promise.all(
+      s.db.listCodeWorkspaces().map(async (workspace) => {
+        let available = false;
+        try {
+          available = (await stat(workspace.canonicalPath)).isDirectory();
+        } catch {
+          available = false;
+        }
+        return { ...workspace, available };
+      }),
+    ),
+  );
+  handle('code:choose-and-connect', id, async (conversationId) => {
+    s.db.get(conversationId);
+    const result = await dialog.showOpenDialog({
+      title: 'Connect project workspace',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const canonicalPath = await realpath(result.filePaths[0]);
+    if (!(await stat(canonicalPath)).isDirectory()) throw new Error('Choose a project folder');
+    projects.add(canonicalPath);
+    return s.db.connectCodeWorkspace(conversationId, canonicalPath);
+  });
+  handle('code:reconnect', z.tuple([idSchema, idSchema]), async (workspaceId, conversationId) => {
+    const workspace = s.db.getCodeWorkspace(workspaceId);
+    if (!(await stat(workspace.canonicalPath)).isDirectory())
+      throw new Error('Workspace folder is missing or inaccessible. Relink it using Open Folder.');
+    projects.add(workspace.canonicalPath);
+    return s.db.reconnectCodeWorkspace(workspaceId, conversationId);
+  });
+  handle(
+    'code:choose-and-relink',
+    z.tuple([idSchema, idSchema]),
+    async (workspaceId, conversationId) => {
+      s.db.get(conversationId);
+      s.db.getCodeWorkspace(workspaceId);
+      const result = await dialog.showOpenDialog({
+        title: 'Relink project workspace',
+        properties: ['openDirectory'],
+      });
+      if (result.canceled || !result.filePaths[0]) return null;
+      const canonicalPath = await realpath(result.filePaths[0]);
+      if (!(await stat(canonicalPath)).isDirectory()) throw new Error('Choose a project folder');
+      projects.add(canonicalPath);
+      return s.db.relinkCodeWorkspace(workspaceId, conversationId, canonicalPath);
+    },
+  );
+  handle('code:disconnect', id, (conversationId) => s.db.disconnectCodeWorkspace(conversationId));
+  handle('code:remove', id, (workspaceId) => s.db.removeCodeWorkspace(workspaceId));
   handle(
     'chat:create',
     z.tuple([z.string().max(200), idSchema.optional(), idSchema.optional()]),
@@ -186,6 +237,15 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   });
   handle('chat:stop', id, (id) => s.chat.stop(id));
   handle('library:list', z.tuple([kindSchema]), (kind) => s.library.list(kind));
+  handle(
+    'library:set-group',
+    z.tuple([
+      z.enum(['agents', 'mcp', 'skills', 'tools']),
+      z.array(idSchema).min(1).max(1000),
+      librarySchema.shape.group,
+    ]),
+    (kind, ids, group) => s.library.setGroup(kind, ids, group),
+  );
   handle('library:save', z.tuple([kindSchema, librarySchema]), async (kind, item) => {
     if (kind === 'agents') {
       item = { ...item, providerId: item.providerId ?? s.settings.get().activeProviderId };

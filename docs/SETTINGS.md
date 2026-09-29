@@ -25,6 +25,15 @@ error dialog lists the names and count and offers **Manage agents**. Reassign th
 The main process enforces this rule for settings saves and imports too. With no agent references,
 deletion asks for confirmation and lists affected chats; historical messages remain readable.
 
+## Landing
+
+Open **Settings → Landing** to edit the empty-chat welcome label, heading, description,
+and the title, prompt and icon of each of the three suggestion cards. Each card inserts its
+prompt into the chat draft. Upload a PNG, JPEG or WebP logo up to 1 MB, or remove it to use
+the default mark. The preview updates while editing; **Save landing** applies your changes.
+**Reset landing to defaults** restores the original content in the form; save to apply it.
+Landing content and the embedded logo persist locally and are included in workspace backups.
+
 ## Models and retrieval
 
 Choose a provider such as Ollama, OpenAI, Anthropic Claude, Google Gemini, OpenRouter,
@@ -54,6 +63,10 @@ permissions can override this with Always allow or Deny. Built-in project tools 
 folder explicitly selected for that run; folder selection is optional for other agent work. Read [Security](SECURITY.md) before enabling automatic approvals or external tools.
 
 ## Credentials and local data
+
+Open **Settings → Credentials** to see stored credential names, add or replace a key,
+remove a key, or connect/disconnect a `.env` file. Stored values remain masked and are
+never returned to the interface. **General** contains the Local data directory information.
 
 ## Workspace import and export
 

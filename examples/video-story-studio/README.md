@@ -21,30 +21,22 @@ means ranked for your video brief, not a measured internet popularity ranking.
    Read the Markdown report: a production brief followed by numbered story headings
    (`## 1. Title` through `## 5. Title`), source links, adaptation reasons and edition/rights notes.
 5. Choose a story yourself. Open **Video 2 · Produce selected story → Run workflow**.
-   Copy the **entire Markdown output** from Video 1 and paste it into the task.
-   Add your choice on a separate line above or below it, for example:
+   Copy **only the story section you want**, including its title, Source URL and
+   details, and paste it into Video 2. No option number or full five-story list is needed.
 
    ```text
-   Option 2
+   [Paste your chosen story section from Video 1 here]
 
-   [Paste the entire Video 1 Markdown report here]
-   ```
-
-   Use one number: `Option 1`, `Option 2`, `Option 3`, `Option 4`, or `Option 5`.
-   Video 2 takes the title and source URL from that numbered option and inherits
-   the report's narration language, timing, aspect ratio and other settings.
-   To change settings, add explicit overrides alongside your choice:
-
-   ```text
-   Option 3
-   Visual style: warm stylized 3D animation, natural forest setting
    Narration language: Hindi
-
-   [Paste the entire Video 1 Markdown report here]
+   Duration: 60 seconds
+   Clip length: 10 seconds
+   Aspect ratio: 9:16
+   Visual style: warm stylized 3D animation, natural forest setting
    ```
 
-   This also works from Chat using `/workflow` to select Video 2. You can still
-   provide `Selected story: ...` and `Source URL: ...` directly if preferred.
+   You may copy the Production brief along with the story to reuse its settings;
+   otherwise Video 2 uses the documented defaults. The story's original numbered
+   heading can remain as-is. This also works in Chat with `/workflow` → Video 2.
 
 6. Approve the source-read, timing and local-export operations when requested.
    No project folder is needed. The five production agents run in order; every
@@ -55,7 +47,7 @@ means ranked for your video brief, not a measured internet popularity ranking.
 
 This is a deliberate two-workflow handoff: the current app does not have clickable
 story cards or a mid-workflow selection form. Choosing a number alone does not carry
-another run's context: paste the **entire numbered Markdown report plus your choice**
+another run's context: paste your **chosen story section with its title and Source URL**
 into production. Missing, ambiguous or unavailable choices are blocked rather than guessed.
 If a prerequisite is missing, the agents are instructed to report BLOCKED. The generic
 workflow engine may still label such a text response “completed”; inspect its output.

@@ -4,6 +4,48 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { librarySchema, settingsSchema } from '../src/shared/schemas';
+it.each(['agents', 'mcp', 'skills', 'tools'] as const)(
+  'persists portable groups for %s without changing definitions',
+  async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), 'library-groups-'));
+    const library = new LibraryService(root);
+    try {
+      const original = await library.save(
+        kind,
+        librarySchema.parse({
+          id: 'one',
+          name: 'One',
+          description: 'Group fixture',
+          content: kind === 'mcp' ? '' : 'return input;',
+          env: { TOKEN: '${TOKEN}' },
+          tools: ['filesystem.read'],
+          toolConfig: kind === 'tools' ? { type: 'javascript', parameters: [] } : undefined,
+        }),
+      );
+      await library.save(kind, { ...original, id: 'two', name: 'Two' });
+      await expect(library.setGroup(kind, ['one', 'missing'], 'Video')).rejects.toThrow();
+      expect((await library.get(kind, 'one')).group).toBe('');
+      await library.setGroup(kind, ['one', 'two'], '  Video Studio  ');
+      const reloaded = new LibraryService(root);
+      expect((await reloaded.list(kind)).map((item) => item.group)).toEqual([
+        'Video Studio',
+        'Video Studio',
+      ]);
+      const updated = await reloaded.get(kind, 'one');
+      expect(updated).toEqual({ ...original, group: 'Video Studio', updatedAt: updated.updatedAt });
+      expect(reloaded.parse(kind, reloaded.serialize(kind, updated), 'imported').group).toBe(
+        'Video Studio',
+      );
+      await reloaded.setGroup(kind, ['one'], '');
+      expect((await reloaded.get(kind, 'one')).group).toBe('');
+      expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
+      await expect(reloaded.setGroup(kind, ['../outside'], 'Video')).rejects.toThrow();
+      await expect(reloaded.setGroup(kind, ['one'], 'x'.repeat(101))).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 it('round trips saved text and skills as portable markdown, with edits and delete', async () => {
   const root = await mkdtemp(join(tmpdir(), 'library-'));
   const lib = new LibraryService(root);

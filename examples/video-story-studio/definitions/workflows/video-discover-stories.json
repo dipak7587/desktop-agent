@@ -1,7 +1,7 @@
 {
   "id": "video-discover-stories",
   "name": "Video 1 · Discover five stories",
-  "description": "Live research → five numbered Markdown story options. Copy the full report into Video 2 with your choice.",
+  "description": "Live research → five numbered Markdown story options. Copy your chosen story into Video 2.",
   "executionMode": "sequential",
   "agents": [
     {

@@ -3,6 +3,7 @@ import type { WorkspaceBackupFormat } from './workspace-backup';
 import type {
   Settings,
   Model,
+  CodeWorkspace,
   Conversation,
   Message,
   LibraryKind,
@@ -54,7 +55,16 @@ export interface WorkspaceAPI {
     send(input: ChatInput): Promise<void>;
     stop(id: string): Promise<void>;
   };
+  code: {
+    list(): Promise<CodeWorkspace[]>;
+    chooseAndConnect(conversationId: string): Promise<CodeWorkspace | null>;
+    chooseAndRelink(workspaceId: string, conversationId: string): Promise<CodeWorkspace | null>;
+    reconnect(workspaceId: string, conversationId: string): Promise<CodeWorkspace>;
+    disconnect(conversationId: string): Promise<void>;
+    remove(workspaceId: string): Promise<void>;
+  };
   library: {
+    setGroup(kind: LibraryKind, ids: string[], group: string): Promise<void>;
     list(kind: LibraryKind): Promise<LibraryItem[]>;
     save(kind: LibraryKind, item: LibraryItem): Promise<LibraryItem>;
     remove(kind: LibraryKind, id: string): Promise<void>;

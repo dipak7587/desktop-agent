@@ -1,7 +1,8 @@
 import { ProviderSelector } from '../components/provider-selector';
+import { CommandPreview } from '../components/command-preview';
 import { CapabilitySettings } from '../components/capability-settings';
 import { FolderSelection } from '../components/folder-selection';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   Plus,
   Search,
@@ -74,6 +75,21 @@ export function Library({ kind }: { kind: LibraryKind }) {
       : enabledProviders.find((p) => p.id === providerSettings?.activeProviderId);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const grouped = kind !== 'saved-text';
+  const [group, setGroup] = useState<string | null>(null);
+  const [grouping, setGrouping] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [savingGroup, setSavingGroup] = useState(false);
+  const groups = [
+    ...new Set(items.map((item) => item.group).filter((name): name is string => !!name)),
+  ].sort((a, b) => a.localeCompare(b));
+  const visible = items.filter(
+    (item) =>
+      (group === null || (item.group ?? '') === group) &&
+      `${item.name} ${item.description} ${item.content}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+  );
   const [bulkDelete, setBulkDelete] = useState(false);
   const [testTool, setTestTool] = useState<LibraryItem | null>(null);
   const [editing, setEditing] = useState<LibraryItem | null>(null);
@@ -85,6 +101,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
     setEditing({
       ...librarySchema.parse({ id: crypto.randomUUID(), name: 'Untitled' }),
       name: '',
+      group: group ?? '',
       maxIterations: useSettings.getState().settings?.maxIterations ?? 15,
       toolConfig:
         kind === 'tools'
@@ -139,7 +156,10 @@ export function Library({ kind }: { kind: LibraryKind }) {
             aria-label={`Search ${titles[kind]}`}
             placeholder={`Search ${titles[kind].toLowerCase()}…`}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelected([]);
+            }}
           />
         </div>
         <span className="muted small">
@@ -147,24 +167,58 @@ export function Library({ kind }: { kind: LibraryKind }) {
           {kind === 'mcp' ? 'JSON' : 'Markdown'}
         </span>
       </div>
-      {kind === 'agents' && !!items.length && (
+      {grouped && !!items.length && (
+        <nav className="library-groups" aria-label={`${titles[kind]} groups`}>
+          {[null, '', ...groups].map((name) => (
+            <button
+              key={name === null ? 'all' : `group:${name}`}
+              type="button"
+              aria-pressed={group === name}
+              onClick={() => {
+                setGroup(name);
+                setSelected([]);
+              }}
+            >
+              {name === null ? 'All' : name || 'Ungrouped'}
+              <span className="badge">
+                {items.filter((item) => name === null || (item.group ?? '') === name).length}
+              </span>
+            </button>
+          ))}
+        </nav>
+      )}
+      {grouped && !!items.length && (
         <div className="section-toolbar">
           <label className="check">
             <input
               type="checkbox"
-              checked={items.every((i) => selected.includes(i.id))}
-              onChange={(e) => setSelected(e.target.checked ? items.map((i) => i.id) : [])}
+              checked={!!visible.length && visible.every((i) => selected.includes(i.id))}
+              disabled={!visible.length}
+              onChange={(e) => setSelected(e.target.checked ? visible.map((i) => i.id) : [])}
             />
-            Select all Agents
+            Select all {titles[kind]}
           </label>
-          <span>{selected.length} Agents selected</span>
+          <span>
+            {selected.length} {titles[kind]} selected
+          </span>
           <button
-            className="danger"
             disabled={!selected.length}
-            onClick={() => setBulkDelete(true)}
+            onClick={() => {
+              setGroupName(group ?? '');
+              setGrouping(true);
+            }}
           >
-            Delete Selected
+            Group selected
           </button>
+          {kind === 'agents' && (
+            <button
+              className="danger"
+              disabled={!selected.length}
+              onClick={() => setBulkDelete(true)}
+            >
+              Delete Selected
+            </button>
+          )}
         </div>
       )}
       {!items.length ? (
@@ -190,201 +244,205 @@ export function Library({ kind }: { kind: LibraryKind }) {
         />
       ) : (
         <div className={kind === 'skills' ? 'accordions' : 'library-grid'}>
-          {items
-            .filter((i) =>
-              (i.name + ' ' + i.description + ' ' + i.content)
-                .toLowerCase()
-                .includes(query.toLowerCase()),
-            )
-            .map((item) => {
-              const state = states.find((s) => s.id === item.id);
-              const actions = (
-                <div className="card-actions">
-                  <button onClick={() => setEditing(item)}>Edit</button>
-                  {kind === 'tools' && (
-                    <button onClick={() => setTestTool(item)}>Test / Run</button>
-                  )}
-                  {kind === 'agents' && (
-                    <button className="primary" onClick={() => setRun(item)}>
-                      <Play size={13} />
-                      Run
-                    </button>
-                  )}
-                  {kind === 'agents' && (
+          {!visible.length && <p className="small muted">No items match this group and search.</p>}
+          {visible.map((item) => {
+            const state = states.find((s) => s.id === item.id);
+            const actions = (
+              <div className="card-actions">
+                <button onClick={() => setEditing(item)}>Edit</button>
+                {kind === 'tools' && <button onClick={() => setTestTool(item)}>Test / Run</button>}
+                {kind === 'agents' && (
+                  <button className="primary" onClick={() => setRun(item)}>
+                    <Play size={13} />
+                    Run
+                  </button>
+                )}
+                {kind === 'agents' && (
+                  <button
+                    onClick={() =>
+                      void attempt(async () => {
+                        await useChat.getState().newChat({
+                          providerId: item.providerId ?? '',
+                          model: item.model,
+                          agentId: item.id,
+                        });
+                        useUI.setState({
+                          section: 'Chat',
+                          draft: '',
+                          chatCommand: { kind: 'agent', id: item.id, name: item.name },
+                        });
+                      })
+                    }
+                  >
+                    Open in Chat
+                  </button>
+                )}
+                {kind === 'saved-text' && (
+                  <>
+                    <CopyButton text={item.content} />
                     <button
                       onClick={() =>
                         void attempt(async () => {
-                          await useChat.getState().newChat({
-                            providerId: item.providerId ?? '',
-                            model: item.model,
-                            agentId: item.id,
-                          });
-                          useUI.setState({
-                            section: 'Chat',
-                            draft: '',
-                            chatCommand: { kind: 'agent', id: item.id, name: item.name },
-                          });
+                          await useChat.getState().newChat();
+                          useUI.setState({ section: 'Chat', draft: item.content });
                         })
                       }
                     >
-                      Open in Chat
+                      Send to Chat
                     </button>
-                  )}
-                  {kind === 'saved-text' && (
-                    <>
-                      <CopyButton text={item.content} />
-                      <button
-                        onClick={() =>
-                          void attempt(async () => {
-                            await useChat.getState().newChat();
-                            useUI.setState({ section: 'Chat', draft: item.content });
-                          })
-                        }
-                      >
-                        Send to Chat
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={() =>
-                      void attempt(() => window.workspace.library.export(kind, item.id))
-                    }
-                  >
-                    Export
-                  </button>
-                  <button className="text-button danger-text" onClick={() => setRemove(item)}>
-                    Delete
-                  </button>
-                </div>
-              );
-              const details = (
-                <>
-                  <p className="muted">{item.description || 'No description'}</p>
-                  {kind === 'skills' && (
-                    <>
-                      <div className="small muted">Version {item.version}</div>
-                      <Markdown text={item.content} />
-                    </>
-                  )}
-                  {kind === 'saved-text' && (
-                    <div className="note-preview">
-                      <Markdown text={item.content.slice(0, 500)} />
-                    </div>
-                  )}
-                  {kind === 'agents' && (
-                    <div className="agent-meta">
-                      <span>
-                        {useSettings
-                          .getState()
-                          .settings?.providers.find((p) => p.id === item.providerId)?.name ??
-                          'Unavailable provider'}{' '}
-                        / {item.model || 'Select model'}
-                      </span>
-                      <span>
-                        {item.skills.length} skills · {item.tools.length} tools
-                      </span>
-                    </div>
-                  )}
-                  {kind === 'mcp' && (
-                    <>
-                      <p className="small muted">Auto start: {item.autoStart ? 'On' : 'Off'}</p>
-                      <code className="command-line">
-                        {item.command} {item.args.join(' ')}
-                      </code>
-                      <p className="small muted">
-                        {Object.keys(item.env)
-                          .map((k) => `${k} = ********`)
-                          .join(' · ') || 'No environment variables'}
-                      </p>
-                      <div className="actions">
-                        {(['start', 'stop', 'restart', 'test'] as const).map((action) => (
-                          <button
-                            key={action}
-                            onClick={() =>
-                              void attempt(async () => {
-                                await window.workspace.mcp.action(item.id, action);
-                                await loadStates();
-                              })
-                            }
-                          >
-                            {action[0].toUpperCase() + action.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                      <details>
-                        <summary>Tools & logs ({state?.tools.length ?? 0})</summary>
-                        {state?.tools.map((t) => (
-                          <p className="small" key={t.name}>
-                            <strong>{t.name}</strong> {t.description}
-                          </p>
-                        ))}
-                        <pre className="log">
-                          {state?.logs.join('\n') || 'Start this server to discover its tools.'}
-                        </pre>
-                      </details>
-                    </>
-                  )}
-                  {actions}
-                </>
-              );
-              return kind === 'skills' ? (
-                <details className="skill-card" key={item.id}>
-                  <summary>
-                    <div className="item-icon">
-                      <Icon size={20} />
-                    </div>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <p>{item.description || 'Reusable model instructions'}</p>
-                    </div>
-                    <span className="badge">{item.enabled ? 'Enabled' : 'Disabled'}</span>
-                    <ChevronDown size={16} />
-                  </summary>
-                  <div className="skill-body">{details}</div>
-                </details>
-              ) : (
-                <article className="library-card" key={item.id}>
-                  <div className="card-top">
-                    <div className="item-icon">
-                      <Icon size={21} />
-                    </div>
-                    <span className="badge">
-                      {kind === 'mcp'
-                        ? state?.status === 'connected'
-                          ? 'Running'
-                          : (state?.status ?? 'stopped')
-                        : item.enabled
-                          ? 'Local'
-                          : 'Disabled'}
+                  </>
+                )}
+                <button
+                  onClick={() => void attempt(() => window.workspace.library.export(kind, item.id))}
+                >
+                  Export
+                </button>
+                <button className="text-button danger-text" onClick={() => setRemove(item)}>
+                  Delete
+                </button>
+              </div>
+            );
+            const details = (
+              <>
+                {grouped && item.group && (
+                  <span className="badge library-group-badge">{item.group}</span>
+                )}
+                <p className="muted">{item.description || 'No description'}</p>
+                {kind === 'skills' && (
+                  <>
+                    <div className="small muted">Version {item.version}</div>
+                    <Markdown text={item.content} />
+                  </>
+                )}
+                {kind === 'saved-text' && (
+                  <div className="note-preview">
+                    <Markdown text={item.content.slice(0, 500)} />
+                  </div>
+                )}
+                {kind === 'agents' && (
+                  <div className="agent-meta">
+                    <span>
+                      {useSettings
+                        .getState()
+                        .settings?.providers.find((p) => p.id === item.providerId)?.name ??
+                        'Unavailable provider'}{' '}
+                      / {item.model || 'Select model'}
+                    </span>
+                    <span>
+                      {item.skills.length} skills · {item.tools.length} tools
                     </span>
                   </div>
-                  {kind === 'agents' && (
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${item.name}`}
-                        checked={selected.includes(item.id)}
-                        onChange={(e) =>
-                          setSelected((ids) =>
-                            e.target.checked
-                              ? [...ids, item.id]
-                              : ids.filter((id) => id !== item.id),
-                          )
-                        }
-                      />
-                      Select
-                    </label>
-                  )}
-                  <h2>{item.name}</h2>
-                  {details}
-                </article>
-              );
-            })}
+                )}
+                {kind === 'mcp' && (
+                  <>
+                    <p className="small muted">Auto start: {item.autoStart ? 'On' : 'Off'}</p>
+                    <CommandPreview command={[item.command, ...item.args].join(' ').trim()} />
+                    <p className="small muted">
+                      {Object.keys(item.env)
+                        .map((k) => `${k} = ********`)
+                        .join(' · ') || 'No environment variables'}
+                    </p>
+                    <div className="actions">
+                      {(['start', 'stop', 'restart', 'test'] as const).map((action) => (
+                        <button
+                          key={action}
+                          onClick={() =>
+                            void attempt(async () => {
+                              await window.workspace.mcp.action(item.id, action);
+                              await loadStates();
+                            })
+                          }
+                        >
+                          {action[0].toUpperCase() + action.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                    <details>
+                      <summary>Tools & logs ({state?.tools.length ?? 0})</summary>
+                      {state?.tools.map((t) => (
+                        <p className="small" key={t.name}>
+                          <strong>{t.name}</strong> {t.description}
+                        </p>
+                      ))}
+                      <pre className="log">
+                        {state?.logs.join('\n') || 'Start this server to discover its tools.'}
+                      </pre>
+                    </details>
+                  </>
+                )}
+                {actions}
+              </>
+            );
+            return kind === 'skills' ? (
+              <details className="skill-card" key={item.id}>
+                <summary>
+                  <div className="item-icon">
+                    <Icon size={20} />
+                  </div>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <p>{item.description || 'Reusable model instructions'}</p>
+                  </div>
+                  <span className="badge">{item.enabled ? 'Enabled' : 'Disabled'}</span>
+                  <label className="check skill-group-select">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${item.name}`}
+                      checked={selected.includes(item.id)}
+                      onChange={(e) =>
+                        setSelected((ids) =>
+                          e.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id),
+                        )
+                      }
+                    />
+                    Select
+                  </label>
+                  <ChevronDown size={16} />
+                </summary>
+                <div className="skill-body">{details}</div>
+              </details>
+            ) : (
+              <article className="library-card" key={item.id}>
+                <div className="card-top">
+                  <div className="item-icon">
+                    <Icon size={21} />
+                  </div>
+                  <span className="badge">
+                    {kind === 'mcp'
+                      ? state?.status === 'connected'
+                        ? 'Running'
+                        : (state?.status ?? 'stopped')
+                      : item.enabled
+                        ? 'Local'
+                        : 'Disabled'}
+                  </span>
+                </div>
+                {grouped && (
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${item.name}`}
+                      checked={selected.includes(item.id)}
+                      onChange={(e) =>
+                        setSelected((ids) =>
+                          e.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id),
+                        )
+                      }
+                    />
+                    Select
+                  </label>
+                )}
+                <h2>{item.name}</h2>
+                {details}
+              </article>
+            );
+          })}
         </div>
       )}
       {editing && (
         <LibraryEditor
           kind={kind}
+          groups={groups}
           initial={editing}
           onClose={() => setEditing(null)}
           onSave={async (item) => {
@@ -393,6 +451,55 @@ export function Library({ kind }: { kind: LibraryKind }) {
             setEditing(null);
           }}
         />
+      )}
+      {grouping && (
+        <Modal
+          title="Group selected items"
+          onClose={() => {
+            if (!savingGroup) setGrouping(false);
+          }}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSavingGroup(true);
+              void attempt(async () => {
+                try {
+                  const name = groupName.trim();
+                  await window.workspace.library.setGroup(kind, selected, name);
+                  setSelected([]);
+                  setGroup(name);
+                  setGrouping(false);
+                } finally {
+                  try {
+                    await load();
+                  } finally {
+                    setSavingGroup(false);
+                  }
+                }
+              });
+            }}
+          >
+            <p>
+              Move {selected.length} selected items into a new or existing group. Leave the name
+              empty to ungroup them.
+            </p>
+            <GroupInput
+              value={groupName}
+              onChange={setGroupName}
+              groups={groups}
+              disabled={savingGroup}
+            />
+            <div className="actions">
+              <button type="button" disabled={savingGroup} onClick={() => setGrouping(false)}>
+                Cancel
+              </button>
+              <button className="primary" disabled={savingGroup}>
+                {savingGroup ? 'Saving…' : 'Save group'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
       {remove && (
         <Confirm
@@ -428,13 +535,46 @@ export function Library({ kind }: { kind: LibraryKind }) {
     </div>
   );
 }
+function GroupInput({
+  value,
+  onChange,
+  groups,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  groups: string[];
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <label>
+      Group
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        list={id}
+        maxLength={100}
+        placeholder="e.g. Video Studio"
+        disabled={disabled}
+      />
+      <datalist id={id}>
+        {groups.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
 function LibraryEditor({
   kind,
+  groups,
   initial,
   onClose,
   onSave,
 }: {
   kind: LibraryKind;
+  groups: string[];
   initial: LibraryItem;
   onClose: () => void;
   onSave: (item: LibraryItem) => Promise<void>;
@@ -575,6 +715,13 @@ function LibraryEditor({
                 onChange={(e) => update('name', e.target.value)}
               />
             </label>
+            {kind !== 'saved-text' && (
+              <GroupInput
+                value={item.group ?? ''}
+                onChange={(value) => update('group', value)}
+                groups={groups}
+              />
+            )}
             {kind !== 'saved-text' && (
               <label>
                 {kind === 'mcp' ? 'Description (required)' : 'Description'}

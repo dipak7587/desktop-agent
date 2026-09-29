@@ -40,7 +40,18 @@ const api: WorkspaceAPI = {
     send: (i) => invoke('chat:send', i),
     stop: (id) => invoke('chat:stop', id),
   },
+  code: {
+    list: () => invoke('code:list'),
+    chooseAndConnect: (conversationId) => invoke('code:choose-and-connect', conversationId),
+    chooseAndRelink: (workspaceId, conversationId) =>
+      invoke('code:choose-and-relink', workspaceId, conversationId),
+    reconnect: (workspaceId, conversationId) =>
+      invoke('code:reconnect', workspaceId, conversationId),
+    disconnect: (conversationId) => invoke('code:disconnect', conversationId),
+    remove: (workspaceId) => invoke('code:remove', workspaceId),
+  },
   library: {
+    setGroup: (kind, ids, group) => invoke('library:set-group', kind, ids, group),
     list: (k) => invoke('library:list', k),
     save: (k, i) => invoke('library:save', k, i),
     remove: (k, id) => invoke('library:remove', k, id),

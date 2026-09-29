@@ -15,6 +15,28 @@ Agents can also run from Chat: type `/agent ` and select an agent, or enter `/ag
 The task and project folder are optional. Progress, diffs, approvals, and the result appear in Chat.
 The same configured tools, model, knowledge, execution limits, and approval rules apply.
 
+## Library groups
+
+Agents, MCP, Skills and Tools each support named groups. Select related items, click
+**Group selected**, and enter a new or existing name such as **Video Studio**. Click a
+group above the list to see its members; **All** and **Ungrouped** show the other views.
+Search and **Select all** apply to the currently visible items.
+
+Each editor also has an optional **Group** field. An item belongs to one group; change
+that name to move it, or leave it empty to ungroup it. New items created inside a group
+inherit its name. Group names persist in definition files and their imports/exports.
+Bulk grouping changes metadata only and does not restart MCP servers or run agents.
+
+## Code side menu
+
+**Code** starts coding tasks through enabled agents whose model belongs to an Ollama provider
+running on loopback (`localhost`, `127.x.x.x`, or `::1`). Hosted providers and network-hosted
+Ollama endpoints are not offered there. Select a project folder, choose a task, and use **Fix
+failing tests** to request reproducing a failure, correcting its cause, and rerunning the relevant
+test without weakening it. Create an agent with filesystem read/write/edit/search and shell test
+tools first. Runs use the normal agent iteration limits, capability permissions, approval policy,
+diff review, and execution history.
+
 To let an agent retrieve saved notes, select the **Saved Text** knowledge source in its editor
 and ensure that source is ready in [Knowledge Base](KNOWLEDGE_BASE.md). Agent knowledge choices
 are separate from Chat's knowledge selector. See [Settings](SETTINGS.md) for execution settings.

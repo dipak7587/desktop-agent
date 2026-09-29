@@ -1,3 +1,4 @@
+import type { LandingSettings } from './landing';
 export type Section =
   | 'Chat'
   | 'Tools'
@@ -5,6 +6,7 @@ export type Section =
   | 'Skills'
   | 'Saved Text'
   | 'Agents'
+  | 'Code'
   | 'Workflows'
   | 'Knowledge Base'
   | 'Settings';
@@ -30,11 +32,13 @@ export interface ProviderProfile {
   embeddingModel: string;
 }
 export interface Settings {
+  landing?: LandingSettings;
   lastChatSelection?: { providerId: string; model: string };
   timeout?: number;
   authMethod?: 'none' | 'bearer' | 'header';
   authHeader?: string;
   appName: string;
+  appLogo: string;
   theme: 'system' | 'dark' | 'light';
   provider: LLMProviderName;
   apiKey: string;
@@ -68,11 +72,28 @@ export interface Model {
 export interface Conversation {
   providerId?: string;
   agentId?: string;
+  workspaceId?: string | null;
   id: string;
   title: string;
   model: string;
   createdAt: number;
   updatedAt: number;
+}
+export type WorkspacePermissionDecision = 'always_allow' | 'ask' | 'deny';
+export interface WorkspacePermissionPolicy {
+  rules: Record<string, { decision: WorkspacePermissionDecision; scope: 'workspace' }>;
+}
+export interface CodeWorkspace {
+  id: string;
+  name: string;
+  canonicalPath: string;
+  createdAt: string;
+  lastOpenedAt: string;
+  permissions: WorkspacePermissionPolicy;
+  selectedAgentId: string | null;
+  preferredProviderId?: string | null;
+  preferredModelId?: string | null;
+  available?: boolean;
 }
 export function resolveProviderSettings(settings: Settings): Settings {
   const profile = settings.providers.find((p) => p.id === settings.activeProviderId);
@@ -122,6 +143,7 @@ export interface ChatInput {
   command?: ChatCommand;
 }
 export interface LibraryItem {
+  group?: string;
   providerId?: string;
   id: string;
   name: string;

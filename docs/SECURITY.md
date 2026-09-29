@@ -50,6 +50,12 @@ commands, git push/reset and deletion tools are unavailable through built-in too
 output, a timeout, cancellation and a reduced environment. Project scripts themselves are
 arbitrary code: inspect/trust the selected project before approving them. MCP calls ask by default; per-capability Always allow skips approval.
 
+The persistent Code workspace registry uses a native directory picker and canonical paths, but
+linking a workspace to Chat is not a permission grant. Normal Chat does not yet dispatch project
+file/search/Git/terminal capabilities from this workspace link. The legacy optional agent-folder
+flow remains independent and continues to use its existing capability checks and approval policy;
+do not treat workspace metadata or its empty default permission policy as authorization.
+
 This is an application-level policy boundary, not an OS sandbox around agent child processes.
 The Electron renderer is sandboxed, but trusted MCP servers/package scripts run as the current
 user. Custom Tools have the same trusted-code limitation. Path and hash checks prevent ordinary accidental/concurrent changes; they are not a

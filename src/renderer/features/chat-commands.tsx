@@ -1,9 +1,26 @@
 import { useWorkflows } from '../stores/workflows';
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import type { AppEvent } from '../../shared/types';
+import type { AppEvent, ChatCommand, CodeWorkspace } from '../../shared/types';
 import { commandKinds, resolveSlash, slashPrefix } from '../../shared/slash-commands';
-import { useAgents, useMCP, useMCPStatus, useSkills, useUI, useRuns, attempt } from '../stores';
+import {
+  useAgents,
+  useChat,
+  useMCP,
+  useMCPStatus,
+  useSkills,
+  useUI,
+  useRuns,
+  attempt,
+} from '../stores';
+
+type CommandOption = {
+  key: string;
+  label: string;
+  detail?: string;
+  command?: (ChatCommand & { name: string }) | null;
+  workspace?: CodeWorkspace;
+};
 
 export function useChatCommands(draft: string) {
   const { items: agents } = useAgents();
@@ -18,43 +35,87 @@ export function useChatCommands(draft: string) {
     workflow: workflows.map((w) => ({ ...w, enabled: true })),
   };
   const selected = useUI((s) => s.chatCommand);
+  const generating = useChat((s) => s.generating);
+  const [workspaces, setWorkspaces] = useState<CodeWorkspace[]>([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [index, setIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prefix = slashPrefix(draft);
-  const isMenu = !selected && draft.startsWith('/') && !dismissed;
-  const options = prefix
-    ? libraries[prefix.kind]
-        .filter(
-          (i) =>
-            i.enabled && i.name.toLowerCase().includes(prefix.rest.replace(/^"/, '').toLowerCase()),
-        )
-        .map((i) => ({
-          key: i.id,
-          label: i.name,
-          detail:
-            prefix.kind === 'mcp'
-              ? states.find((s) => s.id === i.id)?.status === 'connected'
-                ? 'Connected'
-                : 'Start in MCP before sending'
-              : i.description,
-          command: { kind: prefix.kind, id: i.id, name: i.name },
-        }))
-    : commandKinds
-        .filter((kind) => `/${kind}`.startsWith(draft))
-        .map((kind) => ({
-          key: kind,
-          label: `/${kind}`,
-          detail:
-            kind === 'skills'
-              ? 'Apply skill instructions'
-              : kind === 'workflow'
-                ? 'Run a saved workflow'
-                : kind === 'agent'
-                  ? 'Run a configured agent'
-                  : 'Use a server’s tools',
-          command: null,
-        }));
+  const codeMatch = /^\/code(?:\s+(.*))?$/.exec(draft);
+  const isCode = !!codeMatch;
+  const isMenu = (!selected || isCode) && draft.startsWith('/') && !dismissed;
+  useEffect(() => {
+    if (!isCode) return;
+    let cancelled = false;
+    setLoadingFolders(true);
+    setWorkspaces([]);
+    void attempt(async () => {
+      try {
+        const folders = await window.workspace.code.list();
+        if (!cancelled) setWorkspaces(folders);
+      } finally {
+        if (!cancelled) setLoadingFolders(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCode]);
+  const folderQuery = (codeMatch?.[1] ?? '').trim().toLowerCase();
+  const folders = workspaces.filter((folder) =>
+    `${folder.name} ${folder.canonicalPath}`.toLowerCase().includes(folderQuery),
+  );
+  const options: CommandOption[] = isCode
+    ? [
+        ...folders.map((workspace) => ({
+          key: `workspace:${workspace.id}`,
+          label: workspace.name,
+          detail: `${workspace.canonicalPath}${workspace.available ? '' : ' · Relink missing folder'}`,
+          workspace,
+        })),
+        {
+          key: 'open-folder',
+          label: 'Open another folder…',
+          detail: 'Choose a folder to connect to this chat',
+        },
+      ]
+    : prefix
+      ? libraries[prefix.kind]
+          .filter(
+            (i) =>
+              i.enabled &&
+              i.name.toLowerCase().includes(prefix.rest.replace(/^"/, '').toLowerCase()),
+          )
+          .map((i) => ({
+            key: i.id,
+            label: i.name,
+            detail:
+              prefix.kind === 'mcp'
+                ? states.find((s) => s.id === i.id)?.status === 'connected'
+                  ? 'Connected'
+                  : 'Start in MCP before sending'
+                : i.description,
+            command: { kind: prefix.kind, id: i.id, name: i.name },
+          }))
+      : commandKinds
+          .filter((kind) => `/${kind}`.startsWith(draft))
+          .map((kind) => ({
+            key: kind,
+            label: `/${kind}`,
+            detail:
+              kind === 'skills'
+                ? 'Apply skill instructions'
+                : kind === 'code'
+                  ? 'Select a saved folder in Chat'
+                  : kind === 'workflow'
+                    ? 'Run a saved workflow'
+                    : kind === 'agent'
+                      ? 'Run a configured agent'
+                      : 'Use a server’s tools',
+            command: null,
+          }));
   const activeIndex = Math.min(index, Math.max(0, options.length - 1));
   const updateDraft = (value: string) => {
     useUI.setState({ draft: value });
@@ -62,6 +123,25 @@ export function useChatCommands(draft: string) {
     setDismissed(false);
   };
   const choose = (option: (typeof options)[number]) => {
+    if (connecting || (isCode && loadingFolders)) return;
+    if (option.workspace || option.key === 'open-folder') {
+      if (generating) return;
+      setConnecting(true);
+      void attempt(async () => {
+        try {
+          const chat = useChat.getState();
+          if (option.workspace) {
+            if (option.workspace.available) await chat.reconnectWorkspace(option.workspace.id);
+            else await chat.relinkWorkspace(option.workspace.id);
+          } else await chat.connectWorkspace();
+          if (useChat.getState().workspace !== chat.workspace) updateDraft('');
+          inputRef.current?.focus();
+        } finally {
+          setConnecting(false);
+        }
+      });
+      return;
+    }
     if (option.command) {
       useUI.setState({ chatCommand: option.command });
       updateDraft('');
@@ -98,6 +178,8 @@ export function useChatCommands(draft: string) {
     return false;
   };
   const resolve = () => {
+    if (/^\/code(?:\s|$)/.test(draft))
+      throw new Error('Select a saved folder from the /code list before sending your message.');
     if (selected)
       return {
         command: { kind: selected.kind, id: selected.id },
@@ -126,7 +208,7 @@ export function useChatCommands(draft: string) {
         <div
           role="listbox"
           id="slash-options"
-          aria-label={prefix ? `Select ${prefix.kind}` : 'Chat commands'}
+          aria-label={isCode ? 'Saved folders' : prefix ? `Select ${prefix.kind}` : 'Chat commands'}
         >
           {options.map((option, i) => (
             <button
@@ -135,6 +217,7 @@ export function useChatCommands(draft: string) {
               tabIndex={-1}
               id={`slash-option-${i}`}
               aria-selected={i === activeIndex}
+              disabled={isCode && (loadingFolders || connecting || !!generating)}
               key={option.key}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(option)}
@@ -144,6 +227,21 @@ export function useChatCommands(draft: string) {
             </button>
           ))}
         </div>
+        {isCode && (
+          <p className="small muted" role="status">
+            {loadingFolders
+              ? 'Loading saved folders…'
+              : connecting
+                ? 'Connecting folder…'
+                : generating
+                  ? 'Stop the current response before changing folders.'
+                  : !folders.length
+                    ? workspaces.length
+                      ? 'No matching saved folders.'
+                      : 'No saved folders yet. Choose a folder below.'
+                    : ''}
+          </p>
+        )}
         {!options.length && (
           <p className="small muted">
             No matching items. Create or enable one in its sidebar menu, or finish your query and

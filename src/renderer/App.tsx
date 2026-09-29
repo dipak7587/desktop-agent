@@ -16,6 +16,7 @@ import {
   Search,
   X,
   ArrowUpRight,
+  Code2,
 } from 'lucide-react';
 import type { Section } from '../shared/types';
 import {
@@ -32,6 +33,7 @@ import { Chat } from './features/chat';
 import { Library } from './features/libraries';
 import { Knowledge } from './features/knowledge';
 import { Settings } from './features/settings';
+import { CodeWorkspace } from './features/code';
 import { Modal } from './components/common';
 const nav = [
   { name: 'Chat', icon: MessageSquare },
@@ -41,6 +43,7 @@ const nav = [
   { name: 'Saved Text', icon: FileText },
   { name: 'Agents', icon: Bot },
   { name: 'Workflows', icon: Orbit },
+  { name: 'Code', icon: Code2 },
   { name: 'Knowledge Base', icon: BookOpen },
 ] as const;
 export function App() {
@@ -122,7 +125,11 @@ export function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
-            <Orbit size={23} />
+            {settings?.appLogo ? (
+              <img src={settings.appLogo} alt="" />
+            ) : (
+              <Orbit size={23} />
+            )}
           </div>
           {!collapsed && (
             <div>
@@ -222,6 +229,8 @@ export function App() {
           <Chat />
         ) : section === 'Workflows' ? (
           <Workflows />
+        ) : section === 'Code' ? (
+          <CodeWorkspace />
         ) : section === 'Knowledge Base' ? (
           <Knowledge />
         ) : section === 'Settings' ? (
