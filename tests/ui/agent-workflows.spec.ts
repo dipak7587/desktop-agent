@@ -95,10 +95,17 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     expect(errors).toHaveLength(2);
     expect(errors[1]).toContain('folder picker');
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
-    await page.getByLabel('Message', { exact: true }).fill('/workflow Quality workflow');
-    await page.getByRole('option').filter({ hasText: 'Quality workflow' }).first().click();
+    await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Workflow', exact: true }).check();
+    await page.getByLabel('Message', { exact: true }).fill('/');
+    await expect(page.getByRole('listbox').getByRole('option')).toContainText([
+      '/store-context',
+      '/all-kb',
+      '/workflow-Quality workflow',
+    ]);
+    await page.getByRole('option', { name: '/workflow-Quality workflow', exact: true }).click();
     await expect(page.locator('.command-chip')).toContainText('/workflow');
-    await expect(page.getByRole('button', { name: 'Select Folder' })).toBeVisible();
+    await expect(page.locator('.composer .folder-selection')).toHaveCount(0);
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();
     await page.screenshot({ path: 'test-results/agent-workflows.png' });
     await page.reload();

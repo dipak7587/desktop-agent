@@ -198,7 +198,7 @@ export class KnowledgeService {
       chunks = 0;
     const previews: string[] = [];
     try {
-      if (!model) throw new Error('Select an embedding model in Settings before indexing');
+      if (!model) throw new Error('Select an embedding model in Settings > KBase before indexing');
       if (source.type === 'url' || source.embeddingModel !== model) {
         await this.deleteVectors(source.id);
         await rm(join(this.root, 'cache', `${source.id}.md`), { force: true });
@@ -325,6 +325,16 @@ export class KnowledgeService {
         (scope === 'all' || s.id === scope || scope === `collection:${s.collection}`),
     );
     if (!eligible.length) return [];
+    if (!settings.embeddingModel)
+      throw new Error('Select an embedding model in Settings > KBase before searching knowledge.');
+    if (
+      eligible.some(
+        (source) => source.embeddingModel && source.embeddingModel !== settings.embeddingModel,
+      )
+    )
+      throw new Error(
+        'The embedding model changed in Settings > KBase. Reindex the selected knowledge sources before searching.',
+      );
     const table = await this.table(settings.embeddingModel);
     if (!table) return [];
     const ids = eligible.map((s) => `'${s.id}'`).join(',');

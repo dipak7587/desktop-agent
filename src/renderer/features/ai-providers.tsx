@@ -25,7 +25,6 @@ const labels: Record<LLMProviderName, string> = {
 export function AIProviders() {
   const { settings, load, save } = useSettings();
   const [editing, setEditing] = useState<ProviderProfile | null>(null);
-  const [manual, setManual] = useState('');
   const [busy, setBusy] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [blockedRemoval, setBlockedRemoval] = useState<{ name: string; agents: string[] } | null>(
@@ -41,9 +40,7 @@ export function AIProviders() {
           setStatuses((s) => ({ ...s, [p.id]: `Connected · ${models.length} models` }));
           return load();
         })
-        .catch((e) =>
-          setStatuses((s) => ({ ...s, [p.id]: `Unavailable: ${errorMessage(e)}` })),
-        );
+        .catch((e) => setStatuses((s) => ({ ...s, [p.id]: `Unavailable: ${errorMessage(e)}` })));
     }
     // Probe saved configurations when the page opens; edits explicitly trigger another test.
   }, []);
@@ -86,7 +83,6 @@ export function AIProviders() {
         <button
           type="button"
           onClick={() => {
-            setManual('');
             setEditing(
               providerProfileSchema.parse({
                 id: crypto.randomUUID(),
@@ -110,7 +106,6 @@ export function AIProviders() {
             void attempt(async () => {
               await persist(editing);
               setEditing(null);
-              setManual('');
             }).finally(() => setBusy(false));
           }}
         >
@@ -275,58 +270,7 @@ export function AIProviders() {
               </button>
             </div>
             <p role="status">{statuses[editing.id]}</p>
-            {!editing.modelIds?.length && (
-              <p>No models available. Refresh discovery or add a model ID manually.</p>
-            )}
-            <label>
-              Manual model ID
-              <input
-                name="manualModel"
-                value={manual}
-                maxLength={200}
-                onChange={(e) => setManual(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={!manual.trim()}
-              onClick={() => {
-                update({
-                  modelIds: [...new Set([...(editing.modelIds ?? []), manual.trim()])],
-                  manualModelIds: [...new Set([...(editing.manualModelIds ?? []), manual.trim()])],
-                });
-                setManual('');
-              }}
-            >
-              Add model
-            </button>
-            <label>
-              Default chat model
-              <select
-                name="defaultModel"
-                value={editing.chatModel}
-                onChange={(e) => update({ chatModel: e.target.value })}
-              >
-                <option value="">Select model</option>
-                {editing.modelIds?.map((id) => (
-                  <option key={id}>{id}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Embedding model ID
-              <input
-                name="embeddingModel"
-                value={editing.embeddingModel}
-                onChange={(e) => update({ embeddingModel: e.target.value })}
-              />
-            </label>
-            {editing.provider === 'anthropic' && (
-              <p>
-                Anthropic does not support embeddings. Knowledge indexing requires a default
-                provider with embedding support.
-              </p>
-            )}
+            {!editing.modelIds?.length && <p>No models available. Refresh model discovery.</p>}
             {!!editing.modelIds?.length && (
               <details>
                 <summary>Registered models</summary>
@@ -382,7 +326,6 @@ export function AIProviders() {
               type="button"
               onClick={() => {
                 setEditing({ ...p, apiKey: '' });
-                setManual('');
               }}
             >
               Edit

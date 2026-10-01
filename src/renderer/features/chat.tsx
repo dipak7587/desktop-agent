@@ -1,4 +1,3 @@
-import { FolderSelection } from '../components/folder-selection';
 import { ChatLanding } from '../components/chat-landing';
 import { defaultLanding } from '../../shared/landing';
 import { defaultChatSelection } from '../../shared/chat-selection';
@@ -12,7 +11,6 @@ import {
   Search,
   Trash2,
   Pencil,
-  BookOpen,
   Code2,
   RotateCcw,
   FileDown,
@@ -31,8 +29,12 @@ export function Chat() {
   const { sources } = useKnowledge();
   const draft = useUI((s) => s.draft);
   const commands = useChatCommands(draft);
+  const modes = useUI((s) => s.chatModes);
+  const knowledge = useUI((s) => s.chatKnowledge);
+  const setKnowledge = (chatKnowledge: string) => useUI.setState({ chatKnowledge });
+
   const showProjectControls =
-    /^\/(agent|workflow|code)(?:\s|$)/.test(draft) ||
+    /^\/(agent|workflow)(?:\s|$)/.test(draft) ||
     ['agent', 'workflow'].includes(commands.selected?.kind ?? '') ||
     !!chat.agentId;
   const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
@@ -54,11 +56,6 @@ export function Chat() {
   const submitting = useRef(false);
   const [busy, setBusy] = useState(false);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
-  const [project, setProject] = useState('');
-  useEffect(() => {
-    setProject('');
-  }, [chat.current]);
-  const [knowledge, setKnowledge] = useState('none');
   const [remove, setRemove] = useState<string | null>(null);
   const [removeAll, setRemoveAll] = useState(false);
   const [rename, setRename] = useState<string | null>(null);
@@ -69,7 +66,7 @@ export function Chat() {
   }, [chat.messages, chat.stream]);
   async function send(regenerate = false) {
     if (chat.generating || submitting.current) return;
-    if (!regenerate && /^\/code(?:\s|$)/.test(draft)) {
+    if (!regenerate && modes.includes('code') && /^\/code(?:\s|$)/.test(draft)) {
       commands.updateDraft(draft);
       commands.inputRef.current?.focus();
       return;
@@ -107,21 +104,16 @@ export function Chat() {
         text,
         model: sendModel,
         providerId: sendProviderId || undefined,
-        knowledge,
+        knowledge: modes.includes('kb') ? useUI.getState().chatKnowledge : 'none',
+        modes,
         regenerate,
         command: request.command
-          ? {
-              ...request.command,
-              project: ['agent', 'workflow'].includes(request.command.kind)
-                ? project || undefined
-                : undefined,
-            }
-          : agent
-            ? { kind: 'agent', id: agent.id, project: project || undefined }
+          ? { ...request.command }
+          : agent && modes.includes('agent')
+            ? { kind: 'agent', id: agent.id }
             : undefined,
       });
       useUI.setState({ draft: '' });
-      setProject('');
       await chat.load();
       await chat.open(id);
     } finally {
@@ -321,7 +313,8 @@ export function Chat() {
                   try {
                     await chat.newChat({ providerId, model });
                     useUI.setState({ draft: '' });
-                    setKnowledge('none');
+                    setKnowledge('all');
+                    useUI.setState({ chatModes: [] });
                     commands.inputRef.current?.focus();
                   } finally {
                     setBusy(false);
@@ -437,9 +430,11 @@ export function Chat() {
               </div>
             )}
 
-            {(/^\/(agent|workflow)(?:\s|$)/.test(draft) ||
-              ['agent', 'workflow'].includes(commands.selected?.kind ?? '') ||
-              !!chat.agentId) && <FolderSelection value={project} onChange={setProject} />}
+            {/* {modes.some((mode) => mode !== 'kb') && !commands.selected && (
+              <p className="small muted">
+                Type / to choose an enabled MCP server, tool, skill, agent, workflow, or Code folder.
+              </p>
+            )} */}
             {commands.picker}
             <textarea
               ref={commands.inputRef}
@@ -449,7 +444,7 @@ export function Chat() {
               aria-expanded={commands.isMenu}
               aria-controls={commands.isMenu ? 'slash-options' : undefined}
               aria-activedescendant={commands.activeId}
-              placeholder="Ask anything, or type / for skills, agents, and MCP…"
+              placeholder="Ask anything, or enable a checkbox and type /…"
               value={draft}
               onChange={(e) => commands.updateDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -462,29 +457,38 @@ export function Chat() {
             />
 
             <div className="composer-tools">
-              <div className="knowledge-select">
-                <BookOpen size={15} />
-                <select
-                  aria-label="Knowledge context"
-                  value={knowledge}
-                  onChange={(e) => setKnowledge(e.target.value)}
-                >
-                  <option value="none">No knowledge context</option>
-                  <option value="all">All knowledge</option>
-                  {[...new Set(sources.map((s) => s.collection).filter(Boolean))].map((c) => (
-                    <option key={c} value={`collection:${c}`}>
-                      Collection: {c}
-                    </option>
-                  ))}
-                  {sources
-                    .filter((s) => s.id !== 'saved-text')
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
+              <fieldset className="chat-modes">
+                <legend>Use in this chat</legend>
+                {(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow'] as const).map((mode) => (
+                  <label className="check" key={mode}>
+                    <input
+                      type="checkbox"
+                      checked={modes.includes(mode)}
+                      disabled={busy || !!chat.generating}
+                      onChange={(event) => {
+                        const next = event.target.checked
+                          ? [...modes, mode]
+                          : modes.filter((item) => item !== mode);
+                        const selectedMode = commands.selected?.kind;
+                        useUI.setState({ chatModes: next });
+                        if (selectedMode === mode && !event.target.checked) commands.clear();
+                        commands.updateDraft(draft);
+                      }}
+                    />
+                    {
+                      {
+                        kb: 'KB',
+                        mcp: 'MCP',
+                        tools: 'Tools',
+                        skills: 'Skills',
+                        code: 'Code',
+                        agent: 'Agent',
+                        workflow: 'Workflow',
+                      }[mode]
+                    }
+                  </label>
+                ))}
+              </fieldset>
               {chat.generating ? (
                 <button
                   type="button"

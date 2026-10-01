@@ -1229,6 +1229,8 @@ p {
   padding: 26px;
   width: min(540px, 90vw);
   max-height: 85vh;
+  overflow: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 30px 90px #0005;
   position: fixed;
   inset: 0;
@@ -1638,7 +1640,14 @@ legend {
   border-bottom: 1px solid var(--border);
 }
 
-.code-workspaces-heading,
+.code-workspaces-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 13px;
+}
+
 .code-workspace-row {
   display: flex;
   align-items: center;
@@ -2286,4 +2295,25 @@ legend {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.chat-modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.chat-modes legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.chat-modes .check {
+  margin: 0;
+}
+.chat-modes input {
+  accent-color: var(--accent);
 }

@@ -109,3 +109,38 @@ it('retains saved text when no embedding model is configured', async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it('requires reindexing after changing the shared embedding model and searches after reindexing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'embedding-change-'));
+  const docs = join(root, 'docs');
+  await mkdir(docs);
+  await writeFile(join(docs, 'note.md'), 'sharedembeddingword');
+  let model = 'old-embedding';
+  const kb = new KnowledgeService(
+    root,
+    () => settingsSchema.parse({ embeddingModel: model }),
+    {
+      embed: async () => [1, 2, 3],
+      embedBatch: async (texts) => texts.map(() => [1, 2, 3]),
+    },
+    () => {},
+  );
+  await kb.init();
+  try {
+    await kb.add('folder', docs);
+    const id = kb.list()[0].id;
+    await kb.sync(id);
+    await expect.poll(() => kb.list()[0].status).toBe('ready');
+    model = 'new-embedding';
+    await expect(kb.search('sharedembeddingword', 'semantic', id)).rejects.toThrow(
+      'Settings > KBase',
+    );
+    await kb.sync(id);
+    await expect.poll(() => kb.list()[0].status).toBe('ready');
+    expect(kb.list()[0].embeddingModel).toBe('new-embedding');
+    expect(await kb.search('sharedembeddingword', 'semantic', id)).toHaveLength(1);
+  } finally {
+    await kb.stopAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});

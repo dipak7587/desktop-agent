@@ -107,6 +107,11 @@ it('parses quoted names, longest unquoted names, queries and rejects ambiguity',
     librarySchema.parse({ id: `s${i}`, name }),
   );
   expect(slashPrefix('/mcp ')).toEqual({ kind: 'mcp', rest: '' });
+  expect(slashPrefix('/mcp-My')).toEqual({ kind: 'mcp', rest: 'My' });
+  expect(resolveSlash('/mcp-My server hello', items)).toMatchObject({
+    command: { id: 's0' },
+    query: 'hello',
+  });
   expect(resolveSlash('/mcp "My server" "hello world"', items)).toMatchObject({
     command: { id: 's0' },
     query: 'hello world',
@@ -494,7 +499,7 @@ it('codes in a persisted workspace without a configured agent and reviews writes
       }),
     )
     .mockResolvedValueOnce({ role: 'assistant', content: 'Created direct.txt; tests not run.' });
-  await chat.send(request);
+  await chat.send({ ...request, modes: ['code'] });
   await expect.poll(() => events.some((event) => event.activity?.approval)).toBe(true);
   await expect(readFile(join(project, 'direct.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
   agents.approve(events.find((event) => event.activity?.approval)!.activity!.approval!.id, true);
@@ -530,4 +535,111 @@ it('restores linked folders for selected agents and rejects missing direct works
   db.relinkCodeWorkspace(workspace.id, request.id, join(project, 'missing'));
   await expect(chat.send(request)).rejects.toThrow();
   expect(chat.isActive(request.id)).toBe(false);
+});
+
+it('uses only the model when every chat mode is unchecked, even with a workspace and KB scope', async () => {
+  const search = vi.fn().mockResolvedValue([]);
+  const coding = vi.spyOn(commands, 'prepareCoding');
+  chat = new ChatService(
+    db,
+    llm,
+    (e) => events.push(e),
+    search,
+    () => 8192,
+    commands,
+  );
+  const request = input();
+  db.connectCodeWorkspace(request.id, join(root, 'project'));
+  await chat.send({ ...request, knowledge: 'all', modes: [] });
+  await settle(request.id);
+  expect(search).not.toHaveBeenCalled();
+  expect(coding).not.toHaveBeenCalled();
+  expect(db.messages(request.id).at(-1)?.metadata?.command).toBeUndefined();
+});
+
+it('rejects commands from unchecked categories', async () => {
+  await expect(
+    chat.send({ ...input(), modes: ['kb'], command: { kind: 'mcp', id: 'server' } }),
+  ).rejects.toThrow('matching chat checkbox');
+  await expect(
+    chat.send({ ...input(), modes: ['tools'], command: { kind: 'skills', id: 'review' } }),
+  ).rejects.toThrow('matching chat checkbox');
+});
+
+it('always retrieves the selected KB and stops adding its context once KB is unchecked', async () => {
+  const search = vi.fn().mockResolvedValue([
+    {
+      id: 'chunk',
+      sourceId: 'saved-text',
+      name: 'Handbook',
+      content: 'PRIVATE KB FACT',
+      score: 1,
+      location: '',
+    },
+  ]);
+  chat = new ChatService(
+    db,
+    llm,
+    (e) => events.push(e),
+    search,
+    () => 8192,
+    commands,
+  );
+  const prompts: string[] = [];
+  vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
+    prompts.push(request.messages[0].content);
+    yield { message: { content: 'Answer' } };
+  });
+  const request = input();
+  await chat.send({ ...request, knowledge: 'saved-text', modes: ['kb'] });
+  await settle(request.id);
+  expect(search).toHaveBeenCalledWith(request.text, 'saved-text');
+  expect(prompts[0]).toContain('PRIVATE KB FACT');
+  await chat.send({ ...request, knowledge: 'saved-text', modes: [] });
+  await settle(request.id);
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(prompts.at(-1)).not.toContain('PRIVATE KB FACT');
+});
+
+it('combines selected KB passages with a tool command and limits the tool agent to that tool', async () => {
+  await library.save(
+    'tools',
+    librarySchema.parse({
+      id: 'double',
+      name: 'Double',
+      content: 'return 2;',
+      toolConfig: { type: 'javascript', parameters: [] },
+    }),
+  );
+  const run = vi.spyOn(agents, 'runInChat').mockResolvedValue('Tool answer');
+  const search = vi.fn().mockResolvedValue([
+    {
+      id: 'chunk',
+      sourceId: 'docs',
+      name: 'Docs',
+      content: 'KB TOOL INPUT',
+      score: 1,
+      location: '',
+    },
+  ]);
+  chat = new ChatService(
+    db,
+    llm,
+    (e) => events.push(e),
+    search,
+    () => 8192,
+    commands,
+  );
+  const request = input();
+  await chat.send({
+    ...request,
+    knowledge: 'docs',
+    modes: ['kb', 'tools'],
+    command: { kind: 'tools', id: 'double' },
+  });
+  await settle(request.id);
+  expect(run.mock.calls[0][0].tools).toEqual(['custom:double']);
+  expect(run.mock.calls[0][1]).toContain('KB TOOL INPUT');
+  expect(db.messages(request.id).at(-1)?.content).toBe('Tool answer');
+  expect(db.messages(request.id).at(-1)?.metadata?.sources).toHaveLength(1);
 });

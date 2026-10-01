@@ -128,12 +128,14 @@ export interface Message {
     activity?: AppEvent[];
   };
 }
+export type ChatMode = 'kb' | 'mcp' | 'tools' | 'skills' | 'code' | 'agent' | 'workflow';
 export interface ChatCommand {
-  kind: 'skills' | 'agent' | 'mcp' | 'workflow' | 'code';
+  kind: 'skills' | 'agent' | 'mcp' | 'workflow' | 'code' | 'tools';
   id: string;
   project?: string;
 }
 export interface ChatInput {
+  modes?: ChatMode[];
   providerId?: string;
   id: string;
   text: string;

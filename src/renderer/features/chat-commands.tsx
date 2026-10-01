@@ -1,7 +1,7 @@
 import { useWorkflows } from '../stores/workflows';
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import type { AppEvent, ChatCommand, CodeWorkspace } from '../../shared/types';
+import type { AppEvent, ChatCommand, ChatMode, CodeWorkspace } from '../../shared/types';
 import { commandKinds, resolveSlash, slashPrefix } from '../../shared/slash-commands';
 import {
   useAgents,
@@ -9,6 +9,8 @@ import {
   useMCP,
   useMCPStatus,
   useSkills,
+  useTools,
+  useKnowledge,
   useUI,
   useRuns,
   attempt,
@@ -20,21 +22,32 @@ type CommandOption = {
   detail?: string;
   command?: (ChatCommand & { name: string }) | null;
   workspace?: CodeWorkspace;
+  knowledge?: string;
 };
 
 export function useChatCommands(draft: string) {
   const { items: agents } = useAgents();
   const { items: mcp } = useMCP();
   const { items: skills } = useSkills();
+  const { items: tools } = useTools();
+  const { sources } = useKnowledge();
+  const modes = useUI((s) => s.chatModes);
+  const allows = (kind: string) => modes.includes(kind as (typeof modes)[number]);
+  const suggests = (kind: string) => !modes.length || allows(kind);
   const { states } = useMCPStatus();
   const workflows = useWorkflows((s) => s.items);
   const libraries = {
     agent: agents,
     mcp,
     skills,
+    tools,
     workflow: workflows.map((w) => ({ ...w, enabled: true })),
   };
-  const selected = useUI((s) => s.chatCommand);
+  const hasEnabledResources = (kind: Exclude<(typeof commandKinds)[number], 'code'>) =>
+    libraries[kind].some((item) => item.enabled);
+  const resourceKinds = ['mcp', 'agent', 'workflow', 'skills', 'tools'] as const;
+  const storedCommand = useUI((s) => s.chatCommand);
+  const selected = storedCommand && allows(storedCommand.kind) ? storedCommand : null;
   const generating = useChat((s) => s.generating);
   const [workspaces, setWorkspaces] = useState<CodeWorkspace[]>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
@@ -44,13 +57,13 @@ export function useChatCommands(draft: string) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prefix = slashPrefix(draft);
   const codeMatch = /^\/code(?:\s+(.*))?$/.exec(draft);
-  const isCode = !!codeMatch;
-  const isMenu = (!selected || isCode) && draft.startsWith('/') && !dismissed;
+  const isCode = !!codeMatch && suggests('code');
+  const shouldLoadFolders = suggests('code') && (isCode || draft === '/');
+  const isMenu = draft.startsWith('/') && !dismissed;
   useEffect(() => {
-    if (!isCode) return;
+    if (!shouldLoadFolders) return;
     let cancelled = false;
     setLoadingFolders(true);
-    setWorkspaces([]);
     void attempt(async () => {
       try {
         const folders = await window.workspace.code.list();
@@ -62,11 +75,35 @@ export function useChatCommands(draft: string) {
     return () => {
       cancelled = true;
     };
-  }, [isCode]);
+  }, [shouldLoadFolders]);
   const folderQuery = (codeMatch?.[1] ?? '').trim().toLowerCase();
   const folders = workspaces.filter((folder) =>
     `${folder.name} ${folder.canonicalPath}`.toLowerCase().includes(folderQuery),
   );
+  const knowledgeOptions: CommandOption[] = suggests('kb')
+    ? [
+        {
+          key: 'kb:saved-text',
+          label: '/store-context',
+          detail: 'Saved Text context',
+          knowledge: 'saved-text',
+        },
+        {
+          key: 'kb:all',
+          label: '/all-kb',
+          detail: 'All indexed knowledge bases',
+          knowledge: 'all',
+        },
+        ...sources
+          .filter((source) => source.type === 'folder' && source.id !== 'saved-text')
+          .map((source) => ({
+            key: `kb:${source.id}`,
+            label: `/${source.name}`,
+            detail: `KB folder · ${source.status}`,
+            knowledge: source.id,
+          })),
+      ]
+    : [];
   const options: CommandOption[] = isCode
     ? [
         ...folders.map((workspace) => ({
@@ -82,7 +119,7 @@ export function useChatCommands(draft: string) {
         },
       ]
     : prefix
-      ? libraries[prefix.kind]
+      ? (suggests(prefix.kind) ? libraries[prefix.kind] : [])
           .filter(
             (i) =>
               i.enabled &&
@@ -99,33 +136,79 @@ export function useChatCommands(draft: string) {
                 : i.description,
             command: { kind: prefix.kind, id: i.id, name: i.name },
           }))
-      : commandKinds
-          .filter((kind) => `/${kind}`.startsWith(draft))
-          .map((kind) => ({
-            key: kind,
-            label: `/${kind}`,
-            detail:
-              kind === 'skills'
-                ? 'Apply skill instructions'
-                : kind === 'code'
-                  ? 'Select a saved folder in Chat'
-                  : kind === 'workflow'
-                    ? 'Run a saved workflow'
-                    : kind === 'agent'
-                      ? 'Run a configured agent'
-                      : 'Use a server’s tools',
-            command: null,
-          }));
+      : [
+          ...knowledgeOptions.filter((option) =>
+            option.label.toLowerCase().startsWith(draft.toLowerCase()),
+          ),
+          ...commandKinds
+            .filter((kind) => {
+              if (!suggests(kind) || !`/${kind}`.startsWith(draft)) return false;
+              if (kind === 'code') return workspaces.length === 0;
+              return !hasEnabledResources(kind);
+            })
+            .map((kind) => ({
+              key: kind,
+              label: `/${kind}`,
+              detail:
+                kind === 'tools'
+                  ? 'Run a configured tool'
+                  : kind === 'skills'
+                    ? 'Apply skill instructions'
+                    : kind === 'code'
+                      ? 'Select a saved folder in Chat'
+                      : kind === 'workflow'
+                        ? 'Run a saved workflow'
+                        : kind === 'agent'
+                          ? 'Run a configured agent'
+                          : 'Use a server’s tools',
+              command: null,
+            })),
+          ...resourceKinds.flatMap((kind) =>
+            suggests(kind)
+              ? libraries[kind]
+                  .filter((item) => item.enabled)
+                  .map((item) => ({
+                    key: `${kind}:${item.id}`,
+                    label: `/${kind}-${item.name}`,
+                    detail:
+                      kind === 'mcp'
+                        ? states.find((state) => state.id === item.id)?.status === 'connected'
+                          ? 'Connected'
+                          : 'Start in MCP before sending'
+                        : item.description,
+                    command: { kind, id: item.id, name: item.name },
+                  }))
+              : [],
+          ),
+          ...(suggests('code')
+            ? workspaces
+                .filter((workspace) =>
+                  `/code-${workspace.name}`.toLowerCase().startsWith(draft.toLowerCase()),
+                )
+                .map((workspace) => ({
+                  key: `workspace:${workspace.id}`,
+                  label: `/code-${workspace.name}`,
+                  detail: `${workspace.canonicalPath}${workspace.available ? '' : ' · Relink missing folder'}`,
+                  workspace,
+                }))
+            : []),
+        ];
   const activeIndex = Math.min(index, Math.max(0, options.length - 1));
   const updateDraft = (value: string) => {
     useUI.setState({ draft: value });
     setIndex(0);
     setDismissed(false);
   };
+  const enableMode = (mode: ChatMode) => {
+    const currentModes = useUI.getState().chatModes;
+    if (!currentModes.includes(mode))
+      useUI.setState({ chatModes: [...currentModes, mode] });
+  };
   const choose = (option: (typeof options)[number]) => {
     if (connecting || (isCode && loadingFolders)) return;
     if (option.workspace || option.key === 'open-folder') {
       if (generating) return;
+      enableMode('code');
       setConnecting(true);
       void attempt(async () => {
         try {
@@ -142,10 +225,19 @@ export function useChatCommands(draft: string) {
       });
       return;
     }
-    if (option.command) {
+    if (option.knowledge) {
+      enableMode('kb');
+      useUI.setState({ chatKnowledge: option.knowledge });
+      updateDraft('');
+    } else if (option.command) {
+      enableMode(option.command.kind);
       useUI.setState({ chatCommand: option.command });
       updateDraft('');
-    } else updateDraft(`${option.label} `);
+    } else {
+      const mode = commandKinds.find((kind) => kind === option.key);
+      if (mode) enableMode(mode);
+      updateDraft(`${option.label} `);
+    }
     inputRef.current?.focus();
   };
   useEffect(() => {
@@ -178,9 +270,10 @@ export function useChatCommands(draft: string) {
     return false;
   };
   const resolve = () => {
+    if (!modes.length) return { command: undefined, query: draft };
     if (/^\/code(?:\s|$)/.test(draft))
       throw new Error('Select a saved folder from the /code list before sending your message.');
-    if (selected)
+    if (selected && allows(selected.kind))
       return {
         command: { kind: selected.kind, id: selected.id },
         query:
@@ -189,9 +282,31 @@ export function useChatCommands(draft: string) {
             ? 'Run your configured instructions.'
             : ''),
       };
-    if (/^\/(mcp|agent|skills|workflow)(\s|$)/.test(draft) || draft === '/') {
+    if (
+      /^\/(mcp|tools|agent|skills|workflow)(?:[-\s]|$)/.test(draft) ||
+      /^\/(mcp|tools|agent|skills|workflow)[-\s][\s\S]*$/.test(draft) ||
+      draft === '/'
+    ) {
+      if (prefix && !allows(prefix.kind))
+        throw new Error('Enable the matching checkbox before using this command.');
       return resolveSlash(draft, prefix ? libraries[prefix.kind] : []);
     }
+    const kbOption = knowledgeOptions.find(
+      (option) => draft === option.label || draft.startsWith(`${option.label} `),
+    );
+    if (kbOption) {
+      useUI.setState({ chatKnowledge: kbOption.knowledge });
+      return { command: undefined, query: draft.slice(kbOption.label.length).trim() };
+    }
+    if (
+      !modes.includes('kb') &&
+      !(modes.includes('agent') && useChat.getState().agentId) &&
+      !(modes.includes('code') && useChat.getState().workspace) &&
+      modes.some((mode) => mode !== 'kb')
+    )
+      throw new Error(
+        'Type / and select an MCP server, tool, skill, agent, workflow, or Code folder, or uncheck it for a model-only reply.',
+      );
     return { command: undefined, query: draft };
   };
   return {

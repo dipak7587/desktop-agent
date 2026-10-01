@@ -63,10 +63,18 @@ export class ChatService {
   }
   async send(input: ChatInput) {
     if (this.active.has(input.id)) throw new Error('This conversation is already generating');
+    if (input.modes) {
+      if (!input.modes.includes('kb')) input = { ...input, knowledge: 'none' };
+      if (input.command) {
+        if (!input.modes?.includes(input.command.kind as import('../../../shared/types').ChatMode))
+          throw new Error('Enable the matching chat checkbox before using this command.');
+      }
+    }
     const conversation = this.db.get(input.id);
-    const workspace = conversation.workspaceId
-      ? this.db.getCodeWorkspace(conversation.workspaceId)
-      : undefined;
+    const workspace =
+      conversation.workspaceId && (!input.modes || input.modes.includes('code'))
+        ? this.db.getCodeWorkspace(conversation.workspaceId)
+        : undefined;
     const selected =
       input.command?.kind === 'workflow'
         ? undefined
@@ -162,7 +170,7 @@ export class ChatService {
 
   /** Persist an assistant message row and stream/complete/update it in place. */
   private async generate(
-    input: { id: string; text: string; model: string; knowledge: string },
+    input: ChatInput,
     controller: AbortController,
     prepared?: PreparedCommand,
     selected?: SelectedProvider,
@@ -186,6 +194,8 @@ export class ChatService {
         id: input.id,
         question,
         knowledge: input.knowledge,
+        pureModel: input.modes?.length === 0,
+        forceKnowledge: input.modes?.includes('kb'),
         model: input.model,
         history,
         signal: controller.signal,
@@ -204,7 +214,7 @@ export class ChatService {
     } catch (e) {
       if (!controller.signal.aborted) failure = this.redact(errorMessage(e));
     } finally {
-      if (!controller.signal.aborted && content)
+      if (!controller.signal.aborted && content && input.modes?.length !== 0)
         void this.memory
           ?.maybeCapture(question, content, { conversationId: input.id }, controller.signal)
           .catch(() => {});

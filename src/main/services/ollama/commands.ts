@@ -131,6 +131,16 @@ export class ChatCommands {
         knowledgeSources: knowledge === 'none' ? [] : [knowledge],
       });
     }
+    if (command.kind === 'tools') {
+      agent = librarySchema.parse({
+        id: item.id,
+        name: item.name,
+        model,
+        content: `Answer using the selected tool: ${item.name}. Only this tool is available. Report tool failures honestly.`,
+        tools: [`custom:${item.id}`],
+        knowledgeSources: knowledge === 'none' ? [] : [knowledge],
+      });
+    }
     if (selected) agent = { ...agent, providerId: selected.providerId, model: selected.modelId };
     if (workspace && command.kind === 'agent') agent = withWorkspacePolicy(agent, workspace);
     return {

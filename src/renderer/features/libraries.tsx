@@ -278,6 +278,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                         useUI.setState({
                           section: 'Chat',
                           draft: '',
+                          chatModes: ['agent'],
                           chatCommand: { kind: 'agent', id: item.id, name: item.name },
                         });
                       })

@@ -93,7 +93,7 @@ export function CodeWorkspace() {
             </p>
           </div>
           <button className="secondary" onClick={() => void attempt(connectFolder)}>
-            <FolderOpen size={14} /> Open folder
+            <FolderOpen size={14} /> Add Folder
           </button>
         </div>
         {workspaces.length ? (
@@ -206,7 +206,7 @@ export function CodeWorkspace() {
           <div>
             <h2>No configured coding agent is ready</h2>
             <p>
-              Use Open folder to code directly in Chat, or create an agent with a configured model
+              Use Add Folder to code directly in Chat, or create an agent with a configured model
               and tools for reading, editing, writing, and running tests.
             </p>
             <button className="primary" onClick={() => useUI.getState().setSection('Agents')}>

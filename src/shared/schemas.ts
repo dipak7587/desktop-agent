@@ -196,10 +196,11 @@ export const sendSchema = z
     text: text,
     model: z.string().max(200),
     knowledge: z.string().max(200),
+    modes: z.array(z.enum(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow'])).optional(),
     regenerate: z.boolean().optional(),
     command: z
       .object({
-        kind: z.enum(['skills', 'agent', 'mcp', 'workflow']),
+        kind: z.enum(['skills', 'agent', 'mcp', 'workflow', 'tools']),
         id: idSchema,
         project: z.string().max(4096).optional(),
       })

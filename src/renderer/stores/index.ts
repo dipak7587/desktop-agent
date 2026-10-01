@@ -21,6 +21,8 @@ export const useUI = create<{
   error: string;
   notice: string;
   draft: string;
+  chatModes: import('../../shared/types').ChatMode[];
+  chatKnowledge: string;
   chatCommand: (ChatCommand & { name: string }) | null;
   setSection: (section: Section) => void;
 }>((set) => ({
@@ -28,6 +30,8 @@ export const useUI = create<{
   error: '',
   notice: '',
   draft: '',
+  chatModes: [],
+  chatKnowledge: 'all',
   chatCommand: null,
   setSection: (section) => set({ section }),
 }));

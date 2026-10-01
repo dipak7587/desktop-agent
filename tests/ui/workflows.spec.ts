@@ -403,16 +403,11 @@ test('Code workspace offers local and remote agents and prepares a test-fix run'
   await expect(runButton).toBeEnabled();
   await page.screenshot({ path: 'test-results/code-workspace.png' });
 });
-test('/code lists and selects saved folders without leaving Chat', async () => {
+test('/code saves folders to Code and reconnects them from Chat', async () => {
+  await page.getByRole('checkbox', { name: 'Code', exact: true }).check();
   const input = page.getByLabel('Message', { exact: true });
   const connect = page.getByRole('button', { name: 'Connect project', exact: true });
   await expect(connect).toHaveCount(0);
-  for (const command of ['/agent', '/workflow', '/code']) {
-    await input.fill(command);
-    await expect(connect).toBeVisible();
-    await input.fill('Ordinary chat');
-    await expect(connect).toHaveCount(0);
-  }
   await input.fill('/code');
   const folders = page.getByRole('listbox', { name: 'Saved folders' });
   await expect(folders).toBeVisible();
@@ -423,14 +418,23 @@ test('/code lists and selects saved folders without leaving Chat', async () => {
   await folders.getByRole('option', { name: /Open another folder/ }).click();
   await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
   await expect(input).toHaveValue('');
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Project workspaces' })).toContainText(
+    'localai-workflows-',
+  );
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
   await input.fill('/code old-project');
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.locator('.workspace-indicator')).toHaveCount(0);
   await expect(connect).toHaveCount(0);
   await expect(input).toHaveValue('');
   await input.fill('/');
-  await page.getByRole('option', { name: /\/code/ }).click();
-  await expect(folders.getByRole('option', { name: /localai-workflows-/ })).toBeVisible();
+  const codeFolder = page.getByRole('option').filter({ hasText: '/code-localai-workflows-' });
+  await expect(codeFolder).toBeVisible();
+  await expect(page.getByRole('option', { name: /Select a saved folder in Chat/ })).toHaveCount(0);
+  await codeFolder.click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
   await input.fill('/code nonexistent-project');
   await expect(page.getByText('No matching saved folders.')).toBeVisible();
   await input.fill('/code localai-workflows-');
@@ -602,6 +606,12 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
     await expect(modal).not.toBeVisible();
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
     const input = page.getByLabel('Message', { exact: true });
+    await page
+      .getByRole('checkbox', {
+        name: entry.command === 'skills' ? 'Tools' : entry.command === 'mcp' ? 'MCP' : 'Agent',
+        exact: true,
+      })
+      .check();
     await input.fill(`/${entry.command} `);
     await expect(
       page.getByRole('listbox').getByRole('option').filter({ hasText: entry.name }),
@@ -617,8 +627,10 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
     await expect(input).toHaveValue('Keep this query');
   }
   const input = page.getByLabel('Message', { exact: true });
+  await page.getByRole('checkbox', { name: 'Workflow', exact: true }).check();
   await input.fill('/');
   await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(5);
+  await input.press('ArrowDown');
   await input.press('ArrowDown');
   await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toContainText(
     '/agent',
@@ -691,7 +703,7 @@ test('knowledge URL sync, preview, semantic search and RAG chat use real local e
     await expect(page.locator('.search-results')).toContainText('SILVERFERN', { timeout: 30000 });
     await page.screenshot({ path: 'test-results/knowledge.png' });
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
-    await page.getByLabel('Knowledge context').selectOption('all');
+    await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
     await page
       .getByLabel('Message', { exact: true })
       .fill('What is the project codename in my knowledge? Answer briefly.');
@@ -786,7 +798,9 @@ test('selected agent-desktop KB scopes give me chat details to project documenta
   // Refresh the renderer's sources through its normal navigation/load path.
   await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
-  await page.getByLabel('Knowledge context').selectOption(sourceId);
+  await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
+  await page.getByLabel('Message', { exact: true }).fill('/agent-desktop');
+  await page.getByRole('listbox').getByRole('option').click();
   await page.getByLabel('Message', { exact: true }).fill('give me chat details');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('button', { name: 'Regenerate' })).toBeVisible({ timeout: 90000 });
