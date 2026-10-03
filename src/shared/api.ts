@@ -78,7 +78,9 @@ export interface WorkspaceAPI {
       type: 'file' | 'folder' | 'url';
       url?: string;
       collection?: string;
+      group?: string;
     }): Promise<void>;
+    setGroup(ids: string[], group: string): Promise<void>;
     sync(id: string): Promise<void>;
     stop(id: string): Promise<void>;
     remove(id: string): Promise<void>;

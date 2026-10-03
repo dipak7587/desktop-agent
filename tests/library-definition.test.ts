@@ -67,3 +67,52 @@ it('rejects malformed text and non-object definitions', () => {
     'valid YAML frontmatter',
   );
 });
+
+it('round trips the new MCP schema through JSON, YAML, and Markdown', () => {
+  const config = {
+    id: 'remote',
+    name: 'Remote',
+    enabled: true,
+    transport: 'streamable-http',
+    connection: { type: 'streamable-http', url: 'https://example.com/mcp' },
+    metadata: { tags: ['remote'] },
+    runtime: { autoConnect: true },
+  };
+  for (const format of ['json', 'yaml', 'md'] as const) {
+    expect(
+      parseLibraryDefinition(stringifyLibraryDefinition(config, format), format, 'mcp'),
+    ).toEqual(config);
+    expect(() =>
+      parseLibraryDefinition(
+        stringifyLibraryDefinition(
+          { ...config, connection: { type: 'stdio', command: 'node' } },
+          format,
+        ),
+        format,
+        'mcp',
+      ),
+    ).toThrow();
+  }
+});
+
+it('switches incomplete MCP drafts between text formats while retaining save validation', () => {
+  const draft = {
+    id: 'draft',
+    name: '',
+    enabled: true,
+    transport: 'streamable-http',
+    connection: { type: 'streamable-http', url: '' },
+  };
+  let raw = stringifyLibraryDefinition(draft, 'md');
+  let previous: 'md' | 'json' | 'yaml' = 'md';
+  for (const format of ['json', 'yaml', 'md'] as const) {
+    const value = parseLibraryDefinition(raw, previous, 'mcp', { validate: false });
+    raw = stringifyLibraryDefinition(value, format);
+    expect(parseLibraryDefinition(raw, format, 'mcp', { validate: false })).toEqual(draft);
+    expect(() => parseLibraryDefinition(raw, format, 'mcp')).toThrow();
+    previous = format;
+  }
+  expect(() =>
+    parseLibraryDefinition('---\nname: [\n---\n', 'md', 'mcp', { validate: false }),
+  ).toThrow();
+});

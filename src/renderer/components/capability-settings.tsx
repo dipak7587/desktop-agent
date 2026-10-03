@@ -4,6 +4,7 @@ import type { AgentCapabilityConfig, LibraryItem } from '../../shared/types';
 export function CapabilitySettings({
   item,
   onChange,
+  title = 'Agent Capabilities',
   skills,
   tools,
   servers,
@@ -11,6 +12,7 @@ export function CapabilitySettings({
 }: {
   item: LibraryItem;
   onChange: (config: AgentCapabilityConfig) => void;
+  title?: string;
   skills: { id: string; name: string }[];
   tools: { id: string; name: string }[];
   servers: { id: string; name: string }[];
@@ -55,7 +57,7 @@ export function CapabilitySettings({
   );
   return (
     <fieldset>
-      <legend>Agent Capabilities</legend>
+      <legend>{title}</legend>
       <fieldset>
         <legend>Capability mode</legend>
         {(['auto', 'selected', 'none'] as const).map((mode) => (

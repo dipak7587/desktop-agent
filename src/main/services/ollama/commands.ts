@@ -149,6 +149,7 @@ export class ChatCommands {
       const hasCapabilities =
         config.mode !== 'none' &&
         (config.mode === 'auto' ||
+          (config.allowSkills && config.skills.length > 0) ||
           (config.allowTools && config.tools.some((tool) => !tool.startsWith('mcp:'))) ||
           (config.allowMCP &&
             (config.mcpServers.length > 0 ||
@@ -175,7 +176,7 @@ export class ChatCommands {
           ...item,
           model: selected?.modelId ?? model,
           providerId: selected?.providerId,
-          content: `Follow the selected skill: ${item.name}.\n${item.content}\nUse its permitted tools and MCP capabilities when needed. Base KB-specific answers on retrieved passages and cite sources.`,
+          content: `Follow the selected skill: ${item.name}.\n${item.content}\nUse its permitted skills, tools, MCP, and knowledge sources when needed. Base KB-specific answers on retrieved passages and cite sources.`,
         };
         return {
           command: metadata,

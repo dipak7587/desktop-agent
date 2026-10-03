@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -41,8 +41,14 @@ it('indexes real LanceDB vectors, replaces URL content, skips unchanged files an
     expect(kb.list().find((s) => s.id === id)?.error).toBeUndefined();
   };
   try {
-    await kb.add('url', `http://127.0.0.1:${address.port}`);
+    await kb.add('url', `http://127.0.0.1:${address.port}`, 'Project docs', 'Research');
     const id = kb.list()[0].id;
+    expect(kb.list()[0].group).toBe('Research');
+    await kb.setGroup([id], 'Reference');
+    expect(kb.list()[0].group).toBe('Reference');
+    expect(JSON.parse(await readFile(join(root, 'knowledge.json'), 'utf8'))[0].group).toBe(
+      'Reference',
+    );
     await finish(id);
     expect(await kb.preview(id)).toContain('# Authentication');
     expect(await kb.search('obsoleteword', 'keyword')).toHaveLength(1);

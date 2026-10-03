@@ -1,3 +1,4 @@
+import { mcpServerConfigSchema } from './mcp-schema';
 import { z } from 'zod';
 import { landingSchema } from './landing';
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
@@ -178,6 +179,13 @@ export const librarySchema = z.object({
       headers: z.record(z.string().max(200), z.string().max(2000)).default({}),
     })
     .optional(),
+  transport: mcpServerConfigSchema.shape.transport.optional(),
+  connection: mcpServerConfigSchema.shape.connection.optional(),
+  capabilities: mcpServerConfigSchema.shape.capabilities,
+  permissions: mcpServerConfigSchema.shape.permissions,
+  metadata: mcpServerConfigSchema.shape.metadata,
+  runtime: mcpServerConfigSchema.shape.runtime,
+  discovered: mcpServerConfigSchema.shape.discovered,
   command: z.string().max(500).default(''),
   args: z.array(z.string().max(2000)).max(100).default([]),
   env: z
@@ -196,7 +204,9 @@ export const sendSchema = z
     text: text,
     model: z.string().max(200),
     knowledge: z.string().max(200),
-    modes: z.array(z.enum(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow'])).optional(),
+    modes: z
+      .array(z.enum(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow']))
+      .optional(),
     regenerate: z.boolean().optional(),
     command: z
       .object({
@@ -214,6 +224,7 @@ export const sourceInputSchema = z.object({
   type: z.enum(['file', 'folder', 'url']),
   url: z.url().optional(),
   collection: z.string().max(100).optional(),
+  group: librarySchema.shape.group.optional(),
 });
 export const runInputSchema = z.object({
   agentId: idSchema,

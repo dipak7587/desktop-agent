@@ -1,3 +1,6 @@
+import { parseLibraryDefinition } from '../../shared/library-definition';
+import { mcpConfigFromItem } from '../../shared/mcp-schema';
+import { randomUUID } from 'node:crypto';
 import type { WorkflowService } from '../services/workflows/workflows';
 import type { WorkflowRunDatabase } from '../database/workflow-runs';
 import { workflowSchema, workflowRunInputSchema } from '../../shared/workflows';
@@ -240,7 +243,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle(
     'library:set-group',
     z.tuple([
-      z.enum(['agents', 'mcp', 'skills', 'tools']),
+      z.enum(['agents', 'mcp', 'skills', 'tools', 'saved-text']),
       z.array(idSchema).min(1).max(1000),
       librarySchema.shape.group,
     ]),
@@ -251,7 +254,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       item = { ...item, providerId: item.providerId ?? s.settings.get().activeProviderId };
       s.settings.validateSelection(item.providerId, item.model);
     }
-    if (kind === 'mcp') await s.mcp.stop(item.id);
+    if (kind === 'mcp') {
+      mcpConfigFromItem({ ...item });
+      await s.mcp.stop(item.id);
+    }
     return s.library.save(kind, item);
   });
   handle('library:remove', z.tuple([kindSchema, idSchema]), async (kind, id) => {
@@ -263,12 +269,24 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     const result = await dialog.showOpenDialog({
       title: `Import ${kind}`,
       properties: ['openFile'],
-      filters: [{ name: 'Portable definition', extensions: [kind === 'mcp' ? 'json' : 'md'] }],
+      filters: [
+        {
+          name: 'Portable definition',
+          extensions: kind === 'mcp' ? ['json', 'yaml', 'yml', 'md'] : ['md'],
+        },
+      ],
     });
     if (result.canceled) return;
     const raw = await readText(result.filePaths[0], 2000000);
     if (raw.length > 2_000_000) throw new Error('Import file exceeds 2 MB');
-    const item = s.library.parse(kind, raw);
+    const extension = result.filePaths[0].split('.').pop()?.toLowerCase();
+    const item =
+      kind === 'mcp' && extension !== 'json'
+        ? librarySchema.parse({
+            ...parseLibraryDefinition(raw, extension === 'md' ? 'md' : 'yaml', kind),
+            id: randomUUID(),
+          })
+        : s.library.parse(kind, raw);
     if (kind === 'agents') {
       item.providerId ??= s.settings.get().activeProviderId;
       item.model ||=
@@ -286,10 +304,15 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       await atomicWrite(result.filePath, s.library.serialize(kind, item));
   });
   handle('knowledge:list', none, () => s.knowledge.list());
+  handle(
+    'knowledge:set-group',
+    z.tuple([z.array(idSchema).min(1).max(1000), librarySchema.shape.group]),
+    (ids, group) => s.knowledge.setGroup(ids, group),
+  );
   handle('knowledge:add', z.tuple([sourceInputSchema]), async (input) => {
     if (input.type === 'url') {
       if (!input.url) throw new Error('Enter a URL');
-      await s.knowledge.add('url', input.url, input.collection);
+      await s.knowledge.add('url', input.url, input.collection, input.group);
       return;
     }
     const result = await dialog.showOpenDialog({
@@ -299,7 +322,12 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
         input.type === 'file' ? [{ name: 'Text documents', extensions: ['md', 'txt'] }] : undefined,
     });
     if (!result.canceled)
-      await s.knowledge.add(input.type, await realpath(result.filePaths[0]), input.collection);
+      await s.knowledge.add(
+        input.type,
+        await realpath(result.filePaths[0]),
+        input.collection,
+        input.group,
+      );
   });
   handle('knowledge:sync', id, (id) => s.knowledge.sync(id));
   handle('knowledge:stop', id, (id) => s.knowledge.stop(id));

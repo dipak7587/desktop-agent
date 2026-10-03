@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import Turndown from 'turndown';
 import type { KnowledgeSource, SearchResult, AppEvent, Settings } from '../../../shared/types';
 import { atomicWrite, readJSON, hash, errorMessage } from '../filesystem/storage';
+import { librarySchema } from '../../../shared/schemas';
 import { walk, readText, ignored, supportedExtensions } from '../filesystem/walk';
 import { chunkText } from './chunker';
 import type { EmbeddingProvider } from '../ollama/provider';
@@ -27,11 +28,13 @@ export class KnowledgeService {
     await mkdir(join(this.root, 'cache'), { recursive: true });
     this.db = await lancedb.connect(join(this.root, 'rag/lancedb'));
     this.sources = await readJSON(join(this.root, 'knowledge.json'), []);
-    for (const s of this.sources)
+    for (const s of this.sources) {
+      s.group ??= '';
       if (['syncing', 'indexing'].includes(s.status)) {
         s.status = 'error';
         s.error = 'Indexing was interrupted. Sync to retry.';
       }
+    }
     await this.persist();
   }
   private persist() {
@@ -50,7 +53,7 @@ export class KnowledgeService {
     if (!source) throw new Error('Knowledge source no longer exists');
     return source;
   }
-  async add(type: KnowledgeSource['type'], location: string, collection = '') {
+  async add(type: KnowledgeSource['type'], location: string, collection = '', group = '') {
     if (type === 'url' && !['http:', 'https:'].includes(new URL(location).protocol))
       throw new Error('Only HTTP(S) URLs are supported');
     if (
@@ -65,6 +68,7 @@ export class KnowledgeService {
       name: type === 'url' ? new URL(location).hostname : basename(location),
       location,
       collection,
+      group: librarySchema.shape.group.parse(group),
       createdAt: now,
       updatedAt: now,
       status: 'idle',
@@ -83,6 +87,7 @@ export class KnowledgeService {
         name: 'Saved Text',
         location: join(this.root, 'saved-text'),
         collection: 'Saved Text',
+        group: '',
         createdAt: now,
         updatedAt: now,
         status: 'idle',
@@ -97,6 +102,15 @@ export class KnowledgeService {
       return;
     }
     await this.sync(id);
+  }
+  async setGroup(ids: string[], group: string) {
+    const name = librarySchema.shape.group.parse(group);
+    const sources = [...new Set(ids)].map((id) => this.source(id));
+    for (const source of sources) {
+      source.group = name;
+      source.updatedAt = Date.now();
+    }
+    await this.persist();
   }
   private tableName(model: string) {
     return `chunks_${hash(model).slice(0, 16)}`;

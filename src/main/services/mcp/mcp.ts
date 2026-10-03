@@ -1,3 +1,4 @@
+import { mcpConfigFromItem } from '../../../shared/mcp-schema';
 import { MCPAdapter } from '@langchain/mcp-adapters';
 import { isToolMessage } from '@langchain/core/messages';
 import type { DynamicStructuredTool } from '@langchain/core/tools';
@@ -29,11 +30,18 @@ export class MCPService {
     if (this.clients.has(id)) return;
     const config = await this.library.get('mcp', id);
     if (!config.enabled) throw new Error('Enable this MCP server before starting it');
-    if (!config.command.trim())
+    if (
+      (config.connection?.type === 'stdio' && !config.connection.command.trim()) ||
+      (!config.connection && !config.command.trim())
+    )
       throw new Error('Add an executable command before starting this MCP server.');
+    const server = mcpConfigFromItem({ ...config });
+    const connection = server.connection;
     const env: Record<string, string> = {};
     const secretValues: string[] = [];
-    for (const [name, value] of Object.entries(config.env)) {
+    for (const [name, value] of Object.entries(
+      connection.type === 'stdio' ? (connection.env ?? {}) : (connection.headers ?? {}),
+    )) {
       const reference = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
       env[name] = reference ? this.secrets.resolve(reference[1]) : value;
       secretValues.push(env[name]);
@@ -50,18 +58,31 @@ export class MCPService {
     this.generations.set(id, generation);
     const adapter = new MCPAdapter({
       servers: {
-        [id]: {
-          transport: 'stdio',
-          command: config.command,
-          args: config.args,
-          env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...env },
-          // Never inherit raw process output: it may contain resolved credentials.
-          stderr: 'ignore',
-        },
+        [id]:
+          connection.type === 'stdio'
+            ? {
+                transport: 'stdio',
+                command: connection.command,
+                args: connection.args ?? [],
+                cwd: connection.cwd,
+                env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...env },
+                stderr: 'ignore',
+                restart: {
+                  enabled: server.runtime?.reconnect ?? false,
+                  maxAttempts: server.runtime?.reconnectAttempts,
+                },
+              }
+            : {
+                transport: 'http',
+                mode: 'legacy',
+                url: connection.url,
+                headers: env,
+                automaticSSEFallback: false,
+              },
       },
       prefixToolNameWithServerName: false,
       additionalToolNamePrefix: '',
-      defaultToolTimeout: 60000,
+      defaultToolTimeout: server.runtime?.timeoutMs ?? 60000,
       onConnectionError: 'throw',
     });
     const entry = { adapter, tools: [] as DynamicStructuredTool[] };
@@ -153,7 +174,7 @@ export class MCPService {
     const configs = await this.library.list('mcp');
     await Promise.allSettled(
       configs
-        .filter((c) => c.enabled && c.autoStart)
+        .filter((c) => c.enabled && (c.runtime?.autoConnect ?? c.autoStart))
         .map(async (c) => {
           try {
             await this.start(c.id);

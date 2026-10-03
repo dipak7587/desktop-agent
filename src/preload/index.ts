@@ -62,6 +62,7 @@ const api: WorkspaceAPI = {
   knowledge: {
     list: () => invoke('knowledge:list'),
     add: (i) => invoke('knowledge:add', i),
+    setGroup: (ids, group) => invoke('knowledge:set-group', ids, group),
     sync: (id) => invoke('knowledge:sync', id),
     stop: (id) => invoke('knowledge:stop', id),
     remove: (id) => invoke('knowledge:remove', id),

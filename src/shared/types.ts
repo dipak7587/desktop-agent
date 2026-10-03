@@ -1,3 +1,5 @@
+import type { MCPServerConfig } from './mcp-schema';
+export type { MCPServerConfig, MCPTool, MCPResource, MCPPrompt } from './mcp-schema';
 import type { LandingSettings } from './landing';
 export type Section =
   | 'Chat'
@@ -144,7 +146,18 @@ export interface ChatInput {
   regenerate?: boolean;
   command?: ChatCommand;
 }
-export interface LibraryItem {
+export interface LibraryItem extends Partial<
+  Pick<
+    MCPServerConfig,
+    | 'transport'
+    | 'connection'
+    | 'capabilities'
+    | 'permissions'
+    | 'metadata'
+    | 'runtime'
+    | 'discovered'
+  >
+> {
   group?: string;
   providerId?: string;
   id: string;
@@ -173,6 +186,7 @@ export interface KnowledgeSource {
   name: string;
   location: string;
   collection: string;
+  group?: string;
   createdAt: number;
   updatedAt: number;
   lastSyncedAt?: number;

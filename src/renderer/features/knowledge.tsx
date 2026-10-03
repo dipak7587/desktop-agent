@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { Plus, BookOpen, Search, File, Folder, Globe, RefreshCw, Square } from 'lucide-react';
+import {
+  Plus,
+  BookOpen,
+  Search,
+  File,
+  Folder,
+  Globe,
+  RefreshCw,
+  Square,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { useKnowledge, attempt } from '../stores';
 import type { KnowledgeSource, SearchResult } from '../../shared/types';
 import { PageHeader, Empty, Modal, Confirm, Markdown } from '../components/common';
@@ -9,12 +20,45 @@ export function Knowledge() {
   const [type, setType] = useState<'file' | 'folder' | 'url'>('file');
   const [url, setUrl] = useState('');
   const [collection, setCollection] = useState('');
+  const [group, setGroup] = useState('');
+  const [addingNewGroup, setAddingNewGroup] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [groupName, setGroupName] = useState('');
+  const [groupChoice, setGroupChoice] = useState('');
+  const [grouping, setGrouping] = useState(false);
+  const [groupingAction, setGroupingAction] = useState<'assign' | 'rename'>('assign');
+  const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
+  const [savingGroup, setSavingGroup] = useState(false);
   const [preview, setPreview] = useState<{ source: KnowledgeSource; text: string } | null>(null);
   const [remove, setRemove] = useState<KnowledgeSource | null>(null);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'semantic' | 'keyword'>('semantic');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const groups = [...new Set(sources.map((source) => source.group).filter(Boolean))].sort((a, b) =>
+    a!.localeCompare(b!),
+  ) as string[];
+  const visibleSources = sources.filter(
+    (source) => activeGroup === null || (source.group ?? '') === activeGroup,
+  );
+  const openGrouping = (name = activeGroup ?? '', action: 'assign' | 'rename' = 'assign') => {
+    setSelected(
+      action === 'rename'
+        ? sources.filter((source) => source.group === name).map((source) => source.id)
+        : selected,
+    );
+    setGroupName(name);
+    setGroupChoice(action === 'rename' || groups.includes(name) ? name : '');
+    setGroupingAction(action);
+    setGrouping(true);
+  };
+  const saveGroup = async (ids: string[], name: string) => {
+    await window.workspace.knowledge.setGroup(ids, name);
+    setSelected([]);
+    setActiveGroup(name);
+    await load();
+  };
   return (
     <div className="page">
       <PageHeader
@@ -46,6 +90,93 @@ export function Knowledge() {
           <strong className="small">Local · LanceDB</strong>
         </div>
       </div>
+      {!!sources.length && (
+        <>
+          <nav className="library-groups" aria-label="Knowledge Base groups">
+            {[null, '', ...groups].map((name) => {
+              const label = name === null ? 'All' : name || 'Ungrouped';
+              const count = sources.filter(
+                (source) => name === null || (source.group ?? '') === name,
+              ).length;
+              return (
+                <div className="library-group-tab" key={name === null ? 'all' : `group:${name}`}>
+                  <button
+                    type="button"
+                    aria-pressed={activeGroup === name}
+                    onClick={() => {
+                      setActiveGroup(name);
+                      setSelected([]);
+                    }}
+                  >
+                    {label} <span className="badge">{count}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+          <div className="section-toolbar library-selection-toolbar">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={
+                  !!visibleSources.length && visibleSources.every((s) => selected.includes(s.id))
+                }
+                disabled={!visibleSources.length}
+                onChange={(event) =>
+                  setSelected(event.target.checked ? visibleSources.map((source) => source.id) : [])
+                }
+              />
+              Select all sources
+            </label>
+            <span>{selected.length} sources selected</span>
+            <div className="mcp-group-actions">
+              <button disabled={!selected.length} onClick={() => openGrouping()}>
+                Move to group
+              </button>
+              <button
+                disabled={
+                  savingGroup ||
+                  !selected.some((id) => sources.some((source) => source.id === id && source.group))
+                }
+                onClick={() =>
+                  void attempt(async () => {
+                    setSavingGroup(true);
+                    try {
+                      await saveGroup(selected, '');
+                    } finally {
+                      setSavingGroup(false);
+                    }
+                  })
+                }
+              >
+                Remove from group
+              </button>
+              {!!activeGroup && (
+                <button
+                  className="edit"
+                  aria-label={`Edit ${activeGroup} group`}
+                  title={`Edit ${activeGroup} group`}
+                  disabled={savingGroup}
+                  onClick={() => openGrouping(activeGroup, 'rename')}
+                >
+                  <Pencil size={14} />
+                  Edit Group
+                </button>
+              )}
+              {!!activeGroup && (
+                <button
+                  className="danger"
+                  disabled={savingGroup}
+                  onClick={() => setGroupToDelete(activeGroup)}
+                >
+                  <Trash2 size={14} />
+                  Delete group
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
       <form
         className="knowledge-search"
         onSubmit={(e) => {
@@ -114,7 +245,7 @@ export function Knowledge() {
         />
       ) : (
         <div className="source-list">
-          {sources.map((source) => {
+          {visibleSources.map((source) => {
             const Icon = source.type === 'url' ? Globe : source.type === 'folder' ? Folder : File;
             const active = ['syncing', 'indexing'].includes(source.status);
             return (
@@ -124,13 +255,31 @@ export function Knowledge() {
                 </div>
                 <div className="source-info">
                   <h2>
+                    <label
+                      className="check source-select"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${source.name}`}
+                        checked={selected.includes(source.id)}
+                        onChange={(event) =>
+                          setSelected((ids) =>
+                            event.target.checked
+                              ? [...ids, source.id]
+                              : ids.filter((id) => id !== source.id),
+                          )
+                        }
+                      />
+                    </label>
                     {source.name}
                     <span className="badge">{source.status}</span>
                   </h2>
                   <p title={source.location}>{source.location}</p>
                   <div className="small muted">
                     {source.documentCount} documents · {source.chunkCount} chunks
-                    {source.collection && ` · ${source.collection}`} ·{' '}
+                    {source.collection && ` · ${source.collection}`}
+                    {source.group && ` · Group: ${source.group}`} ·{' '}
                     {source.lastSyncedAt
                       ? `Synced ${new Date(source.lastSyncedAt).toLocaleString()}`
                       : 'Not synced yet'}
@@ -198,8 +347,11 @@ export function Knowledge() {
                   type,
                   url: type === 'url' ? url : undefined,
                   collection,
+                  group,
                 });
                 await load();
+                setGroup('');
+                setAddingNewGroup(false);
                 setAdding(false);
               });
             }}
@@ -238,6 +390,37 @@ export function Knowledge() {
                 placeholder="e.g. Project documentation"
               />
             </label>
+            <label>
+              Group · optional
+              <select
+                value={addingNewGroup ? '__new_group__' : group}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setAddingNewGroup(next === '__new_group__');
+                  setGroup(next === '__new_group__' ? '' : next);
+                }}
+              >
+                <option value="">Ungrouped</option>
+                {groups.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+                <option value="__new_group__">Add new group…</option>
+              </select>
+            </label>
+            {addingNewGroup && (
+              <label>
+                New group name
+                <input
+                  autoFocus
+                  value={group}
+                  onChange={(event) => setGroup(event.target.value)}
+                  maxLength={100}
+                  placeholder="e.g. Research"
+                />
+              </label>
+            )}
             <div className="actions">
               <button className="primary">{type === 'url' ? 'Add URL' : 'Choose ' + type}</button>
             </div>
@@ -249,6 +432,106 @@ export function Knowledge() {
           <p className="small muted">{preview.source.location}</p>
           <Markdown text={preview.text} />
         </Modal>
+      )}
+      {grouping && (
+        <Modal
+          title={groupingAction === 'rename' ? 'Rename group' : 'Move sources to group'}
+          onClose={() => {
+            if (!savingGroup) setGrouping(false);
+          }}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void attempt(async () => {
+                setSavingGroup(true);
+                try {
+                  await saveGroup(selected, groupName.trim());
+                  setGrouping(false);
+                } finally {
+                  setSavingGroup(false);
+                }
+              });
+            }}
+          >
+            <p>
+              {groupingAction === 'rename'
+                ? `Rename this group for ${selected.length} sources.`
+                : `Move ${selected.length} selected sources to a group. Enter a new name to add a group.`}
+            </p>
+            {groupingAction === 'rename' ? (
+              <label>
+                Group
+                <input
+                  autoFocus
+                  required
+                  value={groupName}
+                  onChange={(event) => setGroupName(event.target.value)}
+                  maxLength={100}
+                  disabled={savingGroup}
+                />
+              </label>
+            ) : (
+              <>
+                <label>
+                  Group
+                  <select
+                    value={groupChoice === '__new_group__' ? groupChoice : groupName}
+                    disabled={savingGroup}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setGroupChoice(next);
+                      setGroupName(next === '__new_group__' ? '' : next);
+                    }}
+                  >
+                    <option value="">Ungrouped</option>
+                    {groups.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                    <option value="__new_group__">Add new group…</option>
+                  </select>
+                </label>
+                {groupChoice === '__new_group__' && (
+                  <label>
+                    New group name
+                    <input
+                      autoFocus
+                      value={groupName}
+                      onChange={(event) => setGroupName(event.target.value)}
+                      maxLength={100}
+                      placeholder="e.g. Research"
+                      disabled={savingGroup}
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            <div className="actions">
+              <button type="button" disabled={savingGroup} onClick={() => setGrouping(false)}>
+                Cancel
+              </button>
+              <button className="primary" disabled={savingGroup}>
+                {savingGroup ? 'Saving…' : groupingAction === 'rename' ? 'Rename group' : 'Move'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {groupToDelete && (
+        <Confirm
+          title={`Delete ${groupToDelete} group?`}
+          detail="Sources in this group will become ungrouped. They will not be removed from the Knowledge Base."
+          onClose={() => setGroupToDelete(null)}
+          onConfirm={async () => {
+            const ids = sources
+              .filter((source) => source.group === groupToDelete)
+              .map((source) => source.id);
+            await saveGroup(ids, '');
+            if (activeGroup === groupToDelete) setActiveGroup('');
+          }}
+        />
       )}
       {remove && (
         <Confirm

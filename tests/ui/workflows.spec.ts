@@ -103,6 +103,7 @@ for (const [kind, section] of [
   ['mcp', 'MCP'],
   ['skills', 'Skills'],
   ['tools', 'Tools'],
+  ['saved-text', 'Saved Text'],
 ] as const) {
   test(`${section} groups support bulk assignment, filtering, editing and persistence`, async () => {
     await page.evaluate(async (kind) => {
@@ -185,15 +186,38 @@ for (const [kind, section] of [
     }
     await page.getByRole('checkbox', { name: 'Select Writer', exact: true }).check();
     await page.getByRole('checkbox', { name: 'Select Narrator', exact: true }).check();
-    await page.getByRole('button', { name: 'Group selected', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Group selected items' });
-    await dialog.getByLabel('Group', { exact: true }).fill('Video Studio');
-    await dialog.getByRole('button', { name: 'Save group', exact: true }).click();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Move to group', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Move selected items to group' });
+    await dialog.getByLabel('Group', { exact: true }).selectOption('__new_group__');
+    await dialog.getByLabel('New group name', { exact: true }).fill('Video Studio');
+    await dialog.getByRole('button', { name: 'Move', exact: true }).click();
     await expect(dialog).toHaveCount(0);
+    if (kind === 'mcp') {
+      const bulkActions = page.locator('.library-selection-toolbar .mcp-group-actions');
+      await expect(bulkActions.getByRole('button', { name: 'Move to group' })).toBeVisible();
+      await expect(bulkActions.getByRole('button', { name: 'Remove from group' })).toBeVisible();
+      expect(
+        await bulkActions.evaluate((element) => {
+          const [move, remove] = Array.from(element.querySelectorAll('button')).map((button) =>
+            button.getBoundingClientRect(),
+          );
+          return remove.left - move.right;
+        }),
+      ).toBeLessThanOrEqual(8);
+    }
     const groups = page.getByRole('navigation', { name: `${section} groups` });
     await expect(
       groups.getByRole('button', { name: 'Video Studio 2', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
+    await groups.getByRole('button', { name: 'Edit Video Studio group', exact: true }).click();
+    const renameGroupDialog = page.getByRole('dialog', { name: 'Rename group' });
+    await expect(renameGroupDialog.getByLabel('Group', { exact: true })).toHaveValue(
+      'Video Studio',
+    );
+    await renameGroupDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: 'Select Writer', exact: true })).toBeVisible();
     await expect(
       page.getByRole('checkbox', { name: 'Select Narrator', exact: true }),
@@ -204,23 +228,65 @@ for (const [kind, section] of [
     await page.screenshot({ path: `test-results/library-groups-${kind}.png` });
     await page.reload();
     await page.getByRole('button', { name: section, exact: true }).click();
-    await groups.getByRole('button', { name: 'Video Studio 2', exact: true }).click();
+    const groupsAfterReload = page.getByRole('navigation', { name: `${section} groups` });
+    await groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Select Writer', exact: true }).check();
-    await page.getByRole('button', { name: 'Group selected', exact: true }).click();
-    await dialog.getByLabel('Group', { exact: true }).fill('');
-    await dialog.getByRole('button', { name: 'Save group', exact: true }).click();
-    await expect(groups.getByRole('button', { name: 'Ungrouped 2', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Move to group', exact: true })
+      .click();
+    await dialog.getByLabel('Group', { exact: true }).selectOption('');
+    await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Ungrouped 2', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     const card = page
       .locator(kind === 'skills' ? '.skill-card' : '.library-card')
       .filter({ hasText: 'Writer' });
     await card.locator(':scope > summary').click();
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
-    await page.getByRole('dialog').getByLabel('Group', { exact: true }).fill('Video Studio');
+    await page
+      .getByRole('dialog')
+      .getByLabel('Group', { exact: true })
+      .selectOption('Video Studio');
     await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(groups.getByRole('button', { name: 'Video Studio 2', exact: true })).toBeVisible();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }),
+    ).toBeVisible();
+    await expect(groupsAfterReload.getByRole('button', { name: 'Delete All group' })).toHaveCount(
+      0,
+    );
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Delete Ungrouped group' }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+    ).toHaveCount(0);
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', {
+        name: 'Edit Video Studio group',
+      })
+      .click();
+    const renameDialog = page.getByRole('dialog', { name: 'Rename group' });
+    await renameDialog.getByLabel('Group', { exact: true }).fill('Project Review');
+    await renameDialog.getByRole('button', { name: 'Rename group', exact: true }).click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Project Review 2', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+    ).toBeVisible();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Delete group' })
+      .click();
+    const deleteGroupDialog = page.getByRole('dialog', { name: 'Delete Project Review group?' });
+    await deleteGroupDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Project Review 2', exact: true }),
+    ).toHaveCount(0);
+    await expect(groupsAfterReload.getByRole('button', { name: /Ungrouped 3/ })).toBeVisible();
   });
 }
 test('saved text and skills create, edit, export-ready files, delete; settings persist', async () => {
@@ -246,15 +312,36 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   );
   await page.getByRole('button', { name: 'Skills', exact: true }).click();
   await page.getByRole('button', { name: 'New skill' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Citation guide');
+  await page.getByLabel('Instructions', { exact: true }).fill('Cite reliable sources.');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'New skill' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Review code');
   await page.getByLabel('Description', { exact: true }).fill('Check code quality');
+  const skillCapabilities = page.getByRole('group', { name: 'Skill Capabilities' });
+  await skillCapabilities.getByLabel('Citation guide', { exact: true }).check();
   await page.getByLabel('Instructions', { exact: true }).fill('Read before making changes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.locator('summary').filter({ hasText: 'Review code' }).click();
   await expect(page.getByText('Read before making changes.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(
+    page.getByRole('group', { name: 'Skill Capabilities' }).getByLabel('Citation guide', {
+      exact: true,
+    }),
+  ).toBeChecked();
+  await page
+    .getByRole('group', { name: 'Skill Capabilities' })
+    .getByLabel('Citation guide', { exact: true })
+    .uncheck();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Review code' }).click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Careful reviewer');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.locator('summary').filter({ hasText: 'Citation guide' }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByText('Your skills start here')).toBeVisible();
@@ -561,7 +648,6 @@ test('Settings imports and exports complete workspace backups', async () => {
   await expect
     .poll(async () => readFile(exportPath, 'utf8').catch(() => ''))
     .toContain('formatVersion: 1');
-
   await page.getByRole('button', { name: 'Import backup', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('1 chats');
   expect(await page.evaluate(() => window.workspace.chat.list())).toContainEqual(
@@ -676,6 +762,67 @@ test('real Ollama chat streams, persists across relaunch and continues', async (
     timeout: 90000,
   });
 });
+test('Knowledge sources support adding, moving, renaming and deleting groups', async () => {
+  await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
+  await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
+  await page.getByLabel('URL', { exact: true }).fill('https://first.example/docs');
+  await page.getByLabel('Collection · optional').fill('Project docs');
+  await page.getByLabel('Group · optional').selectOption('__new_group__');
+  await page.getByLabel('New group name', { exact: true }).fill('Research');
+  await page.getByRole('button', { name: 'Add URL', exact: true }).click();
+  await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
+  await page.getByLabel('URL', { exact: true }).fill('https://second.example/docs');
+  await page.getByLabel('Collection · optional').fill('Project docs');
+  await page.getByRole('button', { name: 'Add URL', exact: true }).click();
+
+  const groups = page.getByRole('navigation', { name: 'Knowledge Base groups' });
+  await expect(groups.getByRole('button', { name: 'Research 1', exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Select second.example', exact: true }).check();
+  await page
+    .locator('.library-selection-toolbar')
+    .getByRole('button', { name: 'Move to group', exact: true })
+    .click();
+  const moveDialog = page.getByRole('dialog', { name: 'Move sources to group' });
+  await moveDialog.getByLabel('Group', { exact: true }).selectOption('Research');
+  await moveDialog.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(groups.getByRole('button', { name: 'Research 2', exact: true })).toBeVisible();
+
+  await page
+    .locator('.library-selection-toolbar')
+    .getByRole('button', {
+      name: 'Edit Research group',
+    })
+    .click();
+  const renameDialog = page.getByRole('dialog', { name: 'Rename group' });
+  await renameDialog.getByLabel('Group', { exact: true }).fill('Reference docs');
+  await renameDialog.getByRole('button', { name: 'Rename group', exact: true }).click();
+  await expect(groups.getByRole('button', { name: 'Reference docs 2', exact: true })).toBeVisible();
+
+  await expect(
+    page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+  ).toBeVisible();
+  await page
+    .locator('.library-selection-toolbar')
+    .getByRole('button', { name: 'Delete group' })
+    .click();
+  const deleteDialog = page.getByRole('dialog', { name: 'Delete Reference docs group?' });
+  await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(groups.getByRole('button', { name: 'Reference docs 2', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(groups.getByRole('button', { name: 'Ungrouped 2', exact: true })).toBeVisible();
+  await expect(page.locator('.source-card').filter({ hasText: 'second.example' })).toContainText(
+    'Project docs',
+  );
+  await expect(groups.getByRole('button', { name: 'Delete All group' })).toHaveCount(0);
+  await expect(groups.getByRole('button', { name: 'Delete Ungrouped group' })).toHaveCount(0);
+  await expect(
+    page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+  ).toHaveCount(0);
+});
+
 test('knowledge URL sync, preview, semantic search and RAG chat use real local embeddings', async () => {
   test.skip(!process.env.LOCALAI_LIVE_TEST, 'Requires local embedding and chat models');
   const server = createServer((_req, res) => {

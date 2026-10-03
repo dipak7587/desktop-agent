@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { librarySchema, settingsSchema } from '../src/shared/schemas';
-it.each(['agents', 'mcp', 'skills', 'tools'] as const)(
+it.each(['agents', 'mcp', 'skills', 'tools', 'saved-text'] as const)(
   'persists portable groups for %s without changing definitions',
   async (kind) => {
     const root = await mkdtemp(join(tmpdir(), 'library-groups-'));
@@ -36,6 +36,9 @@ it.each(['agents', 'mcp', 'skills', 'tools'] as const)(
       expect(reloaded.parse(kind, reloaded.serialize(kind, updated), 'imported').group).toBe(
         'Video Studio',
       );
+      await reloaded.setGroup(kind, ['one'], 'Research');
+      expect((await reloaded.get(kind, 'one')).group).toBe('Research');
+      expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
       await reloaded.setGroup(kind, ['one'], '');
       expect((await reloaded.get(kind, 'one')).group).toBe('');
       expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');

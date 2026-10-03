@@ -95,6 +95,14 @@ it('blocks skill, MCP and Tool deletion for every referencing agent, including d
     librarySchema.parse({ id: 'review', name: 'Review', content: 'Review the change.' }),
   );
   await library.save(
+    'skills',
+    librarySchema.parse({
+      id: 'audit',
+      name: 'Audit',
+      capabilityConfig: { skills: ['review'] },
+    }),
+  );
+  await library.save(
     'mcp',
     librarySchema.parse({ id: 'server', name: 'Server', description: 'Test' }),
   );
@@ -116,6 +124,8 @@ it('blocks skill, MCP and Tool deletion for every referencing agent, including d
     tools: [],
     capabilityConfig: { ...agent.capabilityConfig!, mcpServers: [] },
   });
+  await expect(library.remove('skills', 'review')).rejects.toThrow('Audit');
+  await library.remove('skills', 'audit');
   await library.remove('skills', 'review');
   await library.remove('tools', 'double');
   await library.remove('mcp', 'server');

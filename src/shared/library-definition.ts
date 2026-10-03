@@ -8,6 +8,7 @@ export function parseLibraryDefinition(
   raw: string,
   format: LibraryDefinitionFormat,
   kind: LibraryKind,
+  options: { validate?: boolean } = {},
 ): Partial<LibraryItem> {
   let value: unknown;
   let content: string | undefined;
@@ -46,7 +47,8 @@ export function parseLibraryDefinition(
     const [name, config] = entries[0];
     if (!config || typeof config !== 'object' || Array.isArray(config))
       throw new Error('The MCP server configuration must be an object.');
-    const parsedConfig = parseMCPConfig(JSON.stringify(config));
+    const parsedConfig =
+      options.validate === false ? config : parseMCPConfig(JSON.stringify(config));
     return {
       ...(config as Partial<LibraryItem>),
       ...parsedConfig,
@@ -54,6 +56,12 @@ export function parseLibraryDefinition(
     };
   }
 
+  if (kind === 'mcp') {
+    const { content: _content, ...config } = definition;
+    return (
+      options.validate === false ? config : { ...config, ...parseMCPConfig(JSON.stringify(config)) }
+    ) as Partial<LibraryItem>;
+  }
   return definition as Partial<LibraryItem>;
 }
 

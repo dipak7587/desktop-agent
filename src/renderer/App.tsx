@@ -332,7 +332,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         <input
           autoFocus
           aria-label="Global search"
-          placeholder="Chats, skills, agents, notes, knowledge…"
+          placeholder="Chats, agents, notes, knowledge…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

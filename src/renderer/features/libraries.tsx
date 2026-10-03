@@ -1,8 +1,10 @@
+import { mcpConfigFromItem, mcpDefinitionFromItem } from '../../shared/mcp-schema';
 import { ProviderSelector } from '../components/provider-selector';
 import { CommandPreview } from '../components/command-preview';
 import { CapabilitySettings } from '../components/capability-settings';
 import { FolderSelection } from '../components/folder-selection';
-import { useId, useState } from 'react';
+import { useRef, useState } from 'react';
+import { errorMessage } from '../../shared/error-message';
 import {
   Plus,
   Search,
@@ -16,6 +18,8 @@ import {
   ChevronDown,
   X,
   CircleStop,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import type { LibraryKind, LibraryItem } from '../../shared/types';
 import { librarySchema } from '../../shared/schemas';
@@ -76,14 +80,37 @@ export function Library({ kind }: { kind: LibraryKind }) {
       : enabledProviders.find((p) => p.id === providerSettings?.activeProviderId);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
-  const grouped = kind !== 'saved-text';
+  const grouped = true;
   const [group, setGroup] = useState<string | null>(null);
   const [grouping, setGrouping] = useState(false);
+  const [groupingAction, setGroupingAction] = useState<'assign' | 'rename'>('assign');
   const [groupName, setGroupName] = useState('');
+  const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
   const [savingGroup, setSavingGroup] = useState(false);
+  const removeFromGroup = async (ids: string[]) => {
+    setSavingGroup(true);
+    try {
+      await window.workspace.library.setGroup(kind, ids, '');
+      setSelected([]);
+      setGroup('');
+      await load();
+    } finally {
+      setSavingGroup(false);
+    }
+  };
   const groups = [
     ...new Set(items.map((item) => item.group).filter((name): name is string => !!name)),
   ].sort((a, b) => a.localeCompare(b));
+  const openGrouping = (name = group ?? '', action: 'assign' | 'rename' = 'assign') => {
+    setSelected(
+      action === 'rename'
+        ? items.filter((item) => item.group === name).map((item) => item.id)
+        : selected,
+    );
+    setGroupName(name);
+    setGroupingAction(action);
+    setGrouping(true);
+  };
   const visible = items.filter(
     (item) =>
       (group === null || (item.group ?? '') === group) &&
@@ -91,7 +118,6 @@ export function Library({ kind }: { kind: LibraryKind }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
-  const [bulkDelete, setBulkDelete] = useState(false);
   const [testTool, setTestTool] = useState<LibraryItem | null>(null);
   const [editing, setEditing] = useState<LibraryItem | null>(null);
   const [remove, setRemove] = useState<LibraryItem | null>(null);
@@ -170,26 +196,31 @@ export function Library({ kind }: { kind: LibraryKind }) {
       </div>
       {grouped && !!items.length && (
         <nav className="library-groups" aria-label={`${titles[kind]} groups`}>
-          {[null, '', ...groups].map((name) => (
-            <button
-              key={name === null ? 'all' : `group:${name}`}
-              type="button"
-              aria-pressed={group === name}
-              onClick={() => {
-                setGroup(name);
-                setSelected([]);
-              }}
-            >
-              {name === null ? 'All' : name || 'Ungrouped'}
-              <span className="badge">
-                {items.filter((item) => name === null || (item.group ?? '') === name).length}
-              </span>
-            </button>
-          ))}
+          {[null, '', ...groups].map((name) => {
+            const label = name === null ? 'All' : name || 'Ungrouped';
+            const count = items.filter(
+              (item) => name === null || (item.group ?? '') === name,
+            ).length;
+            return (
+              <div className="library-group-tab" key={name === null ? 'all' : `group:${name}`}>
+                <button
+                  type="button"
+                  aria-pressed={group === name}
+                  onClick={() => {
+                    setGroup(name);
+                    setSelected([]);
+                  }}
+                >
+                  {label} <span className="badge">{count}</span>
+                </button>
+            
+              </div>
+            );
+          })}
         </nav>
       )}
       {grouped && !!items.length && (
-        <div className="section-toolbar">
+        <div className="section-toolbar library-selection-toolbar">
           <label className="check">
             <input
               type="checkbox"
@@ -202,24 +233,42 @@ export function Library({ kind }: { kind: LibraryKind }) {
           <span>
             {selected.length} {titles[kind]} selected
           </span>
-          <button
-            disabled={!selected.length}
-            onClick={() => {
-              setGroupName(group ?? '');
-              setGrouping(true);
-            }}
-          >
-            Group selected
-          </button>
-          {kind === 'agents' && (
-            <button
-              className="danger"
-              disabled={!selected.length}
-              onClick={() => setBulkDelete(true)}
-            >
-              Delete Selected
+          <div className="mcp-group-actions">
+            <button disabled={!selected.length} onClick={() => openGrouping()}>
+              Move to group
             </button>
-          )}
+            <button
+              disabled={
+                savingGroup ||
+                !selected.some((id) => items.some((item) => item.id === id && item.group))
+              }
+              onClick={() => void attempt(() => removeFromGroup(selected))}
+            >
+              Remove from group
+            </button>
+            {!!group && (
+              <button
+                className="edit"
+                aria-label={`Edit ${group} group`}
+                title={`Edit ${group} group`}
+                disabled={savingGroup}
+                onClick={() => openGrouping(group, 'rename')}
+              >
+                <Pencil size={14} />
+                  Edit Group
+              </button>
+            )}
+            {!!group && (
+              <button
+                className="danger"
+                disabled={savingGroup}
+                onClick={() => setGroupToDelete(group)}
+              >
+                <Trash2 size={14} />
+                Delete group
+              </button>
+            )}
+          </div>
         </div>
       )}
       {!items.length ? (
@@ -259,6 +308,28 @@ export function Library({ kind }: { kind: LibraryKind }) {
             const actions = (
               <div className="card-actions">
                 <button onClick={() => setEditing(item)}>Edit</button>
+                {kind === 'mcp' && (
+                  <div className="mcp-group-actions">
+                    <button
+                      disabled={savingGroup}
+                      onClick={() => {
+                        setSelected([item.id]);
+                        setGroupName(item.group ?? '');
+                        setGrouping(true);
+                      }}
+                    >
+                      Move to group
+                    </button>
+                    {!!item.group && (
+                      <button
+                        disabled={savingGroup}
+                        onClick={() => void attempt(() => removeFromGroup([item.id]))}
+                      >
+                        Remove from group
+                      </button>
+                    )}
+                  </div>
+                )}
                 {kind === 'tools' && <button onClick={() => setTestTool(item)}>Test / Run</button>}
                 {kind === 'agents' && (
                   <button className="primary" onClick={() => setRun(item)}>
@@ -348,7 +419,22 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 {kind === 'mcp' && (
                   <>
                     <p className="small muted">Auto start: {item.autoStart ? 'On' : 'Off'}</p>
-                    <CommandPreview command={[item.command, ...item.args].join(' ').trim()} />
+                    <CommandPreview
+                      command={
+                        item.connection?.type === 'streamable-http'
+                          ? item.connection.url
+                          : [
+                              item.connection?.type === 'stdio'
+                                ? item.connection.command
+                                : item.command,
+                              ...(item.connection?.type === 'stdio'
+                                ? (item.connection.args ?? [])
+                                : item.args),
+                            ]
+                              .join(' ')
+                              .trim()
+                      }
+                    />
                     <p className="small muted">
                       {Object.keys(item.env)
                         .map((k) => `${k} = ********`)
@@ -478,7 +564,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
       )}
       {grouping && (
         <Modal
-          title="Group selected items"
+          title={groupingAction === 'rename' ? 'Rename group' : 'Move selected items to group'}
           onClose={() => {
             if (!savingGroup) setGrouping(false);
           }}
@@ -505,21 +591,36 @@ export function Library({ kind }: { kind: LibraryKind }) {
             }}
           >
             <p>
-              Move {selected.length} selected items into a new or existing group. Leave the name
-              empty to ungroup them.
+              {groupingAction === 'rename'
+                ? `Rename this group for ${selected.length} items.`
+                : `Move ${selected.length} selected items to a group. Enter a new name to add a group.`}
             </p>
-            <GroupInput
-              value={groupName}
-              onChange={setGroupName}
-              groups={groups}
-              disabled={savingGroup}
-            />
+            {groupingAction === 'rename' ? (
+              <label>
+                Group
+                <input
+                  autoFocus
+                  required
+                  maxLength={100}
+                  value={groupName}
+                  onChange={(event) => setGroupName(event.target.value)}
+                  disabled={savingGroup}
+                />
+              </label>
+            ) : (
+              <GroupInput
+                value={groupName}
+                onChange={setGroupName}
+                groups={groups}
+                disabled={savingGroup}
+              />
+            )}
             <div className="actions">
               <button type="button" disabled={savingGroup} onClick={() => setGrouping(false)}>
                 Cancel
               </button>
               <button className="primary" disabled={savingGroup}>
-                {savingGroup ? 'Saving…' : 'Save group'}
+                {savingGroup ? 'Saving…' : groupingAction === 'rename' ? 'Rename group' : 'Move'}
               </button>
             </div>
           </form>
@@ -536,24 +637,20 @@ export function Library({ kind }: { kind: LibraryKind }) {
           }}
         />
       )}
-      {testTool && <TestTool tool={testTool} onClose={() => setTestTool(null)} />}
-      {bulkDelete && (
+      {groupToDelete && (
         <Confirm
-          title={`Delete ${selected.length} agents?`}
-          detail="This action cannot be undone."
-          onClose={() => setBulkDelete(false)}
+          title={`Delete ${groupToDelete} group?`}
+          detail="Items in this group will become ungrouped. Their definitions will not be deleted."
+          onClose={() => setGroupToDelete(null)}
           onConfirm={async () => {
-            try {
-              for (const id of selected) {
-                await window.workspace.library.remove('agents', id);
-                setSelected((ids) => ids.filter((value) => value !== id));
-              }
-            } finally {
-              await load();
-            }
+            const ids = items.filter((item) => item.group === groupToDelete).map((item) => item.id);
+            await window.workspace.library.setGroup(kind, ids, '');
+            if (group === groupToDelete) setGroup('');
+            await load();
           }}
         />
       )}
+      {testTool && <TestTool tool={testTool} onClose={() => setTestTool(null)} />}
       {run && <RunAgent agent={run} onClose={() => setRun(null)} />}
       {kind === 'agents' && <AgentRuns />}
     </div>
@@ -570,24 +667,43 @@ function GroupInput({
   groups: string[];
   disabled?: boolean;
 }) {
-  const id = useId();
+  const [addingNewGroup, setAddingNewGroup] = useState(false);
   return (
-    <label>
-      Group
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        list={id}
-        maxLength={100}
-        placeholder="e.g. Video Studio"
-        disabled={disabled}
-      />
-      <datalist id={id}>
-        {groups.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-    </label>
+    <>
+      <label>
+        Group
+        <select
+          value={addingNewGroup ? '__new_group__' : value}
+          disabled={disabled}
+          onChange={(event) => {
+            const next = event.target.value;
+            setAddingNewGroup(next === '__new_group__');
+            onChange(next === '__new_group__' ? '' : next);
+          }}
+        >
+          <option value="">Ungrouped</option>
+          {groups.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+          <option value="__new_group__">Add new group…</option>
+        </select>
+      </label>
+      {addingNewGroup && (
+        <label>
+          New group name
+          <input
+            autoFocus
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            maxLength={100}
+            placeholder="e.g. Video Studio"
+            disabled={disabled}
+          />
+        </label>
+      )}
+    </>
   );
 }
 function LibraryEditor({
@@ -611,8 +727,58 @@ function LibraryEditor({
     JSON.stringify(initial.toolConfig?.headers ?? {}, null, 2),
   );
   const { items: customTools } = useTools();
-  const [args, setArgs] = useState(initial.args.join('\n'));
-  const [env, setEnv] = useState(JSON.stringify(initial.env, null, 2));
+  const [args, setArgs] = useState(
+    (initial.connection?.type === 'stdio' ? (initial.connection.args ?? []) : initial.args).join(
+      '\n',
+    ),
+  );
+  const [mcpHeaders, setMcpHeaders] = useState(
+    JSON.stringify(
+      initial.connection?.type === 'streamable-http' ? (initial.connection.headers ?? {}) : {},
+      null,
+      2,
+    ),
+  );
+  const [mcpOptions, setMcpOptions] = useState(
+    JSON.stringify(
+      Object.fromEntries(
+        ['capabilities', 'permissions', 'metadata', 'runtime', 'discovered']
+          .filter((key) => initial[key as keyof LibraryItem] !== undefined)
+          .map((key) => [key, initial[key as keyof LibraryItem]]),
+      ),
+      null,
+      2,
+    ),
+  );
+  const [env, setEnv] = useState(
+    JSON.stringify(
+      initial.connection?.type === 'stdio' ? (initial.connection.env ?? {}) : initial.env,
+      null,
+      2,
+    ),
+  );
+  const [editorError, setEditorError] = useState('');
+  const errorSummary = useRef<HTMLDivElement>(null);
+  const editorAttempt = async (action: () => Promise<void>) => {
+    setEditorError('');
+    try {
+      await action();
+    } catch (error) {
+      const issues =
+        error && typeof error === 'object' && 'issues' in error ? error.issues : undefined;
+      setEditorError(
+        Array.isArray(issues)
+          ? issues
+              .map((issue) => `${issue.path.join('.') || 'Definition'}: ${issue.message}`)
+              .join('\n')
+          : errorMessage(error),
+      );
+      requestAnimationFrame(() => {
+        errorSummary.current?.focus();
+        errorSummary.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+    }
+  };
   const [editorMode, setEditorMode] = useState<'form' | LibraryDefinitionFormat>('form');
   const [definition, setDefinition] = useState('');
   const [busy, setBusy] = useState(false);
@@ -644,15 +810,53 @@ function LibraryEditor({
           },
         }
       : {}),
-    ...(kind === 'mcp' ? { args: args.split('\n').filter(Boolean), env: JSON.parse(env) } : {}),
+    ...(kind === 'mcp'
+      ? {
+          ...JSON.parse(mcpOptions),
+          transport: item.transport ?? 'stdio',
+          connection:
+            (item.transport ?? 'stdio') === 'stdio'
+              ? {
+                  type: 'stdio',
+                  command:
+                    item.connection?.type === 'stdio' ? item.connection.command : item.command,
+                  args: args.split('\n').filter(Boolean),
+                  cwd: item.connection?.type === 'stdio' ? item.connection.cwd : undefined,
+                  env: JSON.parse(env),
+                }
+              : {
+                  type: 'streamable-http',
+                  url: item.connection?.type === 'streamable-http' ? item.connection.url : '',
+                  headers: JSON.parse(mcpHeaders),
+                },
+        }
+      : {}),
   });
-  const formValue = () => librarySchema.parse(formDraft());
+  const formValue = () => {
+    const draft = formDraft();
+    return librarySchema.parse(kind === 'mcp' ? { ...draft, ...mcpConfigFromItem(draft) } : draft);
+  };
+  const definitionValue = (value: Partial<LibraryItem>) => {
+    if (kind !== 'skills') return value;
+    const { skills, capabilityConfig, ...rest } = value;
+    const config = capabilityConfig
+      ? (({ skills: selectedSkills, ...options }) => ({
+          ...options,
+          ...(selectedSkills.length ? { skills: selectedSkills } : {}),
+        }))(capabilityConfig)
+      : undefined;
+    return {
+      ...rest,
+      ...(skills?.length ? { skills } : {}),
+      ...(config ? { capabilityConfig: config } : {}),
+    };
+  };
   const setMode = (mode: 'form' | LibraryDefinitionFormat) => {
-    void attempt(async () => {
+    void editorAttempt(async () => {
       if (mode === editorMode) return;
       if (mode === 'form') {
         if (editorMode === 'form') return;
-        const imported = parseLibraryDefinition(definition, editorMode, kind);
+        const imported = parseLibraryDefinition(definition, editorMode, kind, { validate: false });
         const next = { ...item, ...imported, id: item.id, createdAt: item.createdAt };
         setItem(next);
         if (kind === 'tools') {
@@ -660,15 +864,49 @@ function LibraryEditor({
           setHeaders(JSON.stringify(next.toolConfig?.headers ?? {}, null, 2));
         }
         if (kind === 'mcp') {
-          setArgs(next.args.join('\n'));
-          setEnv(JSON.stringify(next.env, null, 2));
+          setArgs(
+            (next.connection?.type === 'stdio' ? (next.connection.args ?? []) : next.args).join(
+              '\n',
+            ),
+          );
+          setEnv(
+            JSON.stringify(
+              next.connection?.type === 'stdio' ? (next.connection.env ?? {}) : next.env,
+              null,
+              2,
+            ),
+          );
+          setMcpHeaders(
+            JSON.stringify(
+              next.connection?.type === 'streamable-http' ? (next.connection.headers ?? {}) : {},
+              null,
+              2,
+            ),
+          );
+          setMcpOptions(
+            JSON.stringify(
+              Object.fromEntries(
+                ['capabilities', 'permissions', 'metadata', 'runtime', 'discovered']
+                  .filter((key) => next[key as keyof LibraryItem] !== undefined)
+                  .map((key) => [key, next[key as keyof LibraryItem]]),
+              ),
+              null,
+              2,
+            ),
+          );
         }
       } else {
         const value =
           editorMode === 'form'
             ? formDraft()
-            : parseLibraryDefinition(definition, editorMode, kind);
-        setDefinition(stringifyLibraryDefinition({ ...item, ...value }, mode));
+            : parseLibraryDefinition(definition, editorMode, kind, { validate: false });
+        const formattedValue =
+          editorMode !== 'form'
+            ? value
+            : kind === 'mcp'
+              ? mcpDefinitionFromItem({ ...item, ...value })
+              : { ...item, ...value };
+        setDefinition(stringifyLibraryDefinition(definitionValue(formattedValue), mode));
       }
       setEditorMode(mode);
     });
@@ -680,10 +918,16 @@ function LibraryEditor({
       onClose={onClose}
     >
       <form
+        onInvalidCapture={() => {
+          setEditorError('Complete the required fields before saving.');
+          requestAnimationFrame(() =>
+            errorSummary.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
+          );
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           setBusy(true);
-          void attempt(async () => {
+          void editorAttempt(async () => {
             try {
               const value =
                 editorMode === 'form'
@@ -701,6 +945,17 @@ function LibraryEditor({
           });
         }}
       >
+        {editorError && (
+          <div
+            ref={errorSummary}
+            className="callout error-text"
+            role="alert"
+            tabIndex={-1}
+            style={{ whiteSpace: 'pre-wrap' }}
+          >
+            {editorError}
+          </div>
+        )}
         {kind !== 'saved-text' && (
           <nav className="actions settings-tabs" role="group" aria-label="Definition format">
             {(['form', 'md', 'json', 'yaml'] as const).map((mode) => (
@@ -724,6 +979,30 @@ function LibraryEditor({
               rows={20}
               value={definition}
               onChange={(e) => setDefinition(e.target.value)}
+              placeholder={
+                kind === 'mcp'
+                  ? stringifyLibraryDefinition(
+                      {
+                        id: 'filesystem',
+                        name: 'Filesystem',
+                        enabled: true,
+                        transport: 'stdio',
+                        connection: {
+                          type: 'stdio',
+                          command: 'npx',
+                          args: [
+                            '-y',
+                            '@modelcontextprotocol/server-filesystem',
+                            '/path/to/project',
+                          ],
+                          env: {},
+                        },
+                        runtime: { autoConnect: false, timeoutMs: 60000 },
+                      },
+                      editorMode,
+                    )
+                  : undefined
+              }
               spellCheck={false}
             />
           </label>
@@ -739,18 +1018,16 @@ function LibraryEditor({
                 onChange={(e) => update('name', e.target.value)}
               />
             </label>
-            {kind !== 'saved-text' && (
-              <GroupInput
-                value={item.group ?? ''}
-                onChange={(value) => update('group', value)}
-                groups={groups}
-              />
-            )}
+            <GroupInput
+              value={item.group ?? ''}
+              onChange={(value) => update('group', value)}
+              groups={groups}
+            />
             {kind !== 'saved-text' && (
               <label>
-                {kind === 'mcp' ? 'Description (required)' : 'Description'}
+                Description
                 <input
-                  required={kind === 'mcp'}
+                  required={false}
                   maxLength={2000}
                   value={item.description}
                   onChange={(e) => update('description', e.target.value)}
@@ -801,6 +1078,28 @@ function LibraryEditor({
                   }))}
                 />
               </>
+            )}
+            {kind === 'skills' && (
+              <CapabilitySettings
+                item={item}
+                title="Skill Capabilities"
+                onChange={(config) =>
+                  setItem((current) => ({
+                    ...current,
+                    capabilityConfig: config,
+                    skills: config.skills,
+                    tools: config.tools,
+                    knowledgeSources: config.knowledgeBases,
+                  }))
+                }
+                skills={skills.filter((skill) => skill.id !== item.id)}
+                servers={servers}
+                knowledge={sources}
+                tools={[...new Set(tools)].map((id) => ({
+                  id,
+                  name: customTools.find((tool) => id === `custom:${tool.id}`)?.name ?? id,
+                }))}
+              />
             )}
             {kind === 'tools' && (
               <>
@@ -876,45 +1175,119 @@ function LibraryEditor({
             )}
             {kind === 'mcp' ? (
               <>
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={item.autoStart}
-                    onChange={(e) => update('autoStart', e.target.checked)}
-                  />
-                  Start automatically when application starts
-                </label>
-                <div className="callout mcp-config-heading">
-                  <span>
-                    Starting a server executes this program on your machine. Add only servers you
-                    trust.
-                  </span>
-                </div>
                 <label>
-                  Executable (optional)
-                  <input
-                    placeholder="npx"
-                    value={item.command}
-                    onChange={(e) => update('command', e.target.value)}
-                  />
+                  Transport
+                  <select
+                    value={item.transport ?? 'stdio'}
+                    onChange={(e) => {
+                      const transport = e.target.value as 'stdio' | 'streamable-http';
+                      setItem((i) => ({
+                        ...i,
+                        transport,
+                        connection:
+                          transport === 'stdio'
+                            ? { type: 'stdio', command: i.command }
+                            : { type: 'streamable-http', url: '' },
+                      }));
+                    }}
+                  >
+                    <option value="stdio">stdio</option>
+                    <option value="streamable-http">Streamable HTTP</option>
+                  </select>
                 </label>
+                {(item.transport ?? 'stdio') === 'stdio' ? (
+                  <>
+                    <label>
+                      Executable (needed to start)
+                      <input
+                        required
+                        placeholder="npx"
+                        value={
+                          item.connection?.type === 'stdio' ? item.connection.command : item.command
+                        }
+                        onChange={(e) =>
+                          update('connection', {
+                            ...(item.connection?.type === 'stdio' ? item.connection : {}),
+                            type: 'stdio',
+                            command: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Working directory (optional)
+                      <input
+                        placeholder="/path/to/project"
+                        value={item.connection?.type === 'stdio' ? (item.connection.cwd ?? '') : ''}
+                        onChange={(e) =>
+                          update('connection', {
+                            ...(item.connection?.type === 'stdio'
+                              ? item.connection
+                              : { command: item.command }),
+                            type: 'stdio',
+                            cwd: e.target.value || undefined,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Arguments · one per line
+                      <textarea
+                        rows={4}
+                        value={args}
+                        placeholder={
+                          '-y\n@modelcontextprotocol/server-filesystem\n/path/to/project'
+                        }
+                        onChange={(e) => setArgs(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Environment variables · JSON
+                      <textarea rows={4} value={env} onChange={(e) => setEnv(e.target.value)} />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      Server URL (required)
+                      <input
+                        required
+                        type="url"
+                        placeholder="https://example.com/mcp"
+                        value={
+                          item.connection?.type === 'streamable-http' ? item.connection.url : ''
+                        }
+                        onChange={(e) =>
+                          update('connection', { type: 'streamable-http', url: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Headers · JSON
+                      <textarea
+                        rows={4}
+                        placeholder={'{"Authorization":"Bearer ${API_TOKEN}"}'}
+                        value={mcpHeaders}
+                        onChange={(e) => setMcpHeaders(e.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
                 <label>
-                  Arguments · one per line
+                  Optional settings · JSON
                   <textarea
-                    rows={4}
-                    value={args}
-                    placeholder={'-y\n@modelcontextprotocol/server-filesystem\n/path/to/project'}
-                    onChange={(e) => setArgs(e.target.value)}
+                    rows={8}
+                    value={mcpOptions}
+                    placeholder={
+                      '{"capabilities":{"tools":true},"permissions":{"allowRead":true},"metadata":{"tags":[]},"runtime":{"autoConnect":false,"timeoutMs":60000}}'
+                    }
+                    onChange={(e) => setMcpOptions(e.target.value)}
                   />
-                </label>
-                <label>
-                  Environment variables · JSON
-                  <textarea rows={4} value={env} onChange={(e) => setEnv(e.target.value)} />
                 </label>
                 <p className="small muted">
-                  A command is needed to start a server, but you can save it without one. JSON and
-                  YAML can contain a single server object or an mcpServers object containing one
-                  server. Name and description above are used for the saved definition.
+                  Configure capabilities, permissions, metadata, runtime, and discovered entries
+                  above. JSON, YAML, and Markdown with YAML frontmatter are validated and saved as
+                  JSON.
                 </p>
                 <p className="small muted">
                   Use literal values or references, for example{' '}

@@ -175,6 +175,10 @@ it('applies a skill to only its requested turn and persists command metadata', a
 
 it('runs a selected skill with its tools, MCP and KB configuration', async () => {
   await setupMCP();
+  await library.save(
+    'skills',
+    librarySchema.parse({ id: 'citation', name: 'Citations', content: 'Cite sources.' }),
+  );
   const connected = mcp.states();
   vi.mocked(mcp.states).mockReturnValue([{ ...connected[0], status: 'stopped', tools: [] }]);
   const start = vi.spyOn(mcp, 'start').mockImplementation(async () => {
@@ -188,6 +192,7 @@ it('runs a selected skill with its tools, MCP and KB configuration', async () =>
       content: 'Compare real source results.',
       capabilityConfig: {
         mode: 'selected',
+        skills: ['citation'],
         tools: ['custom:lookup'],
         mcpServers: ['server'],
         knowledgeBases: ['all'],
@@ -204,6 +209,7 @@ it('runs a selected skill with its tools, MCP and KB configuration', async () =>
   const effective = run.mock.calls[0][0];
   expect(effective.content).toContain('Compare real source results.');
   expect(effective.capabilityConfig).toMatchObject({
+    skills: ['citation'],
     tools: ['custom:lookup'],
     mcpServers: ['server'],
     knowledgeBases: ['all'],

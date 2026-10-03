@@ -154,7 +154,10 @@ p {
 .error-text {
   color: var(--danger);
 }
-
+.edit {
+  /* background: var(--accent);
+  color: #1d4ed8; */
+}
 .error-text {
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -899,6 +902,17 @@ p {
   gap: 15px;
 }
 
+/* .library-selection-toolbar {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+} */
+
+.mcp-group-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 7px;
+}
+
 .section-toolbar .search-input {
   width: 320px;
 }
@@ -960,6 +974,17 @@ p {
 .library-groups button {
   max-inline-size: 100%;
   overflow-wrap: anywhere;
+}
+
+.library-group-tab {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.library-group-tab > .icon {
+  min-width: 28px;
+  padding: 6px;
 }
 
 .library-groups button[aria-pressed='true'] {
@@ -2317,3 +2342,4 @@ legend {
 .chat-modes input {
   accent-color: var(--accent);
 }
+

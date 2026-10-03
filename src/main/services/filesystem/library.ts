@@ -1,3 +1,4 @@
+import { mcpConfigFromItem } from '../../../shared/mcp-schema';
 import { capabilityConfig } from '../../../shared/capabilities';
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -34,7 +35,12 @@ export class LibraryService {
     return items.sort((a, b) => b.updatedAt - a.updatedAt);
   }
   parse(kind: LibraryKind, raw: string, id: string = randomUUID()): LibraryItem {
-    if (kind === 'mcp') return librarySchema.parse({ ...JSON.parse(raw), id });
+    if (kind === 'mcp') {
+      const value = { ...JSON.parse(raw), id };
+      return librarySchema.parse(
+        value.connection ? { ...value, ...mcpConfigFromItem(value) } : value,
+      );
+    }
     if (!/^---\r?\n/.test(raw))
       throw new Error('Markdown definitions require YAML frontmatter (--- on its own line)');
     const parsed = matter(raw);
@@ -47,8 +53,16 @@ export class LibraryService {
   }
   serialize(kind: LibraryKind, item: LibraryItem) {
     if (kind === 'mcp') {
-      const { content: _content, ...config } = item;
-      return JSON.stringify(config, null, 2);
+      return JSON.stringify(
+        {
+          ...mcpConfigFromItem({ ...item }),
+          group: item.group,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        },
+        null,
+        2,
+      );
     }
     const { content, ...meta } = item;
     const metadata = Object.fromEntries(
@@ -72,10 +86,10 @@ export class LibraryService {
       } else if (!item.content.trim())
         throw new Error('Add JavaScript logic before saving this Tool');
     }
-    if (kind === 'mcp' && !item.description.trim()) throw new Error('MCP description is required');
+    if (kind === 'mcp') Object.assign(item, mcpConfigFromItem({ ...item }));
     await atomicWrite(this.path(kind, item.id), this.serialize(kind, item));
     if (kind === 'saved-text') await this.onSavedTextChange?.();
-    return item;
+    return kind === 'mcp' ? this.parse(kind, this.serialize(kind, item), item.id) : item;
   }
   async assertRemovable(kind: LibraryKind, id: string) {
     if (kind !== 'skills' && kind !== 'mcp' && kind !== 'tools') return;
@@ -89,9 +103,17 @@ export class LibraryService {
             )) ||
         (kind === 'mcp' && capabilityConfig(a).mcpServers.includes(id)),
     );
-    if (agents.length)
+    const dependentSkills =
+      kind === 'skills'
+        ? (await this.list('skills')).filter(
+            (skill) =>
+              skill.id !== id && [...skill.skills, ...capabilityConfig(skill).skills].includes(id),
+          )
+        : [];
+    const dependents = [...agents, ...dependentSkills];
+    if (dependents.length)
       throw new Error(
-        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${agents.map((a) => a.name).join(', ')}. Remove it from these Agents before deleting it.`,
+        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${dependents.map((item) => item.name).join(', ')}. Remove it from these definitions before deleting it.`,
       );
   }
   async setGroup(kind: LibraryKind, ids: string[], group: string) {
