@@ -40,6 +40,37 @@ preserve approval ordering and file hash checks. Error/rejection results feed ba
 model; a rejected change never writes a file. The iteration limit counts agent model
 turns, not individual tools, graph nodes, relevance evaluations or memory extraction.
 
+## Official MCP adapter
+
+MCP connections and tool discovery now use `MCPAdapter` from
+`@langchain/mcp-adapters` 2.x in `src/main/services/mcp/mcp.ts`.
+Each independently managed saved server has an adapter. `listTools` discovers
+executable LangChain tools, and `MCPService.call` invokes those tools rather than
+calling the SDK's `callTool` directly. The same path supports standard agents,
+Deep Agents, workflows, and Chat's all-server or selected-server MCP mode.
+Application capability tools remain around adapter invocation to enforce selection,
+relevance, permissions, sequential approvals, redaction and bounded run history.
+The adapter converts MCP results; the app serializes redacted content/artifacts
+for its existing text-oriented tool history and model context.
+
+```mermaid
+flowchart LR
+    Start[MCP menu Start] --> Adapter[MCPAdapter per saved server]
+    Adapter --> Discover[listTools: executable LangChain tools]
+    Discover --> Catalog[Selected capability catalog]
+    Catalog --> Agent[LangChain createAgent / createDeepAgent]
+    Agent --> Guard[Capability tool: relevance and approval]
+    Guard --> Invoke[MCPService.call: adapter tool.invoke]
+    Invoke --> Server[MCP server]
+    Server --> Convert[Adapter result conversion]
+    Convert --> Redact[Redaction and bounded history]
+    Redact --> Agent
+```
+
+See [Chat MCP routing](CHAT.md#mcp-checkbox-automatic-or-selected-server) for scope
+selection and code references. Real stdio integration tests cover discovery,
+execution, errors, redaction, cancellation, ping, restart and stop.
+
 ## Application logic that remains
 
 LangChain does not replace Electron IPC, OS credential storage, user-selected folders,
@@ -89,3 +120,8 @@ were not validated in this run.
 - [Built-in middleware](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in)
 - [ChatOllama](https://docs.langchain.com/oss/javascript/integrations/chat/ollama)
 - [Deep Agents customization](https://docs.langchain.com/oss/javascript/deepagents/customization)
+
+- [Official LangChain MCP adapter](https://github.com/langchain-ai/langchainjs/tree/main/libs/langchain-mcp-adapters)
+
+Agent KB context is now retrieved before the first model request in both engines.
+See [Deep Agents tools and upfront KB graph](AGENTS.md#deep-agents-skills-tools-mcp-and-upfront-kb-context).

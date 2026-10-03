@@ -134,6 +134,10 @@ export class ChatService {
             .slice(-16000),
         );
       }
+      if (!prepared && input.modes?.includes('mcp')) {
+        if (!this.commands) throw new Error('Chat commands are unavailable');
+        prepared = await this.commands.prepareAllMCP(input.model, input.knowledge, selected);
+      }
       controller.signal.throwIfAborted();
     } catch (e) {
       this.active.delete(input.id);

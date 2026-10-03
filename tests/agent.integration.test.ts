@@ -1,4 +1,6 @@
-import { it, expect } from 'vitest';
+import { it, expect, vi } from 'vitest';
+import { DeepAgentEngine } from '../src/main/services/ai/deep-agents';
+import { useProviderBridge } from './fixtures/scripted-provider';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,3 +65,134 @@ it('a real model reads, proposes a diff, waits for approval, writes and verifies
     await rm(root, { recursive: true, force: true });
   }
 }, 160000);
+
+it.each([false, true])(
+  'attaches permitted RAG before generation and exposes allowed tools (deep=%s)',
+  async (deep) => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-rag-'));
+    for (const dir of ['agents', 'skills', 'tools', 'mcp']) await mkdir(join(root, dir));
+    const settings = () => settingsSchema.parse({ deepAgentMode: deep ? 'deep' : 'classic' });
+    const library = new LibraryService(root);
+    await library.save(
+      'skills',
+      librarySchema.parse({ id: 'review', name: 'Review', content: 'Review carefully.' }),
+    );
+    await library.save(
+      'tools',
+      librarySchema.parse({
+        id: 'lookup',
+        name: 'Lookup',
+        content: 'return 1;',
+        toolConfig: { type: 'javascript', parameters: [] },
+      }),
+    );
+    await library.save(
+      'mcp',
+      librarySchema.parse({ id: 'server', name: 'Server', description: 'Search server' }),
+    );
+    const llm = new OllamaLLMProvider(settings);
+    useProviderBridge(llm);
+    const kb = new KnowledgeService(
+      root,
+      settings,
+      { embed: async () => [], embedBatch: async () => [] },
+      () => {},
+    );
+    vi.spyOn(kb, 'list').mockReturnValue([]);
+    const search = vi.spyOn(kb, 'search').mockResolvedValue([
+      {
+        id: 'chunk',
+        sourceId: 'docs',
+        name: 'Handbook',
+        content: 'UPFRONT RAG FACT',
+        score: 1,
+        location: '',
+      },
+    ]);
+    const complete = vi.spyOn(llm, 'complete').mockImplementation(async (request) => {
+      expect(search).toHaveBeenCalled();
+      expect(request.messages[0].content).toContain('UPFRONT RAG FACT');
+      const names = JSON.stringify(request.tools ?? []);
+      expect(names).toContain('custom_lookup');
+      expect(names).toContain('mcp_server_echo');
+      expect(names).toContain('skill_review');
+      return { role: 'assistant', content: 'Answer from Handbook.' };
+    });
+    const mcp = new MCPService(library, { resolve: () => '', redact: (text) => text }, () => {});
+    vi.spyOn(mcp, 'states').mockReturnValue([
+      {
+        id: 'server',
+        status: 'connected',
+        tools: [{ name: 'echo', inputSchema: { type: 'object' } }],
+        logs: [],
+      },
+    ]);
+    const service = new AgentService(
+      library,
+      llm,
+      kb,
+      mcp,
+      settings,
+      () => {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new DeepAgentEngine(),
+    );
+    const agent = librarySchema.parse({
+      id: 'test',
+      name: 'Test',
+      model: 'test',
+      skills: ['review'],
+      tools: ['custom:lookup', 'mcp:server:echo'],
+      knowledgeSources: ['all'],
+    });
+    try {
+      expect(
+        await service.runInChat(
+          agent,
+          'Explain the handbook',
+          '',
+          new AbortController().signal,
+          () => {},
+        ),
+      ).toBe('Answer from Handbook.');
+      expect(search).toHaveBeenCalledExactlyOnceWith('Explain the handbook', 'semantic', 'all');
+      expect(complete).toHaveBeenCalledOnce();
+      search.mockClear();
+      complete.mockImplementation(async (request) => {
+        expect(search).not.toHaveBeenCalled();
+        expect(request.messages[0].content).not.toContain('UPFRONT RAG FACT');
+        return { role: 'assistant', content: 'Direct answer.' };
+      });
+      await service.runInChat(
+        {
+          ...agent,
+          capabilityConfig: {
+            mode: 'none',
+            skills: [],
+            tools: [],
+            mcpServers: [],
+            knowledgeBases: ['all'],
+            allowSkills: true,
+            allowMCP: true,
+            allowTools: true,
+            allowKnowledgeBase: true,
+            permissions: {},
+            trace: false,
+          },
+        },
+        'Explain the handbook',
+        '',
+        new AbortController().signal,
+        () => {},
+      );
+    } finally {
+      await service.stopAll();
+      vi.restoreAllMocks();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

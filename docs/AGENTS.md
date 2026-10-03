@@ -81,7 +81,8 @@ Inspect relevant files, explain findings, and state which checks you ran.
 ```
 
 The model name is illustrative; choose an installed model. The runtime considers eligible
-capabilities and loads skills or retrieves knowledge only after a relevance decision. It sends
+capabilities and loads skills after a relevance decision. Eligible KB passages are retrieved
+before the first model request; follow-up KB tools use relevance checks. It sends
 a bounded history to the selected provider adapter. LangChain `createAgent` manages native tool calls and final answers. A model turn can
 request multiple tools, which the application executes in order. Only capabilities permitted by the agent's mode, type switches, selection and permissions can execute. Tools
 return their real output; errors are fed back so the model can recover. A maximum iteration
@@ -210,3 +211,59 @@ In Chat, select `/workflow ` and a saved workflow, or type `/workflow <workflow-
 by an optional task. Names containing spaces work, including quoted names. Optional folder controls
 are available before sending. Chat displays workflow and child progress, supports concurrent
 approvals, and returns the final agents' results. Stop generation cancels the whole workflow.
+
+## Deep Agents: skills, tools, MCP and upfront KB context
+
+Deep Agents receives the same permitted LangChain capability tools as the standard
+engine. Enable Tools, MCP, Skills and Knowledge Base in the agent's capability
+configuration, then select the capabilities (or use Auto). None mode exposes none.
+Built-in filesystem/project/shell tools also require a selected folder. Custom
+Tools and MCP calls retain their approval rules. A skill adds instructions; it
+cannot enable capabilities excluded by the agent's configuration.
+
+Before the first agent generation request, the service fetches semantic RAG passages
+for every eligible KB scope and attaches them to the system context. Source names
+are included for citations. Empty results are explicitly reported, and retrieval
+failures stop the run rather than inventing KB context. The combined KB attachment
+is redacted and bounded to 30,000 characters; the model context budget still applies.
+KB tools remain available for follow-up searches. Both standard and Deep engines
+use this preparation. Plain Chat with no selected modes remains model-only.
+
+```mermaid
+flowchart TD
+    Start[Agent task and capability configuration] --> Eligible[Filter allowed skills, Tools, MCP and KB]
+    Eligible --> RAG[Semantic RAG retrieval for eligible KB scopes]
+    RAG --> Attach[Attach source-named passages before generation]
+    Attach --> Engine{Agent engine}
+    Engine -->|Deep| Deep[createDeepAgent with permitted capability tools]
+    Engine -->|Standard| Standard[LangChain createAgent with same tools]
+    Deep --> Choose[Model chooses a permitted capability]
+    Standard --> Choose
+    Choose --> Guard[Relevance and permission checks]
+    Guard --> Skill[Skill loader returns SKILL.md instructions]
+    Guard --> Tool[Built-in or custom Tool with existing approvals]
+    Guard --> MCP[MCPAdapter tool invocation with existing approvals]
+    Guard --> KB[Additional RAG search if needed]
+    Skill --> Result[Return real results to model]
+    Tool --> Result
+    MCP --> Result
+    KB --> Result
+    Result --> Answer[Final answer and persisted run history]
+```
+
+| Responsibility                                             | Code reference                                                           |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Skill files                                                | `<userData>/skills/<skill-id>/SKILL.md`                                  |
+| Capability selections and type switches                    | `src/shared/capabilities.ts`, `src/main/services/agents/capabilities.ts` |
+| Skills, tools, MCP registration and upfront RAG attachment | `src/main/services/agents/agents.ts`, `AgentService.loop`                |
+| Deep engine receives allowed tools                         | `src/main/services/ai/deep-agents.ts`, `DeepAgentEngine.create`          |
+| LangChain orchestration and tool filtering                 | `src/main/services/ai/agent-graph.ts`, `AgentLoopGraph.run`              |
+| Ordered execution, approvals and history                   | `src/main/services/ai/capability-tools.ts`                               |
+| MCP adapter                                                | `src/main/services/mcp/mcp.ts`                                           |
+| RAG retrieval                                              | `src/main/services/rag/knowledge.ts`, `KnowledgeService.search`          |
+| Standard/Deep upfront-RAG and allowed-tool regression      | `tests/agent.integration.test.ts`                                        |
+
+Skills are currently application capability tools reading the stored SKILL.md,
+not Deep Agents' native filesystem skills loader. The harness's additional default
+filesystem and delegation tools remain filtered; authorized workspace operations
+use the supplied application tools.

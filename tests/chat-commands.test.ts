@@ -14,6 +14,7 @@ import { MCPService } from '../src/main/services/mcp/mcp';
 import { KnowledgeService } from '../src/main/services/rag/knowledge';
 import { OllamaLLMProvider, type ChatRequest } from '../src/main/services/ollama/provider';
 import type { AppEvent } from '../src/shared/types';
+import type { MemoryService } from '../src/main/services/ai/memory';
 
 let root: string,
   db: ChatDatabase,
@@ -172,7 +173,51 @@ it('applies a skill to only its requested turn and persists command metadata', a
   expect(requests[1].messages[0].content).not.toContain('Use exactly three bullets.');
 });
 
-it('rejects disabled definitions and stopped MCP servers before saving a message', async () => {
+it('runs a selected skill with its tools, MCP and KB configuration', async () => {
+  await setupMCP();
+  const connected = mcp.states();
+  vi.mocked(mcp.states).mockReturnValue([{ ...connected[0], status: 'stopped', tools: [] }]);
+  const start = vi.spyOn(mcp, 'start').mockImplementation(async () => {
+    vi.mocked(mcp.states).mockReturnValue(connected);
+  });
+  await library.save(
+    'skills',
+    librarySchema.parse({
+      id: 'research',
+      name: 'Research',
+      content: 'Compare real source results.',
+      capabilityConfig: {
+        mode: 'selected',
+        tools: ['custom:lookup'],
+        mcpServers: ['server'],
+        knowledgeBases: ['all'],
+        permissions: { 'custom:lookup': 'ask' },
+      },
+    }),
+  );
+  const run = vi.spyOn(agents, 'runInChat').mockResolvedValue('Skill result from KB and tools.');
+  const request = input();
+  await chat.send({ ...request, modes: ['skills'], command: { kind: 'skills', id: 'research' } });
+  await settle(request.id);
+  expect(start).toHaveBeenCalledExactlyOnceWith('server');
+  expect(run).toHaveBeenCalledOnce();
+  const effective = run.mock.calls[0][0];
+  expect(effective.content).toContain('Compare real source results.');
+  expect(effective.capabilityConfig).toMatchObject({
+    tools: ['custom:lookup'],
+    mcpServers: ['server'],
+    knowledgeBases: ['all'],
+    permissions: { 'custom:lookup': 'ask' },
+  });
+  expect(effective.model).toBe(request.model);
+  expect(db.messages(request.id).at(-1)?.content).toBe('Skill result from KB and tools.');
+  expect(db.messages(request.id).at(-1)?.metadata?.command?.kind).toBe('skills');
+  await chat.send({ ...request, text: 'Normal follow-up', modes: [] });
+  await settle(request.id);
+  expect(run).toHaveBeenCalledOnce();
+});
+
+it('rejects disabled definitions and MCP startup failures before saving a message', async () => {
   await library.save(
     'skills',
     librarySchema.parse({ id: 'off', name: 'Disabled', enabled: false }),
@@ -186,8 +231,87 @@ it('rejects disabled definitions and stopped MCP servers before saving a message
     'Enable',
   );
   await expect(chat.send({ ...request, command: { kind: 'mcp', id: 'server' } })).rejects.toThrow(
-    'Start',
+    'executable command',
   );
+  expect(db.messages(request.id)).toEqual([]);
+  expect(chat.isActive(request.id)).toBe(false);
+});
+
+it('starts a selected stopped MCP server before running its tools', async () => {
+  await setupMCP();
+  const connected = mcp.states();
+  vi.mocked(mcp.states).mockReturnValue([{ ...connected[0], status: 'stopped', tools: [] }]);
+  const start = vi.spyOn(mcp, 'start').mockImplementation(async (id) => {
+    expect(id).toBe('server');
+    vi.mocked(mcp.states).mockReturnValue(connected);
+  });
+  const run = vi.spyOn(agents, 'runInChat').mockResolvedValue('MCP answer');
+  const request = input();
+  await chat.send({ ...request, modes: ['mcp'], command: { kind: 'mcp', id: 'server' } });
+  await settle(request.id);
+  expect(start).toHaveBeenCalledExactlyOnceWith('server');
+  expect(run.mock.calls[0][0].tools).toEqual(['mcp:server:echo']);
+  expect(db.messages(request.id).at(-1)?.content).toBe('MCP answer');
+});
+
+it('routes an unselected MCP checkbox across connected enabled servers and preserves approvals', async () => {
+  const call = await setupMCP();
+  for (const id of ['second', 'disabled', 'stopped', 'empty'])
+    await library.save(
+      'mcp',
+      librarySchema.parse({
+        id,
+        name: id,
+        description: 'Search test information',
+        enabled: id !== 'disabled',
+      }),
+    );
+  const original = mcp.states();
+  vi.mocked(mcp.states).mockReturnValue([
+    ...original,
+    ...(['second', 'disabled', 'stopped', 'empty'] as const).map((id) => ({
+      id,
+      status: id === 'stopped' ? ('stopped' as const) : ('connected' as const),
+      tools: id === 'empty' ? [] : [{ name: 'search', inputSchema: { type: 'object' } }],
+      logs: [],
+    })),
+  ]);
+  const prepare = vi.spyOn(commands, 'prepareAllMCP');
+  const run = vi.spyOn(agents, 'runInChat');
+  const complete = vi
+    .spyOn(llm, 'complete')
+    .mockResolvedValueOnce(toolReply('mcp:second:search', { query: 'hello' }))
+    .mockResolvedValueOnce({ role: 'assistant', content: 'Answer from MCP results.' });
+  const request = input();
+  await chat.send({ ...request, modes: ['mcp'] });
+  await expect.poll(() => events.some((event) => event.activity?.approval)).toBe(true);
+  expect(call).not.toHaveBeenCalled();
+  expect(prepare).toHaveBeenCalledOnce();
+  expect(run.mock.calls[0][0].tools).toEqual(
+    expect.arrayContaining(['mcp:server:echo', 'mcp:second:search']),
+  );
+  expect(run.mock.calls[0][0].tools).toHaveLength(2);
+  expect(run.mock.calls[0][0].skills).toEqual([]);
+  expect(run.mock.calls[0][2]).toBe('');
+  agents.approve(events.find((event) => event.activity?.approval)!.activity!.approval!.id, true);
+  await settle(request.id);
+  expect(call).toHaveBeenCalledExactlyOnceWith(
+    'second',
+    'search',
+    { query: 'hello' },
+    expect.any(AbortSignal),
+  );
+  expect(
+    complete.mock.calls
+      .at(-1)![0]
+      .messages.some((message) => message.content.includes('actual tool result')),
+  ).toBe(true);
+  expect(db.messages(request.id).at(-1)?.content).toBe('Answer from MCP results.');
+});
+
+it('rejects unselected MCP mode without a connected server before saving messages', async () => {
+  const request = input();
+  await expect(chat.send({ ...request, modes: ['mcp'] })).rejects.toThrow('No enabled MCP servers');
   expect(db.messages(request.id)).toEqual([]);
   expect(chat.isActive(request.id)).toBe(false);
 });
@@ -203,7 +327,9 @@ it('restricts MCP calls to the chosen server and waits for approval before execu
       content: 'Used the tool result.',
     });
   const request = input();
-  await chat.send({ ...request, command: { kind: 'mcp', id: 'server' } });
+  const all = vi.spyOn(commands, 'prepareAllMCP');
+  await chat.send({ ...request, modes: ['mcp'], command: { kind: 'mcp', id: 'server' } });
+  expect(all).not.toHaveBeenCalled();
   await expect.poll(() => events.some((e) => e.activity?.approval)).toBe(true);
   expect(call).not.toHaveBeenCalled();
   const approval = events.find((e) => e.activity?.approval)!.activity!.approval!;
@@ -540,6 +666,18 @@ it('restores linked folders for selected agents and rejects missing direct works
 it('uses only the model when every chat mode is unchecked, even with a workspace and KB scope', async () => {
   const search = vi.fn().mockResolvedValue([]);
   const coding = vi.spyOn(commands, 'prepareCoding');
+  const prepare = vi.spyOn(commands, 'prepare');
+  const runAgent = vi.spyOn(agents, 'runInChat');
+  const memory = {
+    retrieve: vi.fn().mockReturnValue([]),
+    formatForPrompt: vi.fn().mockReturnValue('MEMORY CONTEXT'),
+    maybeCapture: vi.fn().mockResolvedValue(undefined),
+  };
+  const requests: ChatRequest[] = [];
+  vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
+    requests.push(request);
+    yield { message: { content: 'Direct model answer' } };
+  });
   chat = new ChatService(
     db,
     llm,
@@ -547,6 +685,10 @@ it('uses only the model when every chat mode is unchecked, even with a workspace
     search,
     () => 8192,
     commands,
+    undefined,
+    undefined,
+    undefined,
+    memory as unknown as MemoryService,
   );
   const request = input();
   db.connectCodeWorkspace(request.id, join(root, 'project'));
@@ -554,7 +696,24 @@ it('uses only the model when every chat mode is unchecked, even with a workspace
   await settle(request.id);
   expect(search).not.toHaveBeenCalled();
   expect(coding).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+  expect(runAgent).not.toHaveBeenCalled();
+  expect(memory.retrieve).not.toHaveBeenCalled();
+  expect(memory.formatForPrompt).not.toHaveBeenCalled();
+  expect(memory.maybeCapture).not.toHaveBeenCalled();
+  expect(requests).toHaveLength(1);
+  expect(requests[0].messages).toEqual([{ role: 'user', content: request.text }]);
+  expect(requests[0].tools ?? []).toEqual([]);
+  expect(db.messages(request.id).at(-1)?.content).toBe('Direct model answer');
   expect(db.messages(request.id).at(-1)?.metadata?.command).toBeUndefined();
+  // The direct path retains ordinary conversation history for subsequent turns.
+  await chat.send({ ...request, text: 'Follow up', modes: [] });
+  await settle(request.id);
+  expect(requests[1].messages).toEqual([
+    { role: 'user', content: request.text },
+    { role: 'assistant', content: 'Direct model answer', tool_calls: [] },
+    { role: 'user', content: 'Follow up' },
+  ]);
 });
 
 it('rejects commands from unchecked categories', async () => {
@@ -587,7 +746,7 @@ it('always retrieves the selected KB and stops adding its context once KB is unc
   );
   const prompts: string[] = [];
   vi.spyOn(llm, 'chat').mockImplementation(async function* (request) {
-    prompts.push(request.messages[0].content);
+    prompts.push(request.messages.map((message) => message.content).join('\n'));
     yield { message: { content: 'Answer' } };
   });
   const request = input();

@@ -115,19 +115,26 @@ export class ChatTurnGraph {
   private static build(deps: ChatGraphDeps) {
     const engine = new ChatTurnGraph(deps);
     // Node names must not collide with state channel names (knowledge, model).
-    return new StateGraph(ChatTurnState)
-      .addNode('prepare', (state, config) => engine.prepare(state, config as ChatTurnConfig))
-      .addNode('retrieve', (state, config) => engine.knowledgeNode(state, config as ChatTurnConfig))
-      .addNode('remember', (state, config) => engine.memoryNode(state, config as ChatTurnConfig))
-      .addNode('generate', (state, config) => engine.modelNode(state, config as ChatTurnConfig))
-      .addNode('persist', (state, config) => engine.persist(state, config as ChatTurnConfig))
-      .addEdge(START, 'prepare')
-      .addEdge('prepare', 'retrieve')
-      .addEdge('retrieve', 'remember')
-      .addEdge('remember', 'generate')
-      .addEdge('generate', 'persist')
-      .addEdge('persist', END)
-      .compile({ checkpointer: deps.checkpointer });
+    return (
+      new StateGraph(ChatTurnState)
+        .addNode('prepare', (state, config) => engine.prepare(state, config as ChatTurnConfig))
+        .addNode('retrieve', (state, config) =>
+          engine.knowledgeNode(state, config as ChatTurnConfig),
+        )
+        .addNode('remember', (state, config) => engine.memoryNode(state, config as ChatTurnConfig))
+        .addNode('generate', (state, config) => engine.modelNode(state, config as ChatTurnConfig))
+        .addNode('persist', (state, config) => engine.persist(state, config as ChatTurnConfig))
+        // Empty chat selection bypasses all capability and context preparation.
+        .addConditionalEdges(START, (_state, config) =>
+          (config as ChatTurnConfig).configurable?.runtime?.pureModel ? 'generate' : 'prepare',
+        )
+        .addEdge('prepare', 'retrieve')
+        .addEdge('retrieve', 'remember')
+        .addEdge('remember', 'generate')
+        .addEdge('generate', 'persist')
+        .addEdge('persist', END)
+        .compile({ checkpointer: deps.checkpointer })
+    );
   }
 
   /** Build (once) and run the turn graph for one chat exchange. */
@@ -435,7 +442,8 @@ export class ChatTurnGraph {
       return { content: this.deps.redact(content), activity };
     }
     const history = state.history;
-    const system = this.buildSystemPrompt(state);
+    // Direct LLM testing sends conversation history without app/agent instructions.
+    const system = runtime?.pureModel ? '' : this.buildSystemPrompt(state);
     let budget = Math.max(2000, Math.min(120000, this.deps.contextSize() * 3) - system.length);
     const recent: ChatMessage[] = [];
     for (const m of [...history].reverse()) {
@@ -445,7 +453,7 @@ export class ChatTurnGraph {
       budget -= text.length;
     }
     const messages: BaseMessage[] = [
-      new SystemMessage(system),
+      ...(system ? [new SystemMessage(system)] : []),
       ...recent.map((m) =>
         m.role === 'assistant'
           ? new AIMessage({ content: m.content })

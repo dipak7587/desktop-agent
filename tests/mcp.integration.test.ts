@@ -37,7 +37,7 @@ it.each(['${TEST_SECRET}', 'private-test-token'])(
     try {
       await service.start('test-server');
       expect(service.states()[0].status).toBe('connected');
-      expect(service.states()[0].tools[0].name).toBe('echo');
+      expect(service.states()[0].tools.map((tool) => tool.name)).toContain('echo');
       const result = await service.call(
         'test-server',
         'echo',
@@ -47,7 +47,20 @@ it.each(['${TEST_SECRET}', 'private-test-token'])(
       expect(result).toContain('Hello [REDACTED]');
       expect(result).not.toContain('private-test-token');
       expect(JSON.stringify(service.states())).not.toContain('private-test-token');
+      await expect(
+        service.call('test-server', 'fail', {}, new AbortController().signal),
+      ).rejects.toThrow('Tool failed [REDACTED]');
+      await expect(
+        service.call('test-server', 'missing', {}, new AbortController().signal),
+      ).rejects.toThrow('unavailable');
+      const canceled = new AbortController();
+      canceled.abort();
+      await expect(
+        service.call('test-server', 'echo', { message: 'Canceled' }, canceled.signal),
+      ).rejects.toThrow();
       await service.action('test-server', 'test');
+      await service.action('test-server', 'restart');
+      expect(service.states()[0].status).toBe('connected');
       await service.stop('test-server');
       expect(service.states()[0].status).toBe('stopped');
     } finally {

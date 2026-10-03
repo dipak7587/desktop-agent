@@ -291,7 +291,8 @@ it.each(['none', 'selected'] as const)(
       });
       await expect.poll(() => service.runs().find((r) => r.id === id)?.status).toBe('Completed');
       const run = service.runs()[0];
-      expect(search).toHaveBeenCalledTimes(mode === 'none' ? 0 : 1);
+      // Initial RAG attachment, then the model-requested follow-up KB tool call.
+      expect(search).toHaveBeenCalledTimes(mode === 'none' ? 0 : 2);
       expect(execute).toHaveBeenCalledTimes(mode === 'none' ? 0 : 1);
       expect(classify).toHaveBeenCalledTimes(mode === 'none' ? 0 : 3);
       expect(JSON.stringify(run)).toContain('Capability Decision');
