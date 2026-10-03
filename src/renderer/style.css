@@ -2343,3 +2343,66 @@ legend {
   accent-color: var(--accent);
 }
 
+.tool-code-editor {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tool-code-editor > pre {
+  margin: 0;
+  padding: 12px 8px;
+  font: 13px/1.6 monospace;
+  text-align: right;
+  color: var(--muted);
+  overflow: hidden;
+  max-height: 26rem;
+  user-select: none;
+}
+.tool-code-editor > textarea {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  padding: 12px;
+  font: 13px/1.6 monospace;
+  max-height: 26rem;
+}
+.tool-input-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.tool-code-editor {
+  position: relative;
+}
+.tool-code-highlight {
+  position: absolute;
+  inset: 0 0 0 3.5rem;
+  overflow: hidden;
+  pointer-events: none;
+}
+.tool-code-highlight .markdown pre {
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: 13px/1.6 monospace;
+}
+.tool-code-highlight .markdown pre code {
+  font: inherit;
+}
+.tool-code-editor > textarea {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text);
+  background: transparent;
+}
+.tool-code-editor > textarea::selection {
+  background: var(--soft);
+  color: var(--text);
+}

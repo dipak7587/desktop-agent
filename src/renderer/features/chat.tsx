@@ -19,18 +19,16 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
-import { useChat, useSettings, useKnowledge, useUI, useAgents, attempt } from '../stores';
+import { useChat, useSettings, useUI, useAgents, attempt } from '../stores';
 import { ChatActivity, useChatCommands } from './chat-commands';
 import { Markdown, CopyButton, Confirm, Modal } from '../components/common';
 export function Chat() {
   const chat = useChat();
   const { settings } = useSettings();
   const agents = useAgents((s) => s.items);
-  const { sources } = useKnowledge();
   const draft = useUI((s) => s.draft);
   const commands = useChatCommands(draft);
   const modes = useUI((s) => s.chatModes);
-  const knowledge = useUI((s) => s.chatKnowledge);
   const setKnowledge = (chatKnowledge: string) => useUI.setState({ chatKnowledge });
 
   const showProjectControls =
@@ -459,35 +457,37 @@ export function Chat() {
             <div className="composer-tools">
               <fieldset className="chat-modes">
                 <legend>Use in this chat</legend>
-                {(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow'] as const).map((mode) => (
-                  <label className="check" key={mode}>
-                    <input
-                      type="checkbox"
-                      checked={modes.includes(mode)}
-                      disabled={busy || !!chat.generating}
-                      onChange={(event) => {
-                        const next = event.target.checked
-                          ? [...modes, mode]
-                          : modes.filter((item) => item !== mode);
-                        const selectedMode = commands.selected?.kind;
-                        useUI.setState({ chatModes: next });
-                        if (selectedMode === mode && !event.target.checked) commands.clear();
-                        commands.updateDraft(draft);
-                      }}
-                    />
-                    {
+                {(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow'] as const).map(
+                  (mode) => (
+                    <label className="check" key={mode}>
+                      <input
+                        type="checkbox"
+                        checked={modes.includes(mode)}
+                        disabled={busy || !!chat.generating}
+                        onChange={(event) => {
+                          const next = event.target.checked
+                            ? [...modes, mode]
+                            : modes.filter((item) => item !== mode);
+                          const selectedMode = commands.selected?.kind;
+                          useUI.setState({ chatModes: next });
+                          if (selectedMode === mode && !event.target.checked) commands.clear();
+                          commands.updateDraft(draft);
+                        }}
+                      />
                       {
-                        kb: 'KB',
-                        mcp: 'MCP',
-                        tools: 'Tools',
-                        skills: 'Skills',
-                        code: 'Code',
-                        agent: 'Agent',
-                        workflow: 'Workflow',
-                      }[mode]
-                    }
-                  </label>
-                ))}
+                        {
+                          kb: 'KB',
+                          mcp: 'MCP',
+                          tools: 'Tools',
+                          skills: 'Skills',
+                          code: 'Code',
+                          agent: 'Agent',
+                          workflow: 'Workflow',
+                        }[mode]
+                      }
+                    </label>
+                  ),
+                )}
               </fieldset>
               {chat.generating ? (
                 <button

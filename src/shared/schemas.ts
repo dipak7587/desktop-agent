@@ -158,9 +158,12 @@ export const librarySchema = z.object({
   autoStart: z.boolean().default(false),
   maxIterations: z.number().int().min(1).max(500).optional(),
   capabilityConfig: capabilityConfigSchema.optional(),
+  toolSource: z.string().max(2_000_000).optional(),
   toolConfig: z
     .object({
-      type: z.enum(['javascript', 'api']),
+      type: z.enum(['javascript', 'api', 'langchain']),
+      inputSchema: z.record(z.string(), z.unknown()).optional(),
+      exportName: z.string().optional(),
       parameters: z
         .array(
           z.object({

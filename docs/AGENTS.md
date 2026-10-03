@@ -25,6 +25,7 @@ Search and **Select all** apply to the currently visible items.
 Each editor also has an optional **Group** field. An item belongs to one group; change
 that name to move it, or leave it empty to ungroup it. New items created inside a group
 inherit its name. Group names persist in definition files and their imports/exports.
+If moving items leaves a group empty, its name remains available until **Delete group** is used.
 Bulk grouping changes metadata only and does not restart MCP servers or run agents.
 
 ## Code side menu

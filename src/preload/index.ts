@@ -52,7 +52,10 @@ const api: WorkspaceAPI = {
     remove: (workspaceId) => invoke('code:remove', workspaceId),
   },
   library: {
+    groups: (k) => invoke('library:groups', k),
     setGroup: (kind, ids, group) => invoke('library:set-group', kind, ids, group),
+    renameGroup: (kind, from, to) => invoke('library:rename-group', kind, from, to),
+    deleteGroup: (kind, group) => invoke('library:delete-group', kind, group),
     list: (k) => invoke('library:list', k),
     save: (k, i) => invoke('library:save', k, i),
     remove: (k, id) => invoke('library:remove', k, id),
@@ -70,7 +73,14 @@ const api: WorkspaceAPI = {
     search: (q, m, s) => invoke('knowledge:search', q, m, s),
   },
   mcp: { states: () => invoke('mcp:states'), action: (id, a) => invoke('mcp:action', id, a) },
-  tools: { run: (id, input) => invoke('tools:run', id, input) },
+  tools: {
+    run: (id, input) => invoke('tools:run', id, input),
+    runSource: (source, input) => invoke('tools:run-source', source, input),
+    analyze: (source) => invoke('tools:analyze', source),
+    format: (source) => invoke('tools:format', source),
+    convert: (source, format) => invoke('tools:convert', source, format),
+    importSource: () => invoke('tools:import-source'),
+  },
   agents: {
     project: () => invoke('agents:project'),
     run: (i) => invoke('agents:run', i),

@@ -354,7 +354,7 @@ export class AgentService {
             enabled: tool.enabled,
             defaultPermission: 'ask',
           },
-          schema: {
+          schema: tool.toolConfig?.inputSchema ?? {
             type: 'object',
             properties: Object.fromEntries(
               (tool.toolConfig?.parameters ?? []).map((p) => [

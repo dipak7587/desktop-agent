@@ -212,7 +212,10 @@ for (const [kind, section] of [
     await expect(
       groups.getByRole('button', { name: 'Video Studio 2', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
-    await groups.getByRole('button', { name: 'Edit Video Studio group', exact: true }).click();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Edit Video Studio group', exact: true })
+      .click();
     const renameGroupDialog = page.getByRole('dialog', { name: 'Rename group' });
     await expect(renameGroupDialog.getByLabel('Group', { exact: true })).toHaveValue(
       'Video Studio',
@@ -249,7 +252,10 @@ for (const [kind, section] of [
       .getByRole('dialog')
       .getByLabel('Group', { exact: true })
       .selectOption('Video Studio');
-    await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: kind === 'tools' ? 'Save Tool' : 'Save', exact: true })
+      .click();
     await expect(
       groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }),
     ).toBeVisible();
@@ -262,6 +268,7 @@ for (const [kind, section] of [
     await expect(
       page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
     ).toHaveCount(0);
+    await groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }).click();
     await page
       .locator('.library-selection-toolbar')
       .getByRole('button', {
@@ -371,12 +378,31 @@ test('agent, MCP, skill, and tool editors create definitions from JSON and YAML'
       format: 'md',
     },
     { section: 'MCP', create: 'New server', mode: 'YAML', name: 'YAML server', format: 'yaml' },
-    { section: 'Tools', create: 'New tool', mode: 'JSON', name: 'JSON tool', format: 'json' },
+    { section: 'Tools', create: 'New tool', mode: 'JSON', name: 'json_tool', format: 'json' },
   ] as const;
   for (const entry of entries) {
     await page.getByRole('button', { name: entry.section, exact: true }).click();
     await page.getByRole('button', { name: entry.create, exact: true }).click();
     const modal = page.getByRole('dialog');
+    if (entry.section === 'Tools') {
+      await modal.getByRole('button', { name: 'Paste definition' }).click();
+      await modal.getByLabel('Input format').selectOption('json');
+      await modal.getByLabel('Definition to import').fill(
+        JSON.stringify({
+          name: entry.name,
+          description: 'Created from a definition',
+          input: { input: { type: 'string', required: true } },
+          function: 'return input;',
+        }),
+      );
+      await modal.getByRole('button', { name: 'Convert and preview' }).click();
+      await modal.getByRole('button', { name: 'Builder', exact: true }).click();
+      await expect(modal.getByLabel('Name', { exact: true })).toHaveValue(entry.name);
+      await modal.getByRole('button', { name: 'Save Tool', exact: true }).click();
+      await expect(modal).not.toBeVisible();
+      await expect(page.getByText(entry.name, { exact: true })).toBeVisible();
+      continue;
+    }
     await expect(modal.getByRole('button', { name: 'Form', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -387,15 +413,9 @@ test('agent, MCP, skill, and tool editors create definitions from JSON and YAML'
     );
     await modal.getByRole('button', { name: entry.mode, exact: true }).click();
     const definition =
-      entry.format === 'json'
-        ? JSON.stringify({
-            name: entry.name,
-            description: 'Created from a definition',
-            ...(entry.section === 'Tools' ? { content: 'return input;' } : {}),
-          })
-        : entry.format === 'md'
-          ? `---\nname: ${entry.name}\ndescription: Created from a definition\n---\nAgent instructions.\n`
-          : `name: ${entry.name}\ndescription: Created from a definition\n`;
+      entry.format === 'md'
+        ? `---\nname: ${entry.name}\ndescription: Created from a definition\n---\nAgent instructions.\n`
+        : `name: ${entry.name}\ndescription: Created from a definition\n`;
     await modal
       .getByRole('textbox', { name: `Definition · ${entry.mode}`, exact: true })
       .fill(definition);
@@ -684,7 +704,7 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
       .getByLabel(entry.command === 'mcp' ? 'Name (required)' : 'Name', { exact: true })
       .fill(entry.name);
     await modal
-      .getByLabel(entry.command === 'mcp' ? 'Description (required)' : 'Description', {
+      .getByLabel('Description', {
         exact: true,
       })
       .fill('Slash command test');

@@ -1,3 +1,9 @@
+import {
+  analyzeToolSource,
+  formatToolSource,
+  convertToolSource,
+} from '../services/tools/typescript';
+import { toolItemFromSource } from '../services/tools/files';
 import { parseLibraryDefinition } from '../../shared/library-definition';
 import { mcpConfigFromItem } from '../../shared/mcp-schema';
 import { randomUUID } from 'node:crypto';
@@ -240,6 +246,17 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   });
   handle('chat:stop', id, (id) => s.chat.stop(id));
   handle('library:list', z.tuple([kindSchema]), (kind) => s.library.list(kind));
+  handle('library:groups', z.tuple([kindSchema]), (kind) => s.library.groups(kind));
+  handle(
+    'library:rename-group',
+    z.tuple([kindSchema, z.string().trim().min(1).max(100), z.string().trim().min(1).max(100)]),
+    (kind, from, to) => s.library.renameGroup(kind, from, to),
+  );
+  handle(
+    'library:delete-group',
+    z.tuple([kindSchema, z.string().trim().min(1).max(100)]),
+    (kind, group) => s.library.deleteGroup(kind, group),
+  );
   handle(
     'library:set-group',
     z.tuple([
@@ -272,7 +289,12 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       filters: [
         {
           name: 'Portable definition',
-          extensions: kind === 'mcp' ? ['json', 'yaml', 'yml', 'md'] : ['md'],
+          extensions:
+            kind === 'tools'
+              ? ['ts', 'json', 'yaml', 'yml', 'md']
+              : kind === 'mcp'
+                ? ['json', 'yaml', 'yml', 'md']
+                : ['md'],
         },
       ],
     });
@@ -281,12 +303,17 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     if (raw.length > 2_000_000) throw new Error('Import file exceeds 2 MB');
     const extension = result.filePaths[0].split('.').pop()?.toLowerCase();
     const item =
-      kind === 'mcp' && extension !== 'json'
-        ? librarySchema.parse({
-            ...parseLibraryDefinition(raw, extension === 'md' ? 'md' : 'yaml', kind),
-            id: randomUUID(),
-          })
-        : s.library.parse(kind, raw);
+      kind === 'tools' && extension !== 'md' && extension !== 'ts'
+        ? toolItemFromSource(
+            convertToolSource(raw, extension === 'json' ? 'json' : 'yaml').source,
+            { id: randomUUID() },
+          )
+        : kind === 'mcp' && extension !== 'json'
+          ? librarySchema.parse({
+              ...parseLibraryDefinition(raw, extension === 'md' ? 'md' : 'yaml', kind),
+              id: randomUUID(),
+            })
+          : s.library.parse(kind, raw);
     if (kind === 'agents') {
       item.providerId ??= s.settings.get().activeProviderId;
       item.model ||=
@@ -298,7 +325,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('library:export', z.tuple([kindSchema, idSchema]), async (kind, id) => {
     const item = await s.library.get(kind, id);
     const result = await dialog.showSaveDialog({
-      defaultPath: `${item.id}.${kind === 'mcp' ? 'json' : 'md'}`,
+      defaultPath: `${item.id}.${kind === 'mcp' ? 'json' : kind === 'tools' ? 'ts' : 'md'}`,
     });
     if (!result.canceled && result.filePath)
       await atomicWrite(result.filePath, s.library.serialize(kind, item));
@@ -369,6 +396,39 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   );
   handle('agents:remove-run', id, (id) => s.agents.removeRun(id));
   handle('agents:clear-runs', none, () => s.agents.clearRuns());
+  const toolSourceInput = z.string().max(2_000_000);
+  const toolFormatInput = z.enum(['typescript', 'json', 'yaml', 'markdown']);
+  handle(
+    'tools:run-source',
+    z.tuple([toolSourceInput, z.record(z.string(), z.unknown())]),
+    (source, input) => s.customTools.runSource(source, input),
+  );
+  handle('tools:analyze', z.tuple([toolSourceInput]), (source) => analyzeToolSource(source));
+  handle('tools:format', z.tuple([toolSourceInput]), (source) => formatToolSource(source));
+  handle('tools:convert', z.tuple([toolSourceInput, toolFormatInput]), (source, format) =>
+    convertToolSource(source, format),
+  );
+  handle('tools:import-source', none, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Import Tool',
+      properties: ['openFile'],
+      filters: [{ name: 'LangChain tool', extensions: ['ts', 'md', 'json', 'yaml', 'yml'] }],
+    });
+    if (result.canceled) return null;
+    const path = result.filePaths[0];
+    const raw = await readText(path, 2_000_000);
+    const extension = path.split('.').pop()?.toLowerCase();
+    return convertToolSource(
+      raw,
+      extension === 'ts'
+        ? 'typescript'
+        : extension === 'md'
+          ? 'markdown'
+          : extension === 'json'
+            ? 'json'
+            : 'yaml',
+    );
+  });
   handle(
     'tools:run',
     z.tuple([idSchema, z.record(z.string().max(200), z.unknown())]),

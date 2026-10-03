@@ -1,4 +1,8 @@
+import ts from 'typescript';
+import { analyzeToolSource, toolModuleBase } from './typescript';
 import { spawn } from 'node:child_process';
+import { toolItemFromSource } from './files';
+import type { LibraryItem } from '../../../shared/types';
 import type { LibraryService } from '../filesystem/library';
 import type { SecretResolver } from '../mcp/mcp';
 
@@ -10,7 +14,17 @@ export class CustomToolService {
     private secrets: SecretResolver,
     private timeout: () => number,
   ) {}
-  async run(id: string, input: Record<string, unknown>, signal?: AbortSignal, project?: string) {
+  async runSource(source: string, input: Record<string, unknown>) {
+    const item = toolItemFromSource(source, { id: 'preview', enabled: true });
+    return this.run(item.id, input, undefined, undefined, item);
+  }
+  async run(
+    id: string,
+    input: Record<string, unknown>,
+    signal?: AbortSignal,
+    project?: string,
+    preview?: LibraryItem,
+  ) {
     if (this.active.size >= 3) throw new Error('At most three custom tools may run at once');
     const controller = new AbortController();
     this.active.add(controller);
@@ -21,12 +35,12 @@ export class CustomToolService {
     ]);
     try {
       combined.throwIfAborted();
-      const item = await this.library.get('tools', id);
+      const item = preview ?? (await this.library.get('tools', id));
       if (!item.enabled) throw new Error('Enable this Tool before running it');
       const config = item.toolConfig;
       if (!config) throw new Error('Configure the Tool before running it');
       if (JSON.stringify(input).length > 100000) throw new Error('Tool input exceeds 100 KB');
-      for (const parameter of config.parameters) {
+      for (const parameter of config.type === 'langchain' ? [] : config.parameters) {
         const value = input[parameter.name];
         if (value === undefined && !parameter.required) continue;
         const type = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
@@ -75,7 +89,25 @@ export class CustomToolService {
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${output.slice(0, 2000)}`);
       } else {
         output = await new Promise<string>((resolve, reject) => {
-          const wrapper = `let raw='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>raw+=c);process.stdin.on('end',async()=>{try{const {code,input}=JSON.parse(raw);const fn=new (Object.getPrototypeOf(async function(){}).constructor)('input','require',code);const result=await fn(input,require);process.stdout.write(JSON.stringify(result ?? null));}catch(e){console.error(e.message);process.exitCode=1;}});`;
+          const source =
+            item.toolSource ?? (config.type === 'langchain' ? item.content : undefined);
+          const analysis = source ? analyzeToolSource(source) : undefined;
+          const payload = analysis
+            ? {
+                code: ts.transpileModule(analysis.source, {
+                  compilerOptions: {
+                    target: ts.ScriptTarget.ES2023,
+                    module: ts.ModuleKind.CommonJS,
+                    esModuleInterop: true,
+                  },
+                }).outputText,
+                input,
+                exportName: analysis.exportName,
+                moduleBase: toolModuleBase,
+                schema: analysis.inputSchema,
+              }
+            : { code: item.content, input };
+          const wrapper = `let raw='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>raw+=c);process.stdin.on('end',async()=>{try{const {code,input,exportName,moduleBase,schema}=JSON.parse(raw);let result;if(exportName){const Module=require('node:module');const path=require('node:path');const instance=new Module(moduleBase);instance.filename=moduleBase;instance.paths=Module._nodeModulePaths(path.dirname(moduleBase));instance._compile(code,moduleBase);const selected=instance.exports[exportName];if(!selected||typeof selected.invoke!=='function')throw new Error('Exported LangChain tool is unavailable');for(const [key,property] of Object.entries(schema.properties||{})){if(property.format==='date-time'&&typeof input[key]==='string')input[key]=new Date(input[key]);}result=await selected.invoke(input);}else{const fn=new (Object.getPrototypeOf(async function(){}).constructor)('input','require',code);result=await fn(input,require);}process.stdout.write(exportName&&typeof result==='string'?JSON.stringify(result):JSON.stringify(result??null));}catch(e){console.error(e.message);process.exitCode=1;}});`;
           const child = spawn(process.execPath, ['-e', wrapper], {
             cwd: project,
             signal: combined,
@@ -105,7 +137,7 @@ export class CustomToolService {
               ? resolve(stdout)
               : reject(new Error(stderr || 'Node.js tool failed or timed out')),
           );
-          child.stdin.end(JSON.stringify({ code: item.content, input }));
+          child.stdin.end(JSON.stringify(payload));
         });
       }
       return this.secrets.redact(output);

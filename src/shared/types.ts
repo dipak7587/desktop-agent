@@ -176,6 +176,7 @@ export interface LibraryItem extends Partial<
   maxIterations?: number;
   capabilityConfig?: AgentCapabilityConfig;
   toolConfig?: ToolConfig;
+  toolSource?: string;
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -259,7 +260,9 @@ export interface RunState {
 }
 
 export interface ToolConfig {
-  type: 'javascript' | 'api';
+  type: 'javascript' | 'api' | 'langchain';
+  inputSchema?: Record<string, unknown>;
+  exportName?: string;
   parameters: {
     name: string;
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';

@@ -243,9 +243,16 @@ export const useChat = create<{
   },
 }));
 function libraryStore(kind: LibraryKind) {
-  return create<{ items: LibraryItem[]; load: () => Promise<void> }>((set) => ({
+  return create<{ items: LibraryItem[]; groups: string[]; load: () => Promise<void> }>((set) => ({
     items: [],
-    load: async () => set({ items: await window.workspace.library.list(kind) }),
+    groups: [],
+    load: async () => {
+      const [items, groups] = await Promise.all([
+        window.workspace.library.list(kind),
+        window.workspace.library.groups(kind),
+      ]);
+      set({ items, groups });
+    },
   }));
 }
 export const useSkills = libraryStore('skills');

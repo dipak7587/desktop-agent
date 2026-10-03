@@ -39,9 +39,15 @@ it.each(['agents', 'mcp', 'skills', 'tools', 'saved-text'] as const)(
       await reloaded.setGroup(kind, ['one'], 'Research');
       expect((await reloaded.get(kind, 'one')).group).toBe('Research');
       expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
+      await reloaded.setGroup(kind, ['two'], 'Research');
+      expect(await reloaded.groups(kind)).toEqual(['Research', 'Video Studio']);
+      await reloaded.setGroup(kind, ['two'], 'Video Studio');
       await reloaded.setGroup(kind, ['one'], '');
       expect((await reloaded.get(kind, 'one')).group).toBe('');
       expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
+      expect(await reloaded.groups(kind)).toEqual(['Research', 'Video Studio']);
+      await reloaded.deleteGroup(kind, 'Research');
+      expect(await reloaded.groups(kind)).toEqual(['Video Studio']);
       await expect(reloaded.setGroup(kind, ['../outside'], 'Video')).rejects.toThrow();
       await expect(reloaded.setGroup(kind, ['one'], 'x'.repeat(101))).rejects.toThrow();
     } finally {

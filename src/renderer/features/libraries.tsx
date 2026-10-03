@@ -1,3 +1,5 @@
+import { GroupInput } from '../components/group-input';
+import { ToolEditor } from './tool-editor';
 import { mcpConfigFromItem, mcpDefinitionFromItem } from '../../shared/mcp-schema';
 import { ProviderSelector } from '../components/provider-selector';
 import { CommandPreview } from '../components/command-preview';
@@ -71,7 +73,7 @@ const builtinTools = [
   'shell.execute',
 ];
 export function Library({ kind }: { kind: LibraryKind }) {
-  const { items, load } = libraryStores[kind]();
+  const { items, groups, load } = libraryStores[kind]();
   const providerSettings = useSettings((s) => s.settings);
   const enabledProviders = providerSettings?.providers.filter((p) => p.enabled !== false) ?? [];
   const defaultProvider =
@@ -85,6 +87,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
   const [grouping, setGrouping] = useState(false);
   const [groupingAction, setGroupingAction] = useState<'assign' | 'rename'>('assign');
   const [groupName, setGroupName] = useState('');
+  const [groupBeingRenamed, setGroupBeingRenamed] = useState('');
   const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
   const [savingGroup, setSavingGroup] = useState(false);
   const removeFromGroup = async (ids: string[]) => {
@@ -98,15 +101,13 @@ export function Library({ kind }: { kind: LibraryKind }) {
       setSavingGroup(false);
     }
   };
-  const groups = [
-    ...new Set(items.map((item) => item.group).filter((name): name is string => !!name)),
-  ].sort((a, b) => a.localeCompare(b));
   const openGrouping = (name = group ?? '', action: 'assign' | 'rename' = 'assign') => {
     setSelected(
       action === 'rename'
         ? items.filter((item) => item.group === name).map((item) => item.id)
         : selected,
     );
+    setGroupBeingRenamed(action === 'rename' ? name : '');
     setGroupName(name);
     setGroupingAction(action);
     setGrouping(true);
@@ -152,13 +153,34 @@ export function Library({ kind }: { kind: LibraryKind }) {
             <button
               onClick={() =>
                 void attempt(async () => {
-                  await window.workspace.library.import(kind);
-                  await load();
+                  if (kind === 'tools') {
+                    const value = await window.workspace.tools.importSource();
+                    if (value)
+                      setEditing(
+                        librarySchema.parse({
+                          id: crypto.randomUUID(),
+                          name: value.name,
+                          description: value.description,
+                          content: value.source,
+                          toolSource: value.source,
+                          group: group ?? '',
+                          toolConfig: {
+                            type: 'langchain',
+                            parameters: [],
+                            inputSchema: value.inputSchema,
+                            exportName: value.exportName,
+                          },
+                        }),
+                      );
+                  } else {
+                    await window.workspace.library.import(kind);
+                    await load();
+                  }
                 })
               }
             >
               <Upload size={16} />
-              Import
+              {kind === 'tools' ? 'Import Tool' : 'Import'}
             </button>
             <button className="primary" onClick={create}>
               <Plus size={17} />
@@ -191,10 +213,10 @@ export function Library({ kind }: { kind: LibraryKind }) {
         </div>
         <span className="muted small">
           {items.length} {items.length === 1 ? 'item' : 'items'} · stored as{' '}
-          {kind === 'mcp' ? 'JSON' : 'Markdown'}
+          {kind === 'mcp' ? 'JSON' : kind === 'tools' ? 'TypeScript' : 'Markdown'}
         </span>
       </div>
-      {grouped && !!items.length && (
+      {grouped && (!!items.length || !!groups.length) && (
         <nav className="library-groups" aria-label={`${titles[kind]} groups`}>
           {[null, '', ...groups].map((name) => {
             const label = name === null ? 'All' : name || 'Ungrouped';
@@ -213,13 +235,12 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 >
                   {label} <span className="badge">{count}</span>
                 </button>
-            
               </div>
             );
           })}
         </nav>
       )}
-      {grouped && !!items.length && (
+      {grouped && (!!items.length || !!groups.length) && (
         <div className="section-toolbar library-selection-toolbar">
           <label className="check">
             <input
@@ -255,7 +276,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 onClick={() => openGrouping(group, 'rename')}
               >
                 <Pencil size={14} />
-                  Edit Group
+                Edit Group
               </button>
             )}
             {!!group && (
@@ -418,7 +439,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 )}
                 {kind === 'mcp' && (
                   <>
-                    <p className="small muted">Auto start: {item.autoStart ? 'On' : 'Off'}</p>
+                    <p className="small muted">
+                      Auto start: {(item.runtime?.autoConnect ?? item.autoStart) ? 'On' : 'Off'}
+                    </p>
                     <CommandPreview
                       command={
                         item.connection?.type === 'streamable-http'
@@ -549,7 +572,19 @@ export function Library({ kind }: { kind: LibraryKind }) {
           })}
         </div>
       )}
-      {editing && (
+      {editing && kind === 'tools' && (
+        <ToolEditor
+          initial={editing}
+          groups={groups}
+          onClose={() => setEditing(null)}
+          onSave={async (item) => {
+            await window.workspace.library.save('tools', item);
+            await load();
+            setEditing(null);
+          }}
+        />
+      )}
+      {editing && kind !== 'tools' && (
         <LibraryEditor
           kind={kind}
           groups={groups}
@@ -576,7 +611,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
               void attempt(async () => {
                 try {
                   const name = groupName.trim();
-                  await window.workspace.library.setGroup(kind, selected, name);
+                  if (groupingAction === 'rename') {
+                    await window.workspace.library.renameGroup(kind, groupBeingRenamed, name);
+                  } else {
+                    await window.workspace.library.setGroup(kind, selected, name);
+                  }
                   setSelected([]);
                   setGroup(name);
                   setGrouping(false);
@@ -643,8 +682,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
           detail="Items in this group will become ungrouped. Their definitions will not be deleted."
           onClose={() => setGroupToDelete(null)}
           onConfirm={async () => {
-            const ids = items.filter((item) => item.group === groupToDelete).map((item) => item.id);
-            await window.workspace.library.setGroup(kind, ids, '');
+            await window.workspace.library.deleteGroup(kind, groupToDelete);
             if (group === groupToDelete) setGroup('');
             await load();
           }}
@@ -654,56 +692,6 @@ export function Library({ kind }: { kind: LibraryKind }) {
       {run && <RunAgent agent={run} onClose={() => setRun(null)} />}
       {kind === 'agents' && <AgentRuns />}
     </div>
-  );
-}
-function GroupInput({
-  value,
-  onChange,
-  groups,
-  disabled = false,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  groups: string[];
-  disabled?: boolean;
-}) {
-  const [addingNewGroup, setAddingNewGroup] = useState(false);
-  return (
-    <>
-      <label>
-        Group
-        <select
-          value={addingNewGroup ? '__new_group__' : value}
-          disabled={disabled}
-          onChange={(event) => {
-            const next = event.target.value;
-            setAddingNewGroup(next === '__new_group__');
-            onChange(next === '__new_group__' ? '' : next);
-          }}
-        >
-          <option value="">Ungrouped</option>
-          {groups.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-          <option value="__new_group__">Add new group…</option>
-        </select>
-      </label>
-      {addingNewGroup && (
-        <label>
-          New group name
-          <input
-            autoFocus
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            maxLength={100}
-            placeholder="e.g. Video Studio"
-            disabled={disabled}
-          />
-        </label>
-      )}
-    </>
   );
 }
 function LibraryEditor({
@@ -1200,7 +1188,6 @@ function LibraryEditor({
                     <label>
                       Executable (needed to start)
                       <input
-                        required
                         placeholder="npx"
                         value={
                           item.connection?.type === 'stdio' ? item.connection.command : item.command

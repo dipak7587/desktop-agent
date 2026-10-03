@@ -1,3 +1,4 @@
+import type { ToolAnalysis, ToolImportFormat } from './tool-definition';
 import type { AgentWorkflow, WorkflowRun, WorkflowRunInput } from './workflows';
 import type { WorkspaceBackupFormat } from './workspace-backup';
 import type {
@@ -65,7 +66,10 @@ export interface WorkspaceAPI {
     remove(workspaceId: string): Promise<void>;
   };
   library: {
+    groups(kind: LibraryKind): Promise<string[]>;
     setGroup(kind: LibraryKind, ids: string[], group: string): Promise<void>;
+    renameGroup(kind: LibraryKind, from: string, to: string): Promise<void>;
+    deleteGroup(kind: LibraryKind, group: string): Promise<void>;
     list(kind: LibraryKind): Promise<LibraryItem[]>;
     save(kind: LibraryKind, item: LibraryItem): Promise<LibraryItem>;
     remove(kind: LibraryKind, id: string): Promise<void>;
@@ -91,7 +95,14 @@ export interface WorkspaceAPI {
     states(): Promise<MCPState[]>;
     action(id: string, action: 'start' | 'stop' | 'restart' | 'test'): Promise<void>;
   };
-  tools: { run(id: string, input: Record<string, unknown>): Promise<string> };
+  tools: {
+    run(id: string, input: Record<string, unknown>): Promise<string>;
+    runSource(source: string, input: Record<string, unknown>): Promise<string>;
+    analyze(source: string): Promise<ToolAnalysis>;
+    format(source: string): Promise<string>;
+    convert(source: string, format: ToolImportFormat): Promise<ToolAnalysis>;
+    importSource(): Promise<ToolAnalysis | null>;
+  };
   agents: {
     project(): Promise<string | null>;
     run(input: { agentId: string; task: string; project?: string }): Promise<string>;
