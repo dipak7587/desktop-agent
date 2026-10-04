@@ -13,6 +13,7 @@ export type Section =
   | 'Knowledge Base'
   | 'Settings';
 export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
+export const BUILT_IN_GROUP = 'Built-in';
 export type LLMProviderName =
   'ollama' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'groq' | 'custom';
 export interface ProviderProfile {

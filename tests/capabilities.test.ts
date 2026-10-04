@@ -148,7 +148,9 @@ it('fails closed on malformed decisions and respects semantic user restrictions'
   const engine = new CapabilityDecisionEngine(async () => {
     throw new Error('offline');
   });
-  expect((await engine.decide('Request', skill, config)).shouldCall).toBe(false);
+  const decision = await engine.decide('Request', skill, config);
+  expect(decision.shouldCall).toBe(false);
+  expect(decision.reason).toContain('offline');
 });
 it('rejects denied permissions even when a specific permission says allow', async () => {
   const engine = new CapabilityDecisionEngine(async () => yes);

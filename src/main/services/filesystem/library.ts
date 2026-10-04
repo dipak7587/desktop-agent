@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import matter from 'gray-matter';
 import { randomUUID } from 'node:crypto';
 import { librarySchema, idSchema } from '../../../shared/schemas';
-import type { LibraryKind, LibraryItem } from '../../../shared/types';
+import { BUILT_IN_GROUP, type LibraryKind, type LibraryItem } from '../../../shared/types';
 import { atomicWrite, readJSON } from './storage';
 export class LibraryService {
   constructor(
@@ -49,7 +49,9 @@ export class LibraryService {
   async groups(kind: LibraryKind) {
     const [stored, items] = await Promise.all([this.readGroups(kind), this.list(kind)]);
     const assigned = items.map((item) => item.group).filter((name): name is string => !!name);
-    return [...new Set([...stored, ...assigned])].sort((a, b) => a.localeCompare(b));
+    return [
+      ...new Set([...stored, ...assigned, ...(kind === 'saved-text' ? [] : [BUILT_IN_GROUP])]),
+    ].sort((a, b) => a.localeCompare(b));
   }
   async list(kind: LibraryKind): Promise<LibraryItem[]> {
     await mkdir(join(this.root, kind), { recursive: true });
@@ -200,6 +202,7 @@ export class LibraryService {
     const previous = librarySchema.shape.group.parse(from);
     const next = librarySchema.shape.group.parse(to);
     if (!previous || !next) throw new Error('Group names cannot be empty');
+    if (previous === BUILT_IN_GROUP) throw new Error('The Built-in group cannot be renamed.');
     const items = await this.list(kind);
     const ids = items.filter((item) => item.group === previous).map((item) => item.id);
     if (ids.length) await this.setGroup(kind, ids, next);
@@ -209,6 +212,7 @@ export class LibraryService {
   async deleteGroup(kind: LibraryKind, group: string) {
     const name = librarySchema.shape.group.parse(group);
     if (!name) throw new Error('Group name cannot be empty');
+    if (name === BUILT_IN_GROUP) throw new Error('The Built-in group cannot be deleted.');
     const items = await this.list(kind);
     const ids = items.filter((item) => item.group === name).map((item) => item.id);
     if (ids.length) await this.setGroup(kind, ids, '');

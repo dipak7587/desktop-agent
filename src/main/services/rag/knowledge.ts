@@ -7,6 +7,7 @@ import Turndown from 'turndown';
 import type { KnowledgeSource, SearchResult, AppEvent, Settings } from '../../../shared/types';
 import { atomicWrite, readJSON, hash, errorMessage } from '../filesystem/storage';
 import { librarySchema } from '../../../shared/schemas';
+import { BUILT_IN_GROUP } from '../../../shared/types';
 import { walk, readText, ignored, supportedExtensions } from '../filesystem/walk';
 import { chunkText } from './chunker';
 import type { EmbeddingProvider } from '../ollama/provider';
@@ -87,7 +88,7 @@ export class KnowledgeService {
         name: 'Saved Text',
         location: join(this.root, 'saved-text'),
         collection: 'Saved Text',
-        group: '',
+        group: BUILT_IN_GROUP,
         createdAt: now,
         updatedAt: now,
         status: 'idle',

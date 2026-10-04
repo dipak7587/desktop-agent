@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useKnowledge, attempt } from '../stores';
 import type { KnowledgeSource, SearchResult } from '../../shared/types';
+import { BUILT_IN_GROUP } from '../../shared/types';
 import { PageHeader, Empty, Modal, Confirm, Markdown } from '../components/common';
 export function Knowledge() {
   const { sources, load, progress } = useKnowledge();
@@ -36,9 +37,12 @@ export function Knowledge() {
   const [mode, setMode] = useState<'semantic' | 'keyword'>('semantic');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const groups = [...new Set(sources.map((source) => source.group).filter(Boolean))].sort((a, b) =>
-    a!.localeCompare(b!),
-  ) as string[];
+  const groups = [
+    ...new Set([
+      ...sources.map((source) => source.group).filter((group): group is string => !!group),
+      BUILT_IN_GROUP,
+    ]),
+  ].sort((a, b) => a.localeCompare(b)) as string[];
   const visibleSources = sources.filter(
     (source) => activeGroup === null || (source.group ?? '') === activeGroup,
   );
@@ -151,7 +155,7 @@ export function Knowledge() {
               >
                 Remove from group
               </button>
-              {!!activeGroup && (
+              {!!activeGroup && activeGroup !== BUILT_IN_GROUP && (
                 <button
                   className="edit"
                   aria-label={`Edit ${activeGroup} group`}
@@ -163,7 +167,7 @@ export function Knowledge() {
                   Edit Group
                 </button>
               )}
-              {!!activeGroup && (
+              {!!activeGroup && activeGroup !== BUILT_IN_GROUP && (
                 <button
                   className="danger"
                   disabled={savingGroup}

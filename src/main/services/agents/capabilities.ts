@@ -176,12 +176,12 @@ export class CapabilityDecisionEngine {
             ? 'Capability is relevant and necessary.'
             : 'Capability is unnecessary; prefer a direct answer or another relevant capability.',
       };
-    } catch {
+    } catch (error) {
       context.signal?.throwIfAborted();
       return {
         shouldCall: false,
         capability,
-        reason: 'Could not validate capability relevance. No call was made.',
+        reason: `Could not validate capability relevance: ${error instanceof Error ? error.message : String(error)}. No call was made.`,
       };
     }
   }

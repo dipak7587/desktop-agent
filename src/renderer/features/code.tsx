@@ -29,7 +29,11 @@ import {
   attempt,
 } from '../stores';
 import { AgentRuns, builtinTools, LibraryEditor, type AgentConfigSection } from './libraries';
-import { codeAgentTemplates, createCodeAgent } from '../../shared/code-agent-templates';
+import {
+  BUILTIN_CODING_AGENT_ID,
+  codeAgentTemplates,
+  createCodeAgent,
+} from '../../shared/code-agent-templates';
 import type { CodeWorkspace as CodeWorkspaceInfo, LibraryItem } from '../../shared/types';
 
 const testFixTask =
@@ -84,7 +88,9 @@ export function CodeWorkspace() {
   const configureFolder = (workspace: CodeWorkspaceInfo, focus: AgentConfigSection) => {
     setAccessWorkspace(workspace);
     setAccessFocus(focus);
-    setWorkspaceAgentIds(workspace.allowedAgentIds ?? allAgents.map((agent) => agent.id));
+    setWorkspaceAgentIds(
+      workspace.allowedAgentIds ?? [...allAgents.map((agent) => agent.id), BUILTIN_CODING_AGENT_ID],
+    );
     setWorkspaceSkillIds(
       workspace.allowedSkills ?? skills.filter((skill) => skill.enabled).map((skill) => skill.id),
     );
@@ -147,13 +153,23 @@ export function CodeWorkspace() {
 
   async function openWorkspace(workspaceId: string) {
     await chat.reconnectWorkspace(workspaceId);
+    useUI.setState((state) => ({
+      chatModes: state.chatModes.includes('code') ? state.chatModes : [...state.chatModes, 'code'],
+    }));
     useUI.getState().setSection('Chat');
     setWorkspaces(await window.workspace.code.list());
   }
 
   async function relinkWorkspace(workspaceId: string) {
     const relinked = await chat.relinkWorkspace(workspaceId);
-    if (relinked) useUI.getState().setSection('Chat');
+    if (relinked) {
+      useUI.setState((state) => ({
+        chatModes: state.chatModes.includes('code')
+          ? state.chatModes
+          : [...state.chatModes, 'code'],
+      }));
+      useUI.getState().setSection('Chat');
+    }
     setWorkspaces(await window.workspace.code.list());
   }
 
@@ -204,7 +220,7 @@ export function CodeWorkspace() {
                     {workspace.available && ' · Project operations require approval'}
                   </span>
                   <span className="code-workspace-status small muted">
-                    Folder permissions · {workspace.allowedAgentIds?.length ?? allAgents.length}{' '}
+                    Folder permissions · {workspace.allowedAgentIds?.length ?? allAgents.length + 1}{' '}
                     agents ·{' '}
                     {workspace.allowedSkills?.length ??
                       skills.filter((skill) => skill.enabled).length}{' '}
@@ -224,6 +240,8 @@ export function CodeWorkspace() {
                   {workspace.available ? (
                     <button
                       className="secondary"
+                      aria-label="Open in Chat"
+                      title="Open in Chat"
                       onClick={() => void attempt(() => openWorkspace(workspace.id))}
                     >
                       <ExternalLink size={14} aria-hidden="true" />
@@ -501,10 +519,16 @@ export function CodeWorkspace() {
             </p>
             {accessFocus === 'agent' && (
               <ResourceChecks
-                resources={allAgents.map(({ id, name, enabled }) => ({
-                  id,
-                  name: `${name}${enabled ? '' : ' (disabled)'}`,
-                }))}
+                resources={[
+                  {
+                    id: BUILTIN_CODING_AGENT_ID,
+                    name: 'Coding assistant (Built-in)',
+                  },
+                  ...allAgents.map(({ id, name, enabled }) => ({
+                    id,
+                    name: `${name}${enabled ? '' : ' (disabled)'}`,
+                  })),
+                ]}
                 selectedIds={workspaceAgentIds}
                 onChange={setWorkspaceAgentIds}
                 disabled={savingWorkspaceAccess}

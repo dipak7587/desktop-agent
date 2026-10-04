@@ -41,6 +41,7 @@ import type { AgentService } from '../services/agents/agents';
 import type { SecretStore } from '../security/secrets';
 import { atomicWrite } from '../services/filesystem/storage';
 import { errorMessage } from '../../shared/error-message';
+import { BUILTIN_CODING_AGENT_ID } from '../../shared/code-agent-templates';
 import {
   parseWorkspaceBackup,
   stringifyWorkspaceBackup,
@@ -176,7 +177,9 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       },
     ) => {
       const knownAgents = new Set((await s.library.list('agents')).map((agent) => agent.id));
-      const unknownAgent = policy.agentIds.find((agentId) => !knownAgents.has(agentId));
+      const unknownAgent = policy.agentIds.find(
+        (agentId) => agentId !== BUILTIN_CODING_AGENT_ID && !knownAgents.has(agentId),
+      );
       if (unknownAgent) throw new Error('Choose only existing agents for this folder.');
       const [skills, tools, mcpServers, knowledge] = await Promise.all([
         s.library.list('skills'),

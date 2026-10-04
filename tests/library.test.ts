@@ -10,6 +10,7 @@ it.each(['agents', 'mcp', 'skills', 'tools', 'saved-text'] as const)(
     const root = await mkdtemp(join(tmpdir(), 'library-groups-'));
     const library = new LibraryService(root);
     try {
+      const builtInGroups = kind === 'saved-text' ? [] : ['Built-in'];
       const original = await library.save(
         kind,
         librarySchema.parse({
@@ -40,14 +41,20 @@ it.each(['agents', 'mcp', 'skills', 'tools', 'saved-text'] as const)(
       expect((await reloaded.get(kind, 'one')).group).toBe('Research');
       expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
       await reloaded.setGroup(kind, ['two'], 'Research');
-      expect(await reloaded.groups(kind)).toEqual(['Research', 'Video Studio']);
+      expect(await reloaded.groups(kind)).toEqual([...builtInGroups, 'Research', 'Video Studio']);
       await reloaded.setGroup(kind, ['two'], 'Video Studio');
       await reloaded.setGroup(kind, ['one'], '');
       expect((await reloaded.get(kind, 'one')).group).toBe('');
       expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
-      expect(await reloaded.groups(kind)).toEqual(['Research', 'Video Studio']);
+      expect(await reloaded.groups(kind)).toEqual([...builtInGroups, 'Research', 'Video Studio']);
       await reloaded.deleteGroup(kind, 'Research');
-      expect(await reloaded.groups(kind)).toEqual(['Video Studio']);
+      expect(await reloaded.groups(kind)).toEqual([...builtInGroups, 'Video Studio']);
+      await expect(reloaded.deleteGroup(kind, 'Built-in')).rejects.toThrow(
+        'The Built-in group cannot be deleted.',
+      );
+      await expect(reloaded.renameGroup(kind, 'Built-in', 'System')).rejects.toThrow(
+        'The Built-in group cannot be renamed.',
+      );
       await expect(reloaded.setGroup(kind, ['../outside'], 'Video')).rejects.toThrow();
       await expect(reloaded.setGroup(kind, ['one'], 'x'.repeat(101))).rejects.toThrow();
     } finally {

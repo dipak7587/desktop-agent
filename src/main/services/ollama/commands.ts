@@ -13,6 +13,7 @@ import { capabilityConfig } from '../../../shared/capabilities';
 import type { LibraryService } from '../filesystem/library';
 import type { MCPService } from '../mcp/mcp';
 import type { AgentService } from '../agents/agents';
+import { BUILTIN_CODING_AGENT_ID } from '../../../shared/code-agent-templates';
 
 export interface PreparedCommand {
   command: ChatCommand & { name: string };
@@ -93,7 +94,7 @@ export class ChatCommands {
       );
     const project = await validateCodingWorkspace(workspace);
     const agent = librarySchema.parse({
-      id: 'builtin-coding-agent',
+      id: BUILTIN_CODING_AGENT_ID,
       name: 'Coding assistant',
       model,
       providerId: selected?.providerId,

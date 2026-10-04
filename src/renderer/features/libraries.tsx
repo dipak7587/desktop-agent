@@ -24,6 +24,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { LibraryKind, LibraryItem } from '../../shared/types';
+import { BUILT_IN_GROUP } from '../../shared/types';
 import { librarySchema } from '../../shared/schemas';
 import {
   parseLibraryDefinition,
@@ -269,7 +270,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
             >
               Remove from group
             </button>
-            {!!group && (
+            {!!group && group !== BUILT_IN_GROUP && (
               <button
                 className="edit"
                 aria-label={`Edit ${group} group`}
@@ -281,7 +282,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 Edit Group
               </button>
             )}
-            {!!group && (
+            {!!group && group !== BUILT_IN_GROUP && (
               <button
                 className="danger"
                 disabled={savingGroup}

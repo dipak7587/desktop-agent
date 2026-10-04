@@ -209,6 +209,8 @@ for (const [kind, section] of [
       ).toBeLessThanOrEqual(8);
     }
     const groups = page.getByRole('navigation', { name: `${section} groups` });
+    if (kind !== 'saved-text')
+      await expect(groups.getByRole('button', { name: 'Built-in 0', exact: true })).toBeVisible();
     await expect(
       groups.getByRole('button', { name: 'Video Studio 2', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
@@ -623,6 +625,16 @@ test('Code workspaces persist and reconnect to conversations with guarded projec
   const workspace = page.getByRole('region', { name: 'Project workspaces' });
   await expect(workspace.getByText('Project operations require approval')).toBeVisible();
   await expect(workspace.getByText(/^localai-workflows-/)).toBeVisible();
+  await workspace.getByRole('button', { name: /^Folder options for localai-workflows-/ }).click();
+  await workspace.getByRole('button', { name: 'Configure Agent' }).click();
+  const agentPermissions = page.getByRole('dialog', {
+    name: /^Configure Agent · localai-workflows-/,
+  });
+  await expect(
+    agentPermissions.getByRole('checkbox', { name: 'Coding assistant (Built-in)' }),
+  ).toBeChecked();
+  await agentPermissions.getByRole('button', { name: 'Save folder permissions' }).click();
+  await expect(agentPermissions).toHaveCount(0);
   await app.evaluate(({ dialog }) => {
     dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
   });
@@ -646,12 +658,15 @@ test('Code workspaces persist and reconnect to conversations with guarded projec
   await removeDialog.getByRole('button', { name: 'Cancel' }).click();
   await workspace.getByRole('button', { name: 'Open in Chat' }).click();
   await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await expect(page.getByRole('checkbox', { name: 'Code', exact: true })).toBeChecked();
 
   await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.locator('.workspace-indicator')).toHaveCount(0);
   await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Code', exact: true }).uncheck();
   await workspace.getByRole('button', { name: 'Open in Chat' }).click();
   await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await expect(page.getByRole('checkbox', { name: 'Code', exact: true })).toBeChecked();
   await expect(page.getByText('Restricted', { exact: true })).toBeVisible();
 });
 test('chat title double-click renames and exports the conversation as Markdown', async () => {
@@ -874,6 +889,7 @@ test('Knowledge sources support adding, moving, renaming and deleting groups', a
   await page.getByRole('button', { name: 'Add URL', exact: true }).click();
 
   const groups = page.getByRole('navigation', { name: 'Knowledge Base groups' });
+  await expect(groups.getByRole('button', { name: 'Built-in 0', exact: true })).toBeVisible();
   await expect(groups.getByRole('button', { name: 'Research 1', exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Select second.example', exact: true }).check();
   await page
@@ -881,7 +897,7 @@ test('Knowledge sources support adding, moving, renaming and deleting groups', a
     .getByRole('button', { name: 'Move to group', exact: true })
     .click();
   const moveDialog = page.getByRole('dialog', { name: 'Move sources to group' });
-  await moveDialog.getByLabel('Group', { exact: true }).selectOption('Research');
+  await moveDialog.getByRole('combobox', { name: 'Group', exact: true }).selectOption('Research');
   await moveDialog.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(groups.getByRole('button', { name: 'Research 2', exact: true })).toBeVisible();
 

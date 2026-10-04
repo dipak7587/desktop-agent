@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCodeAgent } from '../src/shared/code-agent-templates';
-import { settingsSchema } from '../src/shared/schemas';
+import { librarySchema, settingsSchema } from '../src/shared/schemas';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { AgentService } from '../src/main/services/agents/agents';
 import { CodeAgentManager } from '../src/main/services/agents/code-agent-manager';
@@ -67,6 +67,66 @@ it('persists multiple specialist agents and runs them through isolated ACP sessi
   for (const id of ids)
     expect(service.runs().find((entry) => entry.id === id)?.result).toBe('Task completed.');
 }, 20000);
+
+it('includes only enabled Code agents selected for the folder in chat ACP', async () => {
+  const run = vi
+    .spyOn(CodeAgentManager.prototype, 'run')
+    .mockResolvedValue({ reason: 'completed', result: 'Done.' });
+  const first = {
+    ...createCodeAgent('coding', 'first', 'local', 'local'),
+    tools: ['filesystem.read', 'filesystem.write'],
+  };
+  const second = librarySchema.parse({
+    id: 'second',
+    name: 'User-created agent',
+    model: 'local',
+    enabled: true,
+    tools: ['filesystem.read'],
+  });
+  expect(second.agentRuntime).toBeUndefined();
+  const unselected = createCodeAgent('tests', 'unselected', 'local', 'local');
+  const disabled = { ...createCodeAgent('tests', 'disabled', 'local', 'local'), enabled: false };
+  await Promise.all(
+    [first, second, unselected, disabled].map((agent) => library.save('agents', agent)),
+  );
+  const builtin = librarySchema.parse({
+    id: 'builtin-coding-agent',
+    name: 'Coding assistant',
+    model: 'local',
+    tools: ['filesystem.read', 'filesystem.write'],
+  });
+
+  await service.runInChat(
+    builtin,
+    'Explain your role.',
+    root,
+    new AbortController().signal,
+    () => {},
+    undefined,
+    {
+      conversationId: 'chat',
+      workspaceId: 'project',
+      providerId: 'local',
+      history: '',
+      access: {
+        allowedAgentIds: [builtin.id, first.id, second.id],
+        allowedTools: ['filesystem.read'],
+      },
+    },
+  );
+
+  expect(run).toHaveBeenCalledOnce();
+  expect(run.mock.calls[0][0].acpAgents?.map((agent) => agent.id).sort()).toEqual([
+    'builtin-coding-agent',
+    'first',
+    'second',
+  ]);
+  const builtinTools = run.mock.calls[0][0].acpAgents?.find(
+    (agent) => agent.id === 'builtin-coding-agent',
+  )?.tools;
+  expect(builtinTools?.some((tool) => tool.description.includes('filesystem.read'))).toBe(true);
+  expect(builtinTools?.some((tool) => tool.description.includes('filesystem.write'))).toBe(false);
+});
 
 it('keeps review and MR templates read-only while test writers request approval', () => {
   for (const template of ['review', 'mr']) {

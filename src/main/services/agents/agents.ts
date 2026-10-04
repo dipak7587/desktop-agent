@@ -609,6 +609,7 @@ export class AgentService {
         run,
         approve,
         configuredOnly: !!codeSession,
+        access: codeSession?.access,
       });
       const router = capabilitySet.router;
       const buildPrompt = async (targetAgent: LibraryItem, targetRouter: CapabilityRouter) => {
@@ -667,18 +668,17 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
       const acpAgents = codeSession
         ? await (async () => {
             const configuredAgents = await this.library.list('agents');
+            const allowedInFolder = (agentId: string) =>
+              !codeSession.access?.allowedAgentIds ||
+              codeSession.access.allowedAgentIds.includes(agentId);
             const selectedAgents = configuredAgents.filter(
               (candidate) =>
-                candidate.agentRuntime === 'deepagents-acp' &&
                 candidate.enabled &&
-                candidate.selectedForChat !== false &&
-                (!codeSession.access?.allowedAgentIds ||
-                  codeSession.access.allowedAgentIds.includes(candidate.id)),
+                allowedInFolder(candidate.id),
             );
             if (
-              agent.agentRuntime === 'deepagents-acp' &&
-              (!codeSession.access?.allowedAgentIds ||
-                codeSession.access.allowedAgentIds.includes(agent.id)) &&
+              agent.enabled &&
+              allowedInFolder(agent.id) &&
               !selectedAgents.some((item) => item.id === agent.id)
             )
               selectedAgents.unshift(agent);

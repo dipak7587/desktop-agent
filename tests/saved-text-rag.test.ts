@@ -24,10 +24,12 @@ it('saved text is indexed, replaced on edit and removed on deletion without embe
   );
   await kb.init();
   const library = new LibraryService(root, () => kb.syncSavedText());
+  await kb.syncSavedText();
   const settle = async () => {
     await expect.poll(() => kb.list().find((s) => s.id === 'saved-text')?.status).toBe('ready');
   };
   try {
+    expect(kb.list().find((source) => source.id === 'saved-text')?.group).toBe('Built-in');
     const item = librarySchema.parse({
       id: 'note',
       name: 'Release handbook',

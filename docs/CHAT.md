@@ -114,6 +114,16 @@ protocol errors are recorded as redacted application logs.
 
 Explicit commands and an active Code workspace take precedence over this fallback.
 Changing the MCP checkbox never expands an explicitly selected server's scope.
+Opening a linked workspace from the Code page attaches it to the conversation and enables the
+**Code** checkbox for that chat.
+The folder's **Configure Agent** permissions include the app-managed **Coding assistant**
+(`builtin-coding-agent`), selected by default alongside saved agents for folders without custom
+agent permissions. In Chat, the folder's **Configure Agent** selections control which enabled
+DeepAgents ACP agents are registered, including the built-in Coding assistant. Folder resource
+selections also limit each agent's tools, skills, MCP servers, and knowledge sources.
+MCP, Skills, Agents, Knowledge Base, and Tools libraries include a protected **Built-in** group
+for organizing application-provided resources; the Saved Text knowledge source is assigned to it
+automatically.
 
 ## Provider and model selection
 

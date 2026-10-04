@@ -259,6 +259,7 @@ export class CodeAgentManager {
   ): Promise<Session> {
     const state: { session?: Session } = {};
     const current = () => state.session?.turn ?? initial;
+
     const configuredAgents = input.acpAgents?.length
       ? input.acpAgents
       : [
@@ -272,6 +273,7 @@ export class CodeAgentManager {
             tools: [...initial.agentTools.get(input.agent.id)!.values()],
           },
         ];
+
     const selectedConfiguration = configuredAgents.find((agent) => agent.id === initial.agentId);
     const configurations = selectedConfiguration
       ? [

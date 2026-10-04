@@ -1,5 +1,7 @@
 import { librarySchema } from './schemas';
 
+export const BUILTIN_CODING_AGENT_ID = 'builtin-coding-agent';
+
 const readTools = [
   'project.detect',
   'filesystem.read',
