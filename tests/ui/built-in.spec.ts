@@ -91,7 +91,10 @@ test('a fresh app loads its bundled content into every sidebar section', async (
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Bundled guide', exact: true })).toBeVisible();
     const blocked = await page.evaluate(async () => {
-      const [agent] = await window.workspace.library.list('agents');
+      const agent = (await window.workspace.library.list('agents')).find(
+        (item) => item.name === 'Bundled helper',
+      );
+      if (!agent) throw new Error('Bundled helper fixture missing');
       try {
         await window.workspace.library.save('agents', { ...agent, name: 'Overwrite' });
       } catch (error) {

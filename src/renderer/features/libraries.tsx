@@ -338,7 +338,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
             const state = states.find((s) => s.id === item.id);
             const actions = (
               <div className="card-actions">
-                {!item.builtIn && <button onClick={() => setEditing(item)}>Edit</button>}
+                {(!item.builtIn || (item.builtIn && kind === 'agents')) && (
+                  <button onClick={() => setEditing(item)}>
+                    {item.builtIn ? 'Edit provider / model' : 'Edit'}
+                  </button>
+                )}
                 {item.builtIn && <span className="badge">Built-in · Read-only</span>}
                 {kind === 'mcp' && !item.builtIn && (
                   <div className="mcp-group-actions">
@@ -821,6 +825,8 @@ export function LibraryEditor({
   const enabled = settings?.providers.filter((p) => p.enabled !== false) ?? [];
   const effectiveProviderId =
     item.providerId ?? (enabled.length === 1 ? enabled[0].id : (settings?.activeProviderId ?? ''));
+  const effectiveModel =
+    item.model || enabled.find((provider) => provider.id === effectiveProviderId)?.chatModel || '';
   const { items: skills } = useSkills();
   const { items: servers } = libraryStores.mcp();
   const { sources } = useKnowledge();
@@ -835,7 +841,7 @@ export function LibraryEditor({
     setItem((i) => ({ ...i, [key]: value }));
   const formDraft = () => ({
     ...item,
-    ...(kind === 'agents' ? { providerId: effectiveProviderId } : {}),
+    ...(kind === 'agents' ? { providerId: effectiveProviderId, model: effectiveModel } : {}),
     ...(kind === 'tools'
       ? {
           toolConfig: {
@@ -1077,6 +1083,11 @@ export function LibraryEditor({
             )}
             {kind === 'agents' && (
               <>
+                {item.builtIn && (
+                  <p className="callout">
+                    This built-in agent is protected. Only its provider and model can be changed.
+                  </p>
+                )}
                 <label>
                   Maximum execution iterations
                   <input
@@ -1090,7 +1101,7 @@ export function LibraryEditor({
                 </label>
                 <ProviderSelector
                   providerId={effectiveProviderId}
-                  model={item.model}
+                  model={effectiveModel}
                   onChange={(providerId, model) => setItem((i) => ({ ...i, providerId, model }))}
                 />
                 {focusCapability !== 'agent' && (

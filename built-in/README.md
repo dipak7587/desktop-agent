@@ -25,14 +25,26 @@ built-in/
 
 The folders include ready-to-load samples:
 
-| Section | Sample |
-| --- | --- |
-| Agents | Workspace guide, connected to the sample skill, tool, and knowledge base |
-| Skills | Clear writing |
-| Tools | Local calculator (add, subtract, multiply, divide) |
-| MCP | [DeepWiki](https://docs.devin.ai/work-with-devin/deepwiki-mcp), a remote public-repository documentation server; click Start to connect |
-| Knowledge Base | Workspace guide, with getting-started and customization documents |
-| Settings | Explicit General defaults and three Landing suggestion cards |
+| Section        | Sample                                                                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Agents         | Workspace guide, connected to the sample skill, tool, and knowledge base                                                                |
+| Skills         | Clear writing and AI video growth                                                                                                       |
+| Tools          | Local calculator (add, subtract, multiply, divide)                                                                                      |
+| MCP            | [DeepWiki](https://docs.devin.ai/work-with-devin/deepwiki-mcp), a remote public-repository documentation server; click Start to connect |
+| Knowledge Base | Workspace guide and a miniature video brief template                                                                                    |
+| Settings       | Explicit General defaults and three Landing suggestion cards                                                                            |
+
+The **Miniature Video Studio** agent uses the configured Gemini or OpenAI
+provider and produces hooks, shot-by-shot generation prompts, voiceover,
+captions, SEO title and description, keywords, hashtags, and a production
+checklist. It prepares prompts for your video generator; it does not render a
+video unless you connect a video-generation API yourself. For current trends,
+give it a trend link, screenshot, sound name, or connected research source.
+
+The **Riddle and Joke Studio** agent creates original riddles and jokes with
+trend-format ideas, hooks, exact scripts, punchlines, captions, SEO, keywords,
+hashtags, and a recording plan. It defaults to family-friendly humor and labels
+unverified trend ideas clearly.
 
 Replace or remove these sample files in the source folder before building your
 own app. The MCP sample needs internet access and does not auto-connect.
@@ -67,6 +79,7 @@ skills:
 knowledgeSources:
   - builtin-kb-product-guide
 ---
+
 Use the product guide to answer questions. Say when the guide does not contain
 the answer, and cite the relevant source when available.
 ```
@@ -78,6 +91,7 @@ the answer, and cite the relevant source when available.
 name: Clear writing
 description: Write clear, concise explanations.
 ---
+
 Lead with the answer. Use concrete examples and explain unfamiliar terms.
 ```
 
@@ -120,14 +134,11 @@ Export a tool as TypeScript from the app, or add a LangChain tool such as
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
-export const add = tool(
-  async ({ a, b }) => String(a + b),
-  {
-    name: 'add_numbers',
-    description: 'Add two numbers.',
-    schema: z.object({ a: z.number(), b: z.number() }),
-  },
-);
+export const add = tool(async ({ a, b }) => String(a + b), {
+  name: 'add_numbers',
+  description: 'Add two numbers.',
+  schema: z.object({ a: z.number(), b: z.number() }),
+});
 ```
 
 ## Knowledge bases

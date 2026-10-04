@@ -41,6 +41,23 @@ export class LibraryService {
     if (this.builtIns.get(kind)?.has(id))
       throw new Error('Built-in items cannot be edited, moved, or deleted.');
   }
+  async assertSaveAllowed(kind: LibraryKind, input: LibraryItem) {
+    if (!this.builtIns.get(kind)?.has(input.id)) return;
+    if (kind !== 'agents') throw new Error('Built-in items cannot be edited, moved, or deleted.');
+    const current = await this.get(kind, input.id);
+    const comparable = (item: LibraryItem) => {
+      const {
+        providerId: _provider,
+        model: _model,
+        updatedAt: _updated,
+        builtIn: _builtIn,
+        ...rest
+      } = item;
+      return rest;
+    };
+    if (JSON.stringify(comparable(current)) !== JSON.stringify(comparable(input)))
+      throw new Error('Built-in agents only allow changing the provider and model.');
+  }
 
   constructor(
     private root: string,
@@ -115,9 +132,15 @@ export class LibraryService {
       );
     }
     const bundled = this.builtIns.get(kind);
+    const bundledItems = [...(bundled?.values() ?? [])].map((item) => {
+      const override = items.find((candidate) => candidate.id === item.id);
+      return override && kind === 'agents'
+        ? { ...item, providerId: override.providerId, model: override.model }
+        : item;
+    });
     return [
       ...items.filter((item) => !bundled?.has(item.id)),
-      ...structuredClone([...(bundled?.values() ?? [])]),
+      ...structuredClone(bundledItems),
     ].sort((a, b) => b.updatedAt - a.updatedAt);
   }
   parse(kind: LibraryKind, raw: string, id: string = randomUUID()): LibraryItem {
@@ -164,7 +187,8 @@ export class LibraryService {
     );
   }
   async save(kind: LibraryKind, input: LibraryItem) {
-    this.assertWritable(kind, input.id);
+    await this.assertSaveAllowed(kind, input);
+    if (!this.builtIns.get(kind)?.has(input.id)) this.assertWritable(kind, input.id);
     const value = librarySchema.parse(input);
     const now = Date.now();
     const item = { ...value, createdAt: value.createdAt || now, updatedAt: now };
@@ -268,7 +292,21 @@ export class LibraryService {
   async get(kind: LibraryKind, id: string) {
     idSchema.parse(id);
     const bundled = this.builtIns.get(kind)?.get(id);
-    if (bundled) return structuredClone(bundled);
+    if (bundled) {
+      if (kind === 'agents') {
+        try {
+          const override = this.parse(kind, await readFile(this.path(kind, id), 'utf8'), id);
+          return structuredClone({
+            ...bundled,
+            providerId: override.providerId,
+            model: override.model,
+          });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+      return structuredClone(bundled);
+    }
     let raw: string;
     try {
       raw = await readFile(this.path(kind, id), 'utf8');

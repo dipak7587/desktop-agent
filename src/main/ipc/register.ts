@@ -372,7 +372,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     (kind, ids, group) => s.library.setGroup(kind, ids, group),
   );
   handle('library:save', z.tuple([kindSchema, librarySchema]), async (kind, item) => {
-    s.library.assertWritable(kind, item.id);
+    await s.library.assertSaveAllowed(kind, item);
     if (kind === 'agents') {
       item = { ...item, providerId: item.providerId ?? s.settings.get().activeProviderId };
       s.settings.validateSelection(item.providerId, item.model);
