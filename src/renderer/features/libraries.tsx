@@ -694,7 +694,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
     </div>
   );
 }
-function LibraryEditor({
+export function LibraryEditor({
   kind,
   groups,
   initial,

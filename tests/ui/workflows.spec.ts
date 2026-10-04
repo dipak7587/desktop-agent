@@ -455,6 +455,7 @@ test('Code workspace offers local and remote agents and prepares a test-fix run'
     await window.workspace.settings.save(settings);
     const base = {
       description: 'Local test agent',
+      agentRuntime: 'deepagents-acp' as const,
       content: 'Inspect and fix project code and tests.',
       version: '1.0.0',
       enabled: true,
@@ -510,6 +511,60 @@ test('Code workspace offers local and remote agents and prepares a test-fix run'
   await expect(runButton).toBeEnabled();
   await page.screenshot({ path: 'test-results/code-workspace.png' });
 });
+test('Code adds, edits, and persists multiple specialist agents without unrelated agents', async () => {
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add your first coding agent' })).toBeVisible();
+  await expect(page.getByLabel('Agent template', { exact: true })).toContainText('Commit and Push');
+  await page.getByLabel('Agent template', { exact: true }).selectOption('commit-push');
+  await page.getByLabel('Agent template', { exact: true }).selectOption('tests');
+  await page.getByRole('button', { name: 'Add agent', exact: true }).click();
+  let editor = page.getByRole('dialog', { name: 'Create agent', exact: true });
+  await expect(editor.getByLabel('Instructions', { exact: true })).toHaveValue(/regression/);
+  await editor.getByLabel('Name', { exact: true }).fill('Unit test specialist');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  const selector = page.getByLabel('Coding agent', { exact: true });
+  await expect(selector.locator('option:checked')).toContainText('Unit test specialist');
+
+  await page.getByLabel('Agent template', { exact: true }).selectOption('mr');
+  await page.getByRole('button', { name: 'Add agent', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Create agent', exact: true });
+  await editor.getByLabel('Name', { exact: true }).fill('MR specialist');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  await expect(selector.locator('option')).toHaveCount(2);
+  await expect(selector.locator('option:checked')).toContainText('MR specialist');
+  await page.getByRole('button', { name: 'Edit agent', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit agent', exact: true });
+  await edit.getByLabel('Name', { exact: true }).fill('Release MR specialist');
+  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(edit).not.toBeVisible();
+
+  const profiles = await page.evaluate(async () => {
+    const agents = await window.workspace.library.list('agents');
+    await window.workspace.library.save('agents', {
+      ...agents[0],
+      id: 'visual-director',
+      name: 'Visual director',
+      agentRuntime: undefined,
+    });
+    return agents;
+  });
+  expect(profiles.every((agent) => agent.agentRuntime === 'deepagents-acp')).toBe(true);
+  expect(profiles.find((agent) => agent.name === 'Release MR specialist')?.tools).not.toContain(
+    'shell.execute',
+  );
+  await page.reload();
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(selector.locator('option')).toHaveCount(2);
+  await expect(selector).toContainText('Unit test specialist');
+  await expect(selector).toContainText('Release MR specialist');
+  await expect(selector).not.toContainText('Visual director');
+  await selector.selectOption(profiles.find((agent) => agent.name === 'Unit test specialist')!.id);
+  await expect(selector.locator('option:checked')).toContainText('Unit test specialist');
+  await page.screenshot({ path: 'test-results/code-specialist-agents.png' });
+});
+
 test('/code saves folders to Code and reconnects them from Chat', async () => {
   await page.getByRole('checkbox', { name: 'Code', exact: true }).check();
   const input = page.getByLabel('Message', { exact: true });
@@ -564,10 +619,31 @@ test('Code workspaces persist and reconnect to conversations with guarded projec
   }, root);
 
   await page.getByRole('button', { name: 'Code', exact: true }).click();
-  await page.getByRole('button', { name: 'Open folder', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Folder', exact: true }).click();
   const workspace = page.getByRole('region', { name: 'Project workspaces' });
   await expect(workspace.getByText('Project operations require approval')).toBeVisible();
   await expect(workspace.getByText(/^localai-workflows-/)).toBeVisible();
+  await app.evaluate(({ dialog }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  });
+  await workspace.getByRole('button', { name: /^Folder options for localai-workflows-/ }).click();
+  await workspace
+    .getByRole('group', { name: /^Folder actions for localai-workflows-/ })
+    .getByRole('button', { name: 'Relink folder', exact: true })
+    .click();
+  await expect(workspace).toBeVisible();
+  await expect(workspace.getByText(/^localai-workflows-/)).toBeVisible();
+  await app.evaluate(({ dialog }, project) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+  }, root);
+  const folderOptions = workspace.getByRole('button', {
+    name: /^Folder options for localai-workflows-/,
+  });
+  await folderOptions.click();
+  await expect(workspace.getByRole('button', { name: 'Remove folder' })).toBeVisible();
+  await workspace.getByRole('button', { name: 'Remove folder' }).click();
+  const removeDialog = page.getByRole('dialog', { name: 'Remove folder from Code?' });
+  await removeDialog.getByRole('button', { name: 'Cancel' }).click();
   await workspace.getByRole('button', { name: 'Open in Chat' }).click();
   await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
 

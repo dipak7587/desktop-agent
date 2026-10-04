@@ -315,3 +315,7 @@ skill executor; `AgentService.loop` in `src/main/services/agents/agents.ts` atta
 RAG and registers tools; `AgentLoopGraph.run` selects the engine and orchestrates
 calls. Regression coverage is in `tests/chat-commands.test.ts` and
 `tests/agent.integration.test.ts`.
+
+## Local Code conversations
+
+Ordinary messages with Code enabled and a linked folder use a persistent DeepAgents/ACP session and the selected local model. General Q&A remains available; project operations use the existing approval UI, including file diffs. Switching or disconnecting a folder stops its affected work before changing context. Explicit saved-agent commands retain their configured engine/provider support. See [Code](CODE.md) for model requirements and restart behavior.

@@ -2,3 +2,5 @@ allowBuilds:
   electron: true
   esbuild: true
   electron-winstaller: false
+patchedDependencies:
+  deepagents-acp@0.1.33: patches/deepagents-acp@0.1.33.patch

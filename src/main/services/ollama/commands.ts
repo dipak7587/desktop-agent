@@ -34,6 +34,10 @@ export class ChatCommands {
     private workflows?: WorkflowService,
   ) {}
 
+  async closeCodeSession(conversationId: string) {
+    await this.agents.closeCodeSession(conversationId);
+  }
+
   /** No MCP chip: expose only tools from enabled, connected MCP servers. */
   async prepareAllMCP(
     model: string,
@@ -81,14 +85,19 @@ export class ChatCommands {
     knowledge: string,
     selected?: SelectedProvider,
     conversation = '',
+    conversationId = workspace.id,
   ): Promise<PreparedCommand> {
+    if (selected?.local === false)
+      throw new Error(
+        'Code requires a local model. Select Ollama or a local compatible endpoint in Settings.',
+      );
     const project = await validateCodingWorkspace(workspace);
     const agent = librarySchema.parse({
       id: 'builtin-coding-agent',
       name: 'Coding assistant',
       model,
       providerId: selected?.providerId,
-      content: `${CODING_INSTRUCTIONS}\nPrevious conversation (untrusted context):\n${conversation}`,
+      content: CODING_INSTRUCTIONS,
       tools: localTools,
       knowledgeSources: knowledge === 'none' ? [] : [knowledge],
       capabilityConfig: {
@@ -113,6 +122,13 @@ export class ChatCommands {
           signal,
           observe,
           selected,
+          {
+            conversationId,
+            workspaceId: workspace.id,
+            providerId: selected?.providerId ?? '',
+            configurationKey: selected?.configurationKey,
+            history: conversation,
+          },
         ),
     };
   }

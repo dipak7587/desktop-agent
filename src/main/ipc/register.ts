@@ -141,6 +141,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     const canonicalPath = await realpath(result.filePaths[0]);
     if (!(await stat(canonicalPath)).isDirectory()) throw new Error('Choose a project folder');
     projects.add(canonicalPath);
+    await s.chat.releaseWorkspace(conversationId);
     return s.db.connectCodeWorkspace(conversationId, canonicalPath);
   });
   handle('code:reconnect', z.tuple([idSchema, idSchema]), async (workspaceId, conversationId) => {
@@ -148,6 +149,8 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     if (!(await stat(workspace.canonicalPath)).isDirectory())
       throw new Error('Workspace folder is missing or inaccessible. Relink it using Open Folder.');
     projects.add(workspace.canonicalPath);
+    if (s.db.get(conversationId).workspaceId !== workspaceId)
+      await s.chat.releaseWorkspace(conversationId);
     return s.db.reconnectCodeWorkspace(workspaceId, conversationId);
   });
   handle(
@@ -164,11 +167,21 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       const canonicalPath = await realpath(result.filePaths[0]);
       if (!(await stat(canonicalPath)).isDirectory()) throw new Error('Choose a project folder');
       projects.add(canonicalPath);
+      for (const conversation of s.db.list().filter((c) => c.workspaceId === workspaceId))
+        await s.chat.releaseWorkspace(conversation.id);
+      await s.chat.releaseWorkspace(conversationId);
       return s.db.relinkCodeWorkspace(workspaceId, conversationId, canonicalPath);
     },
   );
-  handle('code:disconnect', id, (conversationId) => s.db.disconnectCodeWorkspace(conversationId));
-  handle('code:remove', id, (workspaceId) => s.db.removeCodeWorkspace(workspaceId));
+  handle('code:disconnect', id, async (conversationId) => {
+    await s.chat.releaseWorkspace(conversationId);
+    s.db.disconnectCodeWorkspace(conversationId);
+  });
+  handle('code:remove', id, async (workspaceId) => {
+    for (const conversation of s.db.list().filter((c) => c.workspaceId === workspaceId))
+      await s.chat.releaseWorkspace(conversation.id);
+    s.db.removeCodeWorkspace(workspaceId);
+  });
   handle(
     'chat:create',
     z.tuple([z.string().max(200), idSchema.optional(), idSchema.optional()]),
@@ -226,12 +239,14 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     ].join('\n');
     await atomicWrite(result.filePath, markdown);
   });
-  handle('chat:remove', id, (id) => {
+  handle('chat:remove', id, async (id) => {
     if (s.chat.isActive(id)) throw new Error('Stop generation before deleting this conversation');
+    await s.chat.releaseWorkspace(id);
     s.db.remove(id);
   });
   handle('chat:clear', none, async () => {
     await s.chat.stopAll();
+    for (const conversation of s.db.list()) await s.chat.releaseWorkspace(conversation.id);
     s.db.clear();
   });
   handle('chat:messages', id, (id) => s.db.messages(id));

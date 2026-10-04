@@ -131,3 +131,7 @@ workspace/agent permission intersection. Recent conversation text is bounded con
 permission grant. Project reads default to Ask for linked conversations; direct writes and
 commands are reviewed. Folderless chat and explicitly selected one-run folders retain their
 existing paths.
+
+## Code ACP runtime
+
+Direct workspace-linked Code chat is routed through `ChatService → ChatCommands → AgentService → CodeAgentManager → deepagents-acp → DeepAgent`. ACP SDK connections use an embedded main-process transport; the pinned package patch avoids process-global stdio handlers. Existing guarded capabilities own all file/command access. The renderer and preload API are unchanged. Session state is cached per conversation; durable Chat history seeds new sessions after restart. See [Code runtime](CODE.md) for lifecycle, local-provider restrictions and patch details.

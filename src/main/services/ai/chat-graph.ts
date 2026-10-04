@@ -435,6 +435,10 @@ export class ChatTurnGraph {
           : '');
       const content = await runtime.command.execute(task, runtime.signal, (event) => {
         const safe = JSON.parse(this.deps.redact(JSON.stringify(event))) as AppEvent;
+        if (safe.status === 'Streaming' && safe.content) {
+          runtime.onToken?.(safe.content);
+          return;
+        }
         activity.push(safe);
         if (activity.length > 100) activity.shift();
         this.deps.emit({ type: 'chat', id: state.id, status: 'activity', activity: safe });

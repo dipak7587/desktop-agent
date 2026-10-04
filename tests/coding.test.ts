@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { withWorkspacePolicy } from '../src/main/services/agents/coding';
+import { withWorkspacePolicy, isLocalCodeProvider } from '../src/main/services/agents/coding';
 import { librarySchema } from '../src/shared/schemas';
 import type { CodeWorkspace } from '../src/shared/types';
 
@@ -52,4 +52,38 @@ it('intersects workspace and agent denials with more specific allows', () => {
     withWorkspacePolicy(librarySchema.parse({ id: 'reader', name: 'Reader' }), denied)
       .capabilityConfig?.permissions['filesystem.read'],
   ).toBe('deny');
+});
+
+it('accepts local inference endpoints and rejects cloud profiles', () => {
+  expect(
+    isLocalCodeProvider({
+      provider: 'ollama',
+      ollamaUrl: 'https://127.evil.example',
+      apiBaseUrl: '',
+    }),
+  ).toBe(false);
+  expect(
+    isLocalCodeProvider({
+      provider: 'ollama',
+      ollamaUrl: 'http://localhost:11434',
+      apiBaseUrl: '',
+    }),
+  ).toBe(true);
+  expect(
+    isLocalCodeProvider({
+      provider: 'custom',
+      ollamaUrl: '',
+      apiBaseUrl: 'http://192.168.1.10:1234/v1',
+    }),
+  ).toBe(true);
+  expect(
+    isLocalCodeProvider({
+      provider: 'openai',
+      ollamaUrl: '',
+      apiBaseUrl: 'https://api.openai.com/v1',
+    }),
+  ).toBe(false);
+  expect(
+    isLocalCodeProvider({ provider: 'ollama', ollamaUrl: 'https://ollama.com', apiBaseUrl: '' }),
+  ).toBe(false);
 });

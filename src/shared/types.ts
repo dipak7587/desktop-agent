@@ -159,6 +159,7 @@ export interface LibraryItem extends Partial<
   >
 > {
   group?: string;
+  agentRuntime?: 'deepagents-acp';
   providerId?: string;
   id: string;
   name: string;

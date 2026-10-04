@@ -4,7 +4,7 @@
 
 Add a persistent, project-linked coding workspace to LocalAI Workspace. A user can connect a local project folder from the application UI, use ordinary Chat with that project, optionally attach an existing agent, and return to the same project in later conversations.
 
-This document is a model-agnostic implementation specification. It can be given to any coding LLM together with the repository. Do not assume a particular model vendor, model name, inference API, agent framework, shell, or operating system. Reuse the application's configured provider/model and existing application tool/permission architecture.
+The implementation status below describes the shipped runtime; the remaining sections retain the broader workspace specification. Direct Code chat now requires a configured local inference endpoint. Saved-agent tasks and ordinary Chat retain their existing provider support. This document is otherwise a model-agnostic implementation specification. It can be given to any coding LLM together with the repository. Do not assume a particular model vendor, model name, inference API, agent framework, shell, or operating system. Reuse the application's configured provider/model and existing application tool/permission architecture.
 
 The experience is conversational, not a CLI embedded in Chat. `/code` lists saved folders in the Chat composer without navigating to Code. Select a folder by mouse or keyboard, filter by name/path, or use **Open another folder…**. It is not a command that launches a separate process. Terminal-like actions, if implemented, are application tools behind explicit policy checks and approval.
 
@@ -24,15 +24,109 @@ The existing optional agent folder is not the requested persistent workspace. Im
 
 Initial implementation (2026-09-29): the app persists workspace metadata in the existing local SQLite database, links a workspace ID to a conversation, opens folders through Electron's native picker, lists, reconnects, and relinks recent workspaces, and supports `/code` as an inline saved-folder chooser in Chat. Reopening a linked conversation refreshes workspace availability and its last-opened time. Relinking retains identity but clears permissions and provider/agent preferences for the replacement path. Disconnecting affects only that conversation; removing a workspace record does not delete project files and clears conversation links. New workspaces start with an empty permission policy, and the Chat indicator reports restricted access.
 
-Coding runtime update: linked Chat now executes coding tasks through the existing agent runtime
-with the selected provider/model and no saved-agent prerequisite. The empty workspace policy
-requires approval for project operations. Direct coding reviews writes and commands; selected
-agents inherit the linked folder and intersect their project-tool permissions with workspace
-rules. Deny wins. File deletion is hash-checked and always reviewed. Development commands use
-validated executable/argument arrays, reviewed execution and a workspace-relative working directory.
-Code's optional task form accepts configured agents from all enabled providers. Existing run
-history, diffs, cancellation, limits and Chat activity are reused; bounded recent conversation
-text supplies follow-up context. Missing/replaced roots fail before execution.
+### DeepAgents / ACP runtime (2026-10-03)
+
+The existing folder chooser and Chat renderer remain in place. The Code page also provides
+**Agent template → Add agent** and **Edit agent** for multiple specialist profiles.
+The **Commit and Push** template can stage and commit explicitly selected files and push the current
+branch to its configured upstream; each mutation requires its own approval.
+Direct messages in a linked Code conversation now use **DeepAgents 1.14.1 +
+`deepagents-acp` 0.1.33**, regardless of the optional saved-agent engine setting.
+Saved coding profiles marked `agentRuntime: deepagents-acp` use this runtime too, with a
+separate session per task and cleanup when the task finishes. The previous `AgentLoopGraph`
+path remains for other saved agents and MCP/skill commands; each task executes one engine.
+
+```text
+Selected Code folder → existing Code / Chat UI → store → preload / validated IPC
+  → ChatService → ChatCommands → AgentService (policy, run history, approvals)
+  → CodeAgentManager → ACP SDK client ↔ deepagents-acp server
+  → DeepAgent → configured local LangChain model → guarded workspace tools
+```
+
+Relevant implementation files:
+
+- `src/main/services/agents/code-agent-manager.ts`: ACP connections, session lifecycle,
+  local model capability discovery, model/tool boundaries, context budgets and event adapter.
+- `src/main/services/ollama/{chat,commands}.ts`: conversation/workspace identity and bounded
+  persisted history passed into Code; model settings use the existing provider router.
+- `src/main/services/agents/{agents,coding,tools}.ts`: capability registration, coding
+  instructions, workspace validation, approval/diff review, command execution and run history.
+- `src/main/services/ai/{capability-tools,chat-graph,tool-schemas}.ts`: native tools,
+  Chat streaming and validated tool arguments.
+- `src/main/ipc/register.ts`: folder switching, disconnect/removal and conversation cleanup.
+- `patches/deepagents-acp@0.1.33.patch`: embedded transport support (see below).
+
+**Local inference.** Existing Settings and Chat model selection are the only configuration.
+Ollama and compatible `custom`/`openai` profiles must use loopback or a private IPv4 endpoint.
+Cloud profiles are rejected for direct Code chat. No cloud key or CLI is required.
+Ollama `/api/show` is accessed through its existing provider abstraction. Explicitly missing
+`tools` capability removes tool bindings and reports a visible explanation while retaining
+ordinary text Q&A. Compatible endpoints without capability metadata are attempted normally;
+reliable tool use and multi-turn quality still depend on the selected model.
+
+**Sessions and history.** One ACP server/session is retained per active conversation,
+with at most 20 cached conversations. Each turn gets fresh policy/tool closures while the
+DeepAgent retains its conversation state. Workspace/root, model/provider configuration,
+instructions/catalog or context-budget changes replace the session. Different conversations
+have independent cancellation controllers. Switching/disconnecting/relinking/removing a folder
+cancels and settles affected runs before releasing their sessions. Chat deletion and shutdown
+also release runtime state. SQLite remains the durable Chat/run history authority. After restart,
+eviction, failure or cancellation, a new ACP session is seeded with at most 12 messages / 16,000
+characters of persisted conversation; unfinished operations are never automatically replayed.
+ACP session IDs themselves and full DeepAgent checkpoints are **not persisted across restarts**.
+
+**Permissions and tools.** All actual workspace operations retain the existing capability
+router and `AgentTools`; an empty workspace policy asks for project operations and deny wins.
+The exact validated operation and optional diff travel through ACP `requestPermission` to the
+existing application approval UI. Upstream's generic tool announcement only permits dispatch
+to a registered guarded tool, never grants filesystem/command access. Writes recheck hashes
+following approval; deletion is always reviewed. Commands retain the existing executable/
+argument validation, selected-root cwd, timeout, output bounds and cancellation. Commands can
+execute project code and are not an OS sandbox.
+
+DeepAgents owns reasoning, planning and context management. Its default host filesystem,
+shell and delegation tools are excluded from both model bindings and execution. A state-only
+backend prevents implicit host access. Existing guarded edits are deliberately reused because
+the library's default filesystem backend does not enforce this app's secret exclusions,
+content-hash review or capability policies.
+
+Search matches file paths (including directory segments) and contents, returns at most 60
+results, and skips generated/sensitive paths. Root `.gitignore` positive rules and configured
+ignore patterns are honored; nested ignore files and re-inclusion (`!`) semantics are not yet
+implemented. File reads default to 200 lines and accept zero-based `offset` and `limit` (up to
+1,000); their hash always covers the whole file. The existing 200 KB read ceiling remains.
+Instructions tell the agent to search before reading, cite actual paths, answer general questions
+without tools, and make no edits for explanatory questions. Optional `AGENTS.md`,
+`.deepagents/AGENTS.md` and `skills/*/SKILL.md` can be read through approved workspace tools.
+Automatic DeepAgents filesystem skill/memory discovery and delegated subagents remain disabled.
+
+**Streaming and errors.** Actual ACP `agent_message_chunk` updates flow into the existing Chat
+stream. This package emits complete model-message chunks, rather than token-by-token deltas.
+Tool execution, outcomes, plans and permission waits reuse run activity; private model thought
+chunks are ignored. Stop sends ACP cancellation and aborts the owning tool/model signal.
+Context overflow, changed roots, model discovery failures and iteration limits report errors.
+Development logs contain lifecycle/session identifiers, never prompt bodies, files or keys.
+
+**Pinned package patch.** Upstream 0.1.33 only exposes `start()` over process stdio, installing
+process-global exit/signal handlers. The tracked pnpm patch adds a typed `connect(Stream)`
+entry point in ESM/CJS and declarations, using its unchanged ACP request handlers and SDK.
+Electron uses in-memory SDK message streams, not private method casts, a CLI or simulated ACP.
+Review/remove this patch when upstream offers an embedded transport; install using pnpm so
+`patchedDependencies` is applied.
+
+**Validation.** Deterministic tests cover session reuse/isolation, workspace/model changes,
+normal chat, guarded read/search/create/edit, ACP approve/reject, cancellation, traversal,
+default-tool exclusion, command cwd, model capability/offline errors, iteration limits and a
+read → bug fix → focused command-check flow. `tests/code-agent-manager.test.ts` also offers
+an opt-in real Ollama chat/read/follow-up check with `CODE_AGENT_LIVE_MODEL`. This check passed with the installed `qwen3-coder:latest` on 2026-10-03.
+
+### Verification results (2026-10-04)
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm build`: passed.
+- `pnpm test`: 210 passed; one opt-in live test skipped by default.
+- `CODE_AGENT_LIVE_MODEL=qwen3-coder:latest pnpm exec vitest run tests/code-agent-manager.test.ts -t 'live local Ollama'`: passed separately on 2026-10-03.
+- `pnpm exec playwright test tests/ui/workflows.spec.ts -g 'Code workspace|/code saves'`: all three Code desktop tests passed. The workspace test's stale `Open folder` selector was updated to the existing `Add Folder` button; the product UI was not changed.
+- Full `pnpm test:ui` run: 18 passed, four live tests skipped, six failures. The Code selector failure was fixed and verified above. Five other failures remain in workflow screenshots, Saved Text editing, global-error popover expectations, skill slash selection and Knowledge group selection. The full desktop suite is not green.
 
 The fuller specification below still includes unimplemented workspace permission editing,
 once/conversation/workspace grant controls, workspace-specific activity filtering, project memory

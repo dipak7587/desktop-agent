@@ -31,12 +31,23 @@ Bulk grouping changes metadata only and does not restart MCP servers or run agen
 ## Code side menu
 
 **Code** connects saved project folders to Chat. Ordinary messages in a linked conversation
-use the built-in coding assistant and the current Chat provider/model; no saved agent is required.
+use the DeepAgents/ACP coding assistant and the current local Chat provider/model; no saved agent is required. Explicit saved-agent runs retain their configured engine and provider. See [Code](CODE.md) for runtime sessions and local endpoint requirements.
 Project operations default to per-operation approval, with file diffs for changes. Workspace
 rules and selected-agent permissions are intersected; denial always wins. A selected agent
 inherits the linked folder unless an explicit one-run folder is supplied.
 
-The optional task form accepts enabled agents from any enabled provider with a configured model.
+The Code task form lists dedicated agents marked `agentRuntime: deepagents-acp`.
+Choose **Agent template → Add agent** to create multiple Coding, Test Cases, Test Runner,
+Code Review, MR Preparation, Commit and Push, Refactoring, Documentation, or Custom agents.
+**Edit agent**
+opens the shared editor for the selected profile. Definitions persist in the agent library;
+unrelated agents do not appear in the Code selector. Each coding profile requires a local
+provider/model and a selected project. Runs use isolated ACP sessions, cleaned up on completion,
+failure, or cancellation, including when a coding profile runs from a saved workflow.
+Review and MR templates start read-only; MR Preparation produces a draft without publishing.
+Commit and Push uses approval-gated, explicit file selection for staging and committing, plus
+separate approval for pushing to the current branch's configured upstream. It does not force-push
+or include unrelated staged files.
 Select a project and task, or use **Fix failing tests** to reproduce, correct and rerun a failing
 test without weakening it. Both paths reuse capability routing, iteration limits, cancellation,
 diff review and execution history. Linked-folder tasks cannot be regenerated accidentally.

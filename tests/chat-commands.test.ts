@@ -639,7 +639,9 @@ it('codes in a persisted workspace without a configured agent and reviews writes
   expect(await readFile(join(project, 'direct.txt'), 'utf8')).toBe('direct coding works');
   expect(await library.list('agents')).toEqual([]);
   expect(agents.runs()[0]).toMatchObject({ folderPath: project, status: 'Completed' });
-  expect(complete.mock.calls[0][0].messages[0].content).toContain('Keep the existing public API.');
+  expect(complete.mock.calls[0][0].messages.map((message) => message.content).join('\n')).toContain(
+    'Keep the existing public API.',
+  );
   expect(db.messages(request.id).at(-1)?.metadata?.command?.kind).toBe('code');
   await expect(chat.send({ ...request, regenerate: true })).rejects.toThrow(
     'cannot be regenerated',

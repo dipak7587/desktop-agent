@@ -125,3 +125,7 @@ checkpoints persist only in `database/checkpoints.sqlite`. Model configuration a
 handles are not graph state. Checkpoints do contain conversation/task content and tool
 messages and are not encrypted at rest; they are not included in portable exports. Removing
 an agent history entry also deletes its checkpoint thread.
+
+## Code ACP boundary
+
+Direct Code chat only accepts local inference endpoints (loopback/private IPv4); saved-agent behavior is unchanged. ACP runs in Electron main over SDK streams. Native DeepAgents host filesystem/shell/delegation tools are excluded; the state-only backend cannot implicitly read host files. Registered application tools retain capability policy, symlink/secret checks, scoped paths, content hashes and command review. Generic ACP tool dispatch permission is not an operation grant: exact-operation requests pass through ACP into the existing approval UI before I/O. A selected cwd and application checks do not sandbox approved child processes. See [Code](CODE.md) for scope and remaining limitations.

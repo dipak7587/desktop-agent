@@ -4,10 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  deepagents-acp@0.1.33: 5452bc086f0b3cef8ad89fd71be78d2d39fe26c628cc09439a2f4107707b3680
+
 importers:
 
   .:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: ^1.7.0
+        version: 1.7.0(zod@4.6.5)
       '@lancedb/lancedb':
         specifier: ^0.26.2
         version: 0.26.2(apache-arrow@18.1.0)
@@ -26,6 +32,9 @@ importers:
       '@langchain/langgraph-checkpoint':
         specifier: ^1.1.5
         version: 1.1.5(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))
+      '@langchain/mcp-adapters':
+        specifier: ^2.0.0
+        version: 2.0.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))
       '@langchain/ollama':
         specifier: ^1.3.0
         version: 1.3.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))
@@ -44,6 +53,9 @@ importers:
       deepagents:
         specifier: ^1.14.1
         version: 1.14.1(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))))(@langchain/langgraph-sdk@1.12.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(langchain@1.5.12(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(openai@7.23.0(undici@7.29.1)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(langsmith@0.9.0(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))
+      deepagents-acp:
+        specifier: 0.1.33
+        version: 0.1.33(patch_hash=5452bc086f0b3cef8ad89fd71be78d2d39fe26c628cc09439a2f4107707b3680)(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))))(@langchain/langgraph-sdk@1.12.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(langchain@1.5.12(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(openai@7.23.0(undici@7.29.1)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(langsmith@0.9.0(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(zod@4.6.5)
       diff:
         specifier: ^8.0.2
         version: 8.0.4
@@ -83,6 +95,9 @@ importers:
       turndown:
         specifier: ^7.2.2
         version: 7.2.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -92,9 +107,6 @@ importers:
       zustand:
         specifier: ^5.0.11
         version: 5.0.15(@types/react@19.3.0)(react@19.3.0)
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.4
@@ -146,6 +158,11 @@ importers:
         version: 4.1.11(@types/node@24.13.5)(vite@7.3.6(@types/node@24.13.5)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.1))
 
 packages:
+
+  '@agentclientprotocol/sdk@1.7.0':
+    resolution: {integrity: sha512-ZORuxsuEnLjRly7t6Ad7zAsWitjWsyprswyPUHz/yycPb+tTm3DGa8XheaHhRXqX8LS9snuxaYavXSRA50TlHw==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@anthropic-ai/sdk@0.122.0':
     resolution: {integrity: sha512-GGPNftt0caaz9MDlmNQGHX8855Ojaduyy5pm9Sm1h7HalCn0cWNb5/bweadJF+4yzbal+QL6ztBa09WAAOzLmQ==}
@@ -787,6 +804,13 @@ packages:
       '@langchain/core': ^1.1.48
       zod: ^3.25.32 || ^4.2.0
 
+  '@langchain/mcp-adapters@2.0.0':
+    resolution: {integrity: sha512-0h5KzZVqSORz7JAQ0XlA8L+jvN+6mealM+60AdNs62i7vQBCkCTXG/PL7gLuiiPz72mIEzlAb662NL8serAQ+g==}
+    engines: {node: '>=20.10.0'}
+    peerDependencies:
+      '@langchain/core': ^1.2.6
+      '@langchain/langgraph': ^1.4.13
+
   '@langchain/ollama@1.3.0':
     resolution: {integrity: sha512-uzLkZVTXN0SI5zAoJbJzL4y/QN7gbmJ1txBgFfqJ5M0Qf+Yu2Zu8q98L3jIrfM+akWMaNmRU4R4APhcfQmeIsw==}
     engines: {node: '>=20'}
@@ -812,6 +836,14 @@ packages:
 
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
+
+  '@modelcontextprotocol/client@2.3.0':
+    resolution: {integrity: sha512-pbHtGj6EeFCHngFE8gtNPaKrsj8Mb1IMw45BLcaPML/m2WTxI7pyYmeNQvaux88Lw8BSO5r7nyRbUyIkICmGrg==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/core@2.3.0':
+    resolution: {integrity: sha512-09BHFaNVBe5pB2AhzCfLj0cqmsKLERvZQ4FblzP90UMGLaXVqdZPByFjURwsUYCmxonUW2yAwgTTvle+8O2/8w==}
+    engines: {node: '>=20'}
 
   '@modelcontextprotocol/sdk@1.30.0':
     resolution: {integrity: sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==}
@@ -1651,6 +1683,13 @@ packages:
 
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
+
+  deepagents-acp@0.1.33:
+    resolution: {integrity: sha512-PnZe+8ei2h/cmEGSc0i4Sm1SDwdlJ3bO53TIf2Z/KqermIm8k/cER0RC0sL47SHSfp9BlcmNGOw1VYlZy2qUOQ==}
+    hasBin: true
+    peerDependencies:
+      '@langchain/core': ^1.1.40
+      '@langchain/langgraph': ^1.4.10
 
   deepagents@1.14.1:
     resolution: {integrity: sha512-a3HXtHKZiwWzj/8zPzZaL9YdEHEdYfaGPsfebKcWLeNF38OZjTJrjoCO+4GZVy1gfDXF0t4a+MLvrW+G1YViwQ==}
@@ -3693,6 +3732,10 @@ packages:
 
 snapshots:
 
+  '@agentclientprotocol/sdk@1.7.0(zod@4.6.5)':
+    dependencies:
+      zod: 4.6.5
+
   '@anthropic-ai/sdk@0.122.0(zod@4.6.5)':
     dependencies:
       json-schema-to-ts: 3.1.1
@@ -4252,6 +4295,14 @@ snapshots:
       - react
       - react-dom
 
+  '@langchain/mcp-adapters@2.0.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))':
+    dependencies:
+      '@langchain/core': 1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))
+      '@langchain/langgraph': 1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
+      '@modelcontextprotocol/client': 2.3.0
+      '@modelcontextprotocol/core': 2.3.0
+      zod: 4.6.5
+
   '@langchain/ollama@1.3.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))':
     dependencies:
       '@langchain/core': 1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))
@@ -4286,6 +4337,20 @@ snapshots:
       - supports-color
 
   '@mixmark-io/domino@2.2.0': {}
+
+  '@modelcontextprotocol/client@2.3.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.3.0
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.1
+      jose: 6.2.12
+      pkce-challenge: 5.0.1
+      zod: 4.6.5
+
+  '@modelcontextprotocol/core@2.3.0':
+    dependencies:
+      zod: 4.6.5
 
   '@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.6.5)':
     dependencies:
@@ -5126,6 +5191,19 @@ snapshots:
       mimic-response: 3.1.0
 
   deep-is@0.1.4: {}
+
+  deepagents-acp@0.1.33(patch_hash=5452bc086f0b3cef8ad89fd71be78d2d39fe26c628cc09439a2f4107707b3680)(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))))(@langchain/langgraph-sdk@1.12.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(langchain@1.5.12(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(openai@7.23.0(undici@7.29.1)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(langsmith@0.9.0(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(zod@4.6.5):
+    dependencies:
+      '@agentclientprotocol/sdk': 1.7.0(zod@4.6.5)
+      '@langchain/core': 1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))
+      '@langchain/langgraph': 1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
+      deepagents: 1.14.1(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))))(@langchain/langgraph-sdk@1.12.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(langchain@1.5.12(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(openai@7.23.0(undici@7.29.1)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(langsmith@0.9.0(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))
+    transitivePeerDependencies:
+      - '@langchain/langgraph-checkpoint'
+      - '@langchain/langgraph-sdk'
+      - langchain
+      - langsmith
+      - zod
 
   deepagents@1.14.1(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5))))(@langchain/langgraph-sdk@1.12.0(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@langchain/langgraph@1.4.18(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(langchain@1.5.12(@langchain/core@1.2.12(openai@7.23.0(undici@7.29.1)(zod@4.6.5)))(openai@7.23.0(undici@7.29.1)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(langsmith@0.9.0(openai@7.23.0(undici@7.29.1)(zod@4.6.5))):
     dependencies:

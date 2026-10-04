@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { isLocalCodeProvider } from '../agents/coding';
 import type { SettingsService } from '../settings/settings';
 import { createLLMProvider, type LLMProvider } from '../ollama/provider';
 export interface SelectedProvider {
@@ -5,6 +7,8 @@ export interface SelectedProvider {
   providerId: string;
   providerNameSnapshot: string;
   modelId: string;
+  local?: boolean;
+  configurationKey?: string;
 }
 export class ProviderRouter {
   constructor(private settings: SettingsService) {}
@@ -19,6 +23,8 @@ export class ProviderRouter {
       providerId: p.id,
       providerNameSnapshot: p.name,
       modelId: model,
+      local: isLocalCodeProvider(snapshot),
+      configurationKey: createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'),
     };
   }
   async discover(id?: string) {

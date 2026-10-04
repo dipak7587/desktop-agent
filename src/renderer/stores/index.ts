@@ -102,7 +102,7 @@ export const useChat = create<{
   choose: (providerId: string, model: string, agentId?: string) => Promise<void>;
   connectWorkspace: () => Promise<void>;
   reconnectWorkspace: (workspaceId: string) => Promise<void>;
-  relinkWorkspace: (workspaceId: string) => Promise<void>;
+  relinkWorkspace: (workspaceId: string) => Promise<boolean>;
   disconnectWorkspace: () => Promise<void>;
   newChat: (selection?: { providerId: string; model: string; agentId?: string }) => Promise<void>;
   clear: () => Promise<void>;
@@ -199,9 +199,10 @@ export const useChat = create<{
     const conversationId = get().current;
     if (!conversationId) throw new Error('Create a conversation before relinking a workspace');
     const workspace = await window.workspace.code.chooseAndRelink(workspaceId, conversationId);
-    if (!workspace) return;
+    if (!workspace) return false;
     if (get().current === conversationId) set({ workspace });
     await get().load();
+    return true;
   },
   disconnectWorkspace: async () => {
     const conversationId = get().current;

@@ -38,7 +38,7 @@ export interface LLMProvider {
     options?: { disableStreaming?: boolean; format?: unknown },
   ): BaseChatModel;
   listModels(): Promise<Model[]>;
-  info?(name: string): Promise<unknown>;
+  info?(name: string, signal?: AbortSignal): Promise<unknown>;
   complete?(request: ChatRequest): Promise<ChatMessage>;
   chat(request: ChatRequest): AsyncIterable<ChatChunk>;
 }
@@ -128,8 +128,8 @@ export class OllamaLLMProvider implements LLMProvider {
   async listModels(): Promise<Model[]> {
     return (await (await this.request('/api/tags')).json()).models;
   }
-  async info(name: string) {
-    return (await this.request('/api/show', { model: name })).json();
+  async info(name: string, signal?: AbortSignal) {
+    return (await this.request('/api/show', { model: name }, signal)).json();
   }
   createChatModel(model: string, options = {}) {
     return nativeChatModel(this.settings(), model, options);

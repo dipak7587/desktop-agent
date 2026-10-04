@@ -54,6 +54,11 @@ export class ChatService {
   stop(id: string) {
     this.active.get(id)?.abort();
   }
+  async releaseWorkspace(id: string) {
+    this.stop(id);
+    await this.jobs.get(id);
+    await this.commands?.closeCodeSession(id);
+  }
   async stopAll() {
     for (const c of this.active.values()) c.abort();
     await Promise.allSettled(this.jobs.values());
@@ -132,6 +137,7 @@ export class ChatService {
             .map((message) => `${message.role}: ${message.content}`)
             .join('\n')
             .slice(-16000),
+          input.id,
         );
       }
       if (!prepared && input.modes?.includes('mcp')) {

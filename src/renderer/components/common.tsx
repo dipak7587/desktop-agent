@@ -131,12 +131,14 @@ export function Empty({
 export function PageHeader({
   eyebrow,
   title,
+  right,
   description,
   actions,
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  right?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
@@ -147,6 +149,7 @@ export function PageHeader({
         <p>{description}</p>
       </div>
       <div className="actions">{actions}</div>
+      {right}
     </header>
   );
 }

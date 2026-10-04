@@ -151,6 +151,7 @@ export const librarySchema = z.object({
   createdAt: z.number().default(0),
   updatedAt: z.number().default(0),
   providerId: idSchema.optional(),
+  agentRuntime: z.literal('deepagents-acp').optional(),
   model: z.string().max(200).default(''),
   skills: z.array(idSchema).max(100).default([]),
   tools: z.array(z.string().max(300)).max(200).default([]),
