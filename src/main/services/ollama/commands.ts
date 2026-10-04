@@ -128,6 +128,13 @@ export class ChatCommands {
             providerId: selected?.providerId ?? '',
             configurationKey: selected?.configurationKey,
             history: conversation,
+            access: {
+              allowedAgentIds: workspace.allowedAgentIds,
+              allowedSkills: workspace.allowedSkills,
+              allowedTools: workspace.allowedTools,
+              allowedMCPServers: workspace.allowedMCPServers,
+              allowedKnowledgeBases: workspace.allowedKnowledgeBases,
+            },
           },
         ),
     };

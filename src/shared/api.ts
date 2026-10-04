@@ -62,6 +62,16 @@ export interface WorkspaceAPI {
     chooseAndConnect(conversationId: string): Promise<CodeWorkspace | null>;
     chooseAndRelink(workspaceId: string, conversationId: string): Promise<CodeWorkspace | null>;
     reconnect(workspaceId: string, conversationId: string): Promise<CodeWorkspace>;
+    setAccess(
+      workspaceId: string,
+      policy: {
+        agentIds: string[];
+        skills: string[];
+        tools: string[];
+        mcpServers: string[];
+        knowledgeBases: string[];
+      },
+    ): Promise<CodeWorkspace>;
     disconnect(conversationId: string): Promise<void>;
     remove(workspaceId: string): Promise<void>;
   };

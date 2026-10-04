@@ -48,6 +48,7 @@ const api: WorkspaceAPI = {
       invoke('code:choose-and-relink', workspaceId, conversationId),
     reconnect: (workspaceId, conversationId) =>
       invoke('code:reconnect', workspaceId, conversationId),
+    setAccess: (workspaceId, policy) => invoke('code:set-access', workspaceId, policy),
     disconnect: (conversationId) => invoke('code:disconnect', conversationId),
     remove: (workspaceId) => invoke('code:remove', workspaceId),
   },

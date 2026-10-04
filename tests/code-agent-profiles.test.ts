@@ -112,3 +112,36 @@ it('requires a project and rejects a captured cloud provider before creating a r
   ).rejects.toThrow('local model');
   expect(service.runs()).toHaveLength(0);
 });
+
+it('blocks coding agents not granted access to a configured workspace folder', async () => {
+  const mcp = new MCPService(library, { resolve: () => '', redact: (text) => text }, () => {});
+  const restricted = new AgentService(
+    library,
+    provider,
+    new KnowledgeService(
+      root,
+      settings,
+      { embed: async () => [], embedBatch: async () => [] },
+      () => {},
+    ),
+    mcp,
+    settings,
+    () => {},
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => ({ allowedAgentIds: ['reviewer'] }),
+  );
+  const agent = createCodeAgent('coding', 'coder', 'local', 'local');
+  await library.save('agents', agent);
+  await expect(restricted.run({ agentId: agent.id, project: root, task: 'Work' })).rejects.toThrow(
+    'not allowed to access this project folder',
+  );
+  expect(restricted.runs()).toHaveLength(0);
+  await restricted.stopAll();
+});

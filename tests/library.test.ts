@@ -105,3 +105,34 @@ it('accepts execution iteration limits through 500 for settings and agents', () 
     expect(() => librarySchema.parse({ id: 'agent', name: 'Agent', maxIterations })).toThrow();
   }
 });
+it('persists Chat selection and per-agent resource and memory configuration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'library-agent-config-'));
+  try {
+    const library = new LibraryService(root);
+    const agent = librarySchema.parse({
+      id: 'configured-agent',
+      name: 'Configured agent',
+      selectedForChat: false,
+      memory: ['Use concise answers.'],
+      capabilityConfig: {
+        mode: 'selected',
+        skills: ['coding'],
+        tools: ['filesystem.read'],
+        mcpServers: ['filesystem'],
+        knowledgeBases: ['project-docs'],
+      },
+    });
+    await library.save('agents', agent);
+    const loaded = await new LibraryService(root).get('agents', agent.id);
+    expect(loaded.selectedForChat).toBe(false);
+    expect(loaded.memory).toEqual(['Use concise answers.']);
+    expect(loaded.capabilityConfig).toMatchObject({
+      skills: ['coding'],
+      tools: ['filesystem.read'],
+      mcpServers: ['filesystem'],
+      knowledgeBases: ['project-docs'],
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

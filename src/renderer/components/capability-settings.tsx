@@ -5,6 +5,7 @@ export function CapabilitySettings({
   item,
   onChange,
   title = 'Agent Capabilities',
+  focus,
   skills,
   tools,
   servers,
@@ -13,6 +14,7 @@ export function CapabilitySettings({
   item: LibraryItem;
   onChange: (config: AgentCapabilityConfig) => void;
   title?: string;
+  focus?: 'agent' | 'skills' | 'tools' | 'mcp' | 'knowledge';
   skills: { id: string; name: string }[];
   tools: { id: string; name: string }[];
   servers: { id: string; name: string }[];
@@ -42,7 +44,19 @@ export function CapabilitySettings({
       options: knowledge,
     },
   ] as const;
-  const permissions = groups.flatMap((group) =>
+  const visibleGroups =
+    focus === 'skills'
+      ? groups.filter((group) => group.title === 'Skills')
+      : focus === 'tools'
+        ? groups.filter((group) => group.title === 'Tools')
+        : focus === 'mcp'
+          ? groups.filter(
+              (group) => group.title === 'MCP servers' || group.title === 'Individual MCP tools',
+            )
+          : focus === 'knowledge'
+            ? groups.filter((group) => group.title === 'Knowledge sources')
+            : groups;
+  const permissions = visibleGroups.flatMap((group) =>
     config.mode === 'none' ||
     !config[group.flag] ||
     group.key === 'skills' ||
@@ -77,7 +91,7 @@ export function CapabilitySettings({
         Auto considers all enabled capabilities. Selected considers only your choices. None answers
         without capabilities. Selection never triggers execution.
       </p>
-      {groups.map((group) => (
+      {visibleGroups.map((group) => (
         <fieldset key={group.title} disabled={config.mode === 'none'}>
           <legend>{group.title}</legend>
           <label className="check">

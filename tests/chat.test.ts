@@ -48,13 +48,30 @@ it('persists workspace identity and reconnects conversations without deleting pr
   const firstConversation = db.create('local-model');
   const workspace = db.connectCodeWorkspace(firstConversation.id, join(root, 'project'));
   expect(workspace.permissions).toEqual({ rules: {} });
+  expect(workspace.allowedAgentIds).toBeUndefined();
   expect(db.get(firstConversation.id).workspaceId).toBe(workspace.id);
+  expect(
+    db.setCodeWorkspaceAccess(workspace.id, {
+      allowedAgentIds: ['coder', 'reviewer', 'coder'],
+      allowedSkills: ['coding'],
+      allowedTools: ['filesystem.read'],
+      allowedMCPServers: ['filesystem'],
+      allowedKnowledgeBases: ['project-docs'],
+    }),
+  ).toMatchObject({
+    allowedAgentIds: ['coder', 'reviewer'],
+    allowedSkills: ['coding'],
+    allowedTools: ['filesystem.read'],
+    allowedMCPServers: ['filesystem'],
+    allowedKnowledgeBases: ['project-docs'],
+  });
 
   db.close();
   db = new ChatDatabase(file);
   const secondConversation = db.create('local-model');
   const reconnected = db.reconnectCodeWorkspace(workspace.id, secondConversation.id);
   expect(reconnected.id).toBe(workspace.id);
+  expect(reconnected.allowedAgentIds).toEqual(['coder', 'reviewer']);
   expect(db.get(secondConversation.id).workspaceId).toBe(workspace.id);
 
   const relinked = db.relinkCodeWorkspace(
@@ -65,6 +82,11 @@ it('persists workspace identity and reconnects conversations without deleting pr
   expect(relinked.id).toBe(workspace.id);
   expect(relinked.canonicalPath).toBe(join(root, 'replacement-project'));
   expect(relinked.permissions).toEqual({ rules: {} });
+  expect(relinked.allowedAgentIds).toBeUndefined();
+  expect(relinked.allowedSkills).toBeUndefined();
+  expect(relinked.allowedTools).toBeUndefined();
+  expect(relinked.allowedMCPServers).toBeUndefined();
+  expect(relinked.allowedKnowledgeBases).toBeUndefined();
 
   db.removeCodeWorkspace(workspace.id);
   expect(db.get(firstConversation.id).workspaceId).toBeNull();

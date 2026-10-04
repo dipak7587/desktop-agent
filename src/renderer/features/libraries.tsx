@@ -58,7 +58,7 @@ const titles = {
   mcp: 'MCP',
 };
 const icons = { tools: Wrench, skills: Zap, 'saved-text': FileText, agents: Bot, mcp: Plug };
-const builtinTools = [
+export const builtinTools = [
   'filesystem.read',
   'filesystem.write',
   'filesystem.edit',
@@ -72,6 +72,7 @@ const builtinTools = [
   'git.log',
   'shell.execute',
 ];
+export type AgentConfigSection = 'agent' | 'skills' | 'tools' | 'mcp' | 'knowledge';
 export function Library({ kind }: { kind: LibraryKind }) {
   const { items, groups, load } = libraryStores[kind]();
   const providerSettings = useSettings((s) => s.settings);
@@ -125,7 +126,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
   const [run, setRun] = useState<LibraryItem | null>(null);
   const { states, load: loadStates } = useMCPStatus();
   const Icon = icons[kind];
-  const create = () =>
+  const create = () => {
     setEditing({
       ...librarySchema.parse({ id: crypto.randomUUID(), name: 'Untitled' }),
       name: '',
@@ -142,6 +143,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
           ? ['project.detect', 'filesystem.read', 'filesystem.search', 'filesystem.list']
           : [],
     });
+  };
   return (
     <div className="page">
       <PageHeader
@@ -357,6 +359,24 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     <Play size={13} />
                     Run
                   </button>
+                )}
+                {kind === 'agents' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void attempt(async () => {
+                          await window.workspace.library.save('agents', {
+                            ...item,
+                            enabled: !item.enabled,
+                          });
+                          await load();
+                        })
+                      }
+                    >
+                      {item.enabled ? 'Disable agent' : 'Enable agent'}
+                    </button>
+                  </>
                 )}
                 {kind === 'agents' && (
                   <button
@@ -698,12 +718,14 @@ export function LibraryEditor({
   kind,
   groups,
   initial,
+  focusCapability,
   onClose,
   onSave,
 }: {
   kind: LibraryKind;
   groups: string[];
   initial: LibraryItem;
+  focusCapability?: AgentConfigSection;
   onClose: () => void;
   onSave: (item: LibraryItem) => Promise<void>;
 }) {
@@ -1046,25 +1068,28 @@ export function LibraryEditor({
                   model={item.model}
                   onChange={(providerId, model) => setItem((i) => ({ ...i, providerId, model }))}
                 />
-                <CapabilitySettings
-                  item={item}
-                  onChange={(config) =>
-                    setItem((current) => ({
-                      ...current,
-                      capabilityConfig: config,
-                      skills: config.skills,
-                      tools: config.tools,
-                      knowledgeSources: config.knowledgeBases,
-                    }))
-                  }
-                  skills={skills}
-                  servers={servers}
-                  knowledge={sources}
-                  tools={[...new Set(tools)].map((id) => ({
-                    id,
-                    name: customTools.find((t) => id === `custom:${t.id}`)?.name ?? id,
-                  }))}
-                />
+                {focusCapability !== 'agent' && (
+                  <CapabilitySettings
+                    item={item}
+                    focus={focusCapability}
+                    onChange={(config) =>
+                      setItem((current) => ({
+                        ...current,
+                        capabilityConfig: config,
+                        skills: config.skills,
+                        tools: config.tools,
+                        knowledgeSources: config.knowledgeBases,
+                      }))
+                    }
+                    skills={skills}
+                    servers={servers}
+                    knowledge={sources}
+                    tools={[...new Set(tools)].map((id) => ({
+                      id,
+                      name: customTools.find((t) => id === `custom:${t.id}`)?.name ?? id,
+                    }))}
+                  />
+                )}
               </>
             )}
             {kind === 'skills' && (

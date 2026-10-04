@@ -1,19 +1,34 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   Bot,
+  Brain,
   ExternalLink,
   Folder,
   FolderOpen,
-  MoreHorizontal,
   Pencil,
   Play,
+  Plug,
   Plus,
+  Sparkles,
   Trash2,
+  Wrench,
+  MoreHorizontal,
 } from 'lucide-react';
 import { FolderSelection } from '../components/folder-selection';
-import { Confirm, PageHeader } from '../components/common';
-import { useAgents, useChat, useRuns, useSettings, useUI, attempt } from '../stores';
-import { AgentRuns, LibraryEditor } from './libraries';
+import { Confirm, Modal, PageHeader } from '../components/common';
+import {
+  useAgents,
+  useChat,
+  useKnowledge,
+  useMCP,
+  useRuns,
+  useSettings,
+  useSkills,
+  useTools,
+  useUI,
+  attempt,
+} from '../stores';
+import { AgentRuns, builtinTools, LibraryEditor, type AgentConfigSection } from './libraries';
 import { codeAgentTemplates, createCodeAgent } from '../../shared/code-agent-templates';
 import type { CodeWorkspace as CodeWorkspaceInfo, LibraryItem } from '../../shared/types';
 
@@ -25,13 +40,26 @@ export function CodeWorkspace() {
   const agents = useAgents((state) => state.items);
   const settings = useSettings((state) => state.settings);
   const runs = useRuns((state) => state.runs);
+  const skills = useSkills((state) => state.items);
+  const tools = useTools((state) => state.items);
+  const mcpServers = useMCP((state) => state.items);
+  const knowledgeBases = useKnowledge((state) => state.sources);
   const [agentId, setAgentId] = useState('');
   const [project, setProject] = useState('');
   const [task, setTask] = useState('');
   const [busy, setBusy] = useState(false);
   const [templateId, setTemplateId] = useState('coding');
   const [editing, setEditing] = useState<LibraryItem | null>(null);
+  const [editingFocus, setEditingFocus] = useState<AgentConfigSection>('agent');
   const [removingWorkspace, setRemovingWorkspace] = useState<CodeWorkspaceInfo | null>(null);
+  const [accessWorkspace, setAccessWorkspace] = useState<CodeWorkspaceInfo | null>(null);
+  const [accessFocus, setAccessFocus] = useState<AgentConfigSection>('agent');
+  const [workspaceAgentIds, setWorkspaceAgentIds] = useState<string[]>([]);
+  const [workspaceSkillIds, setWorkspaceSkillIds] = useState<string[]>([]);
+  const [workspaceToolIds, setWorkspaceToolIds] = useState<string[]>([]);
+  const [workspaceMCPIds, setWorkspaceMCPIds] = useState<string[]>([]);
+  const [workspaceKnowledgeIds, setWorkspaceKnowledgeIds] = useState<string[]>([]);
+  const [savingWorkspaceAccess, setSavingWorkspaceAccess] = useState(false);
   const [openWorkspaceOptions, setOpenWorkspaceOptions] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<
     Awaited<ReturnType<typeof window.workspace.code.list>>
@@ -39,16 +67,74 @@ export function CodeWorkspace() {
   const enabledProviders = (settings?.providers ?? []).filter(
     (provider) => provider.enabled !== false,
   );
-  const availableAgents = agents.filter((agent) => agent.agentRuntime === 'deepagents-acp');
-  const selectedAgent = availableAgents.find((agent) => agent.id === agentId) ?? availableAgents[0];
+  const allAgents = agents;
+  const enabledAgents = allAgents.filter((agent) => agent.enabled);
+  const selectedWorkspace = workspaces.find((workspace) => workspace.canonicalPath === project);
+  const folderAgents = selectedWorkspace?.allowedAgentIds
+    ? enabledAgents.filter((agent) => selectedWorkspace.allowedAgentIds!.includes(agent.id))
+    : enabledAgents;
+  const selectedAgent = folderAgents.find((agent) => agent.id === agentId) ?? folderAgents[0];
   const provider = enabledProviders.find((item) => item.id === selectedAgent?.providerId);
   const ready = selectedAgent?.enabled && provider?.modelIds?.includes(selectedAgent.model);
   const agentRunIds = runs.filter((run) => run.agentId === selectedAgent?.id).map((run) => run.id);
+  const editAgent = (agent: LibraryItem, focus: AgentConfigSection = 'agent') => {
+    setEditingFocus(focus);
+    setEditing(agent);
+  };
+  const configureFolder = (workspace: CodeWorkspaceInfo, focus: AgentConfigSection) => {
+    setAccessWorkspace(workspace);
+    setAccessFocus(focus);
+    setWorkspaceAgentIds(workspace.allowedAgentIds ?? allAgents.map((agent) => agent.id));
+    setWorkspaceSkillIds(
+      workspace.allowedSkills ?? skills.filter((skill) => skill.enabled).map((skill) => skill.id),
+    );
+    setWorkspaceToolIds(
+      workspace.allowedTools ?? [
+        ...builtinTools,
+        ...tools.filter((tool) => tool.enabled).map((tool) => `custom:${tool.id}`),
+      ],
+    );
+    setWorkspaceMCPIds(
+      workspace.allowedMCPServers ??
+        mcpServers.filter((server) => server.enabled).map((server) => server.id),
+    );
+    setWorkspaceKnowledgeIds(
+      workspace.allowedKnowledgeBases ??
+        knowledgeBases.filter((source) => source.status === 'ready').map((source) => source.id),
+    );
+    setOpenWorkspaceOptions(null);
+  };
+  const saveFolderAgentAccess = async () => {
+    if (!accessWorkspace) return;
+    setSavingWorkspaceAccess(true);
+    try {
+      await window.workspace.code.setAccess(accessWorkspace.id, {
+        agentIds: workspaceAgentIds,
+        skills: workspaceSkillIds,
+        tools: workspaceToolIds,
+        mcpServers: workspaceMCPIds,
+        knowledgeBases: workspaceKnowledgeIds,
+      });
+      setWorkspaces(await window.workspace.code.list());
+      setAccessWorkspace(null);
+    } finally {
+      setSavingWorkspaceAccess(false);
+    }
+  };
 
   useEffect(() => {
-    if (!availableAgents.some((agent) => agent.id === agentId))
-      setAgentId(availableAgents[0]?.id ?? '');
-  }, [agentId, availableAgents]);
+    if (!folderAgents.some((agent) => agent.id === agentId)) setAgentId(folderAgents[0]?.id ?? '');
+  }, [agentId, folderAgents]);
+
+  useEffect(() => {
+    if (!openWorkspaceOptions) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Element && !event.target.closest('.code-workspace-options'))
+        setOpenWorkspaceOptions(null);
+    };
+    document.addEventListener('click', closeOnOutsideClick);
+    return () => document.removeEventListener('click', closeOnOutsideClick);
+  }, [openWorkspaceOptions]);
 
   useEffect(() => {
     void attempt(async () => setWorkspaces(await window.workspace.code.list()));
@@ -95,13 +181,12 @@ export function CodeWorkspace() {
         title="Code | AI-assisted coding agents | Project workspaces"
         description="Connect a project to Chat or run a specialist coding agent. | Use Chat to inspect and edit this project through reviewed operations."
         right={
-           <button className="secondary" onClick={() => void attempt(connectFolder)}>
+          <button className="secondary" onClick={() => void attempt(connectFolder)}>
             <FolderOpen size={14} /> Add Folder
           </button>
         }
       />
       <section className="code-workspaces" aria-label="Project workspaces">
-      
         {workspaces.length ? (
           <div className="code-workspace-list">
             {workspaces.map((workspace) => (
@@ -117,6 +202,22 @@ export function CodeWorkspace() {
                   <span className="code-workspace-status small muted">
                     {workspace.available ? 'Folder available' : 'Folder missing or inaccessible'}
                     {workspace.available && ' · Project operations require approval'}
+                  </span>
+                  <span className="code-workspace-status small muted">
+                    Folder permissions · {workspace.allowedAgentIds?.length ?? allAgents.length}{' '}
+                    agents ·{' '}
+                    {workspace.allowedSkills?.length ??
+                      skills.filter((skill) => skill.enabled).length}{' '}
+                    skills ·{' '}
+                    {workspace.allowedTools?.length ??
+                      builtinTools.length + tools.filter((tool) => tool.enabled).length}{' '}
+                    tools ·{' '}
+                    {workspace.allowedMCPServers?.length ??
+                      mcpServers.filter((server) => server.enabled).length}{' '}
+                    MCP ·{' '}
+                    {workspace.allowedKnowledgeBases?.length ??
+                      knowledgeBases.filter((source) => source.status === 'ready').length}{' '}
+                    KB
                   </span>
                 </div>
                 <div className="code-workspace-actions">
@@ -157,6 +258,27 @@ export function CodeWorkspace() {
                       aria-label={`Folder actions for ${workspace.name}`}
                       hidden={openWorkspaceOptions !== workspace.id}
                     >
+                      {(
+                        [
+                          { label: 'Configure Agent', focus: 'agent', Icon: Bot },
+                          { label: 'Configure Skills', focus: 'skills', Icon: Sparkles },
+                          { label: 'Configure Tools', focus: 'tools', Icon: Wrench },
+                          { label: 'Configure MCP', focus: 'mcp', Icon: Plug },
+                          { label: 'Configure KB', focus: 'knowledge', Icon: Brain },
+                        ] as const
+                      ).map(({ label, focus, Icon }) => (
+                        <>
+                          <button
+                            type="button"
+                            key={label}
+                            onClick={() => configureFolder(workspace, focus)}
+                          >
+                            <Icon size={14} aria-hidden="true" />
+                            {label}
+                          </button>
+                          <span className="separator"></span>
+                        </>
+                      ))}
                       <button
                         type="button"
                         onClick={() => {
@@ -189,7 +311,9 @@ export function CodeWorkspace() {
         )}
       </section>
       <div className="code-agent-toolbar">
-        <h2 className="code-agent-heading">Coding agent Test</h2>
+        <h2 className="code-agent-heading">
+          Coding Agent{selectedAgent ? ` · ${selectedAgent.name}` : ''}
+        </h2>
         <div className="actions">
           <label>
             Agent template
@@ -212,7 +336,7 @@ export function CodeWorkspace() {
               const profile =
                 enabledProviders.find((entry) => entry.id === settings?.activeProviderId) ??
                 enabledProviders[0];
-              setEditing(
+              editAgent(
                 createCodeAgent(
                   templateId,
                   crypto.randomUUID(),
@@ -226,11 +350,14 @@ export function CodeWorkspace() {
             <Plus size={15} /> Add agent
           </button>
           {selectedAgent && (
-            <button type="button" onClick={() => setEditing(selectedAgent)}>
+            <button type="button" onClick={() => editAgent(selectedAgent)}>
               <Pencil size={15} /> Edit agent
             </button>
           )}
         </div>
+      </div>
+      <div className="code-folder-selector">
+        <FolderSelection value={project} onChange={setProject} required />
       </div>
       {selectedAgent ? (
         <div className="code-workspace-layout">
@@ -239,13 +366,13 @@ export function CodeWorkspace() {
             onSubmit={(event) => void attempt(() => startRun(event))}
           >
             <label>
-              Coding agent
+              Coding agent for selected folder
               <select
-                aria-label="Coding agent"
+                aria-label="Coding agent for selected folder"
                 value={selectedAgent.id}
                 onChange={(event) => setAgentId(event.target.value)}
               >
-                {availableAgents.map((agent) => {
+                {folderAgents.map((agent) => {
                   const profile = enabledProviders.find((item) => item.id === agent.providerId);
                   return (
                     <option value={agent.id} key={agent.id}>
@@ -268,7 +395,6 @@ export function CodeWorkspace() {
               )}
             </div>
             <p className="small muted">{selectedAgent.description}</p>
-            <FolderSelection value={project} onChange={setProject} required />
             <div className="code-task-heading">
               <label htmlFor="code-task">Task</label>
               <button type="button" onClick={() => setTask(testFixTask)}>
@@ -311,11 +437,15 @@ export function CodeWorkspace() {
         <section className="code-agent-empty">
           <Bot size={22} />
           <div>
-            <h2>Add your first coding agent</h2>
+            <h2>
+              {enabledAgents.length
+                ? 'No agents have folder access'
+                : 'Add your first coding agent'}
+            </h2>
             <p>
-              Choose a template above and select Add agent. Create separate agents for code, test
-              cases, reviews, merge-request drafts, or your own tasks. Each agent uses a configured
-              local model.
+              {enabledAgents.length
+                ? 'Configure Agent permissions on the selected folder card, or choose a different project folder.'
+                : 'Choose a template above and select Add agent. Create separate agents for code, test cases, reviews, merge-request drafts, or your own tasks. Each agent uses a configured local model.'}
             </p>
           </div>
         </section>
@@ -325,6 +455,7 @@ export function CodeWorkspace() {
           kind="agents"
           groups={useAgents.getState().groups}
           initial={editing}
+          focusCapability={editingFocus}
           onClose={() => setEditing(null)}
           onSave={async (item) => {
             await window.workspace.library.save('agents', {
@@ -350,6 +481,128 @@ export function CodeWorkspace() {
           }}
         />
       )}
+      {accessWorkspace && (
+        <Modal
+          title={`${accessFocus === 'agent' ? 'Configure Agent' : accessFocus === 'skills' ? 'Configure Skills' : accessFocus === 'tools' ? 'Configure Tools' : accessFocus === 'mcp' ? 'Configure MCP' : 'Configure Knowledge Base'} · ${accessWorkspace.name}`}
+          onClose={() => {
+            if (!savingWorkspaceAccess) setAccessWorkspace(null);
+          }}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void attempt(saveFolderAgentAccess);
+            }}
+          >
+            <p className="small muted">
+              Folder permissions are an upper limit. An agent can use only resources permitted here
+              and selected in its own configuration. Project file changes still follow the folder
+              approval policy.
+            </p>
+            {accessFocus === 'agent' && (
+              <ResourceChecks
+                resources={allAgents.map(({ id, name, enabled }) => ({
+                  id,
+                  name: `${name}${enabled ? '' : ' (disabled)'}`,
+                }))}
+                selectedIds={workspaceAgentIds}
+                onChange={setWorkspaceAgentIds}
+                disabled={savingWorkspaceAccess}
+              />
+            )}
+            {accessFocus === 'skills' && (
+              <ResourceChecks
+                resources={skills
+                  .filter((skill) => skill.enabled)
+                  .map(({ id, name }) => ({ id, name }))}
+                selectedIds={workspaceSkillIds}
+                onChange={setWorkspaceSkillIds}
+                disabled={savingWorkspaceAccess}
+              />
+            )}
+            {accessFocus === 'tools' && (
+              <ResourceChecks
+                resources={[
+                  ...builtinTools.map((id) => ({ id, name: id })),
+                  ...tools
+                    .filter((tool) => tool.enabled)
+                    .map((tool) => ({ id: `custom:${tool.id}`, name: tool.name })),
+                ]}
+                selectedIds={workspaceToolIds}
+                onChange={setWorkspaceToolIds}
+                disabled={savingWorkspaceAccess}
+              />
+            )}
+            {accessFocus === 'mcp' && (
+              <ResourceChecks
+                resources={mcpServers
+                  .filter((server) => server.enabled)
+                  .map(({ id, name }) => ({ id, name }))}
+                selectedIds={workspaceMCPIds}
+                onChange={setWorkspaceMCPIds}
+                disabled={savingWorkspaceAccess}
+              />
+            )}
+            {accessFocus === 'knowledge' && (
+              <ResourceChecks
+                resources={knowledgeBases
+                  .filter((source) => source.status === 'ready')
+                  .map(({ id, name }) => ({ id, name }))}
+                selectedIds={workspaceKnowledgeIds}
+                onChange={setWorkspaceKnowledgeIds}
+                disabled={savingWorkspaceAccess}
+              />
+            )}
+            <div className="actions">
+              <button
+                type="button"
+                disabled={savingWorkspaceAccess}
+                onClick={() => setAccessWorkspace(null)}
+              >
+                Cancel
+              </button>
+              <button className="primary" disabled={savingWorkspaceAccess}>
+                {savingWorkspaceAccess ? 'Saving…' : 'Save folder permissions'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ResourceChecks({
+  resources,
+  selectedIds,
+  onChange,
+  disabled,
+}: {
+  resources: { id: string; name: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="check-grid">
+      {resources.map((resource) => (
+        <label className="check" key={resource.id}>
+          <input
+            type="checkbox"
+            checked={selectedIds.includes(resource.id)}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange(
+                event.target.checked
+                  ? [...selectedIds, resource.id]
+                  : selectedIds.filter((id) => id !== resource.id),
+              )
+            }
+          />
+          {resource.name}
+        </label>
+      ))}
+      {!resources.length && <p className="small muted">No enabled resources are available.</p>}
     </div>
   );
 }

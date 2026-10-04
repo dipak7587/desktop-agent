@@ -15,6 +15,16 @@ export class ChatDatabase {
  CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,conversationId TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,createdAt INTEGER NOT NULL,metadata TEXT);
  CREATE TABLE IF NOT EXISTS code_workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL,canonicalPath TEXT NOT NULL UNIQUE,createdAt TEXT NOT NULL,lastOpenedAt TEXT NOT NULL,permissions TEXT NOT NULL,selectedAgentId TEXT,preferredProviderId TEXT,preferredModelId TEXT);
  CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversationId,createdAt);`);
+    const workspaceColumns = this.db.prepare('PRAGMA table_info(code_workspaces)').all();
+    for (const column of [
+      'allowedAgentIds',
+      'allowedSkills',
+      'allowedTools',
+      'allowedMCPServers',
+      'allowedKnowledgeBases',
+    ])
+      if (!workspaceColumns.some((entry) => entry.name === column))
+        this.db.exec(`ALTER TABLE code_workspaces ADD COLUMN ${column} TEXT`);
     const columns = this.db.prepare('PRAGMA table_info(conversations)').all();
     if (!columns.some((c) => c.name === 'providerId'))
       this.db.exec("ALTER TABLE conversations ADD COLUMN providerId TEXT NOT NULL DEFAULT ''");
@@ -76,16 +86,134 @@ export class ChatDatabase {
     return this.db
       .prepare('SELECT * FROM code_workspaces ORDER BY lastOpenedAt DESC')
       .all()
-      .map((row) => ({
-        ...row,
-        permissions: JSON.parse(String(row.permissions)) as WorkspacePermissionPolicy,
-      })) as unknown as CodeWorkspace[];
+      .map((raw) => {
+        const row = raw as unknown as Omit<
+          CodeWorkspace,
+          | 'permissions'
+          | 'allowedAgentIds'
+          | 'allowedSkills'
+          | 'allowedTools'
+          | 'allowedMCPServers'
+          | 'allowedKnowledgeBases'
+        > & {
+          permissions: string;
+          allowedAgentIds: string | null;
+          allowedSkills: string | null;
+          allowedTools: string | null;
+          allowedMCPServers: string | null;
+          allowedKnowledgeBases: string | null;
+        };
+        const {
+          permissions,
+          allowedAgentIds,
+          allowedSkills,
+          allowedTools,
+          allowedMCPServers,
+          allowedKnowledgeBases,
+          ...workspace
+        } = row;
+        return {
+          ...workspace,
+          permissions: JSON.parse(permissions) as WorkspacePermissionPolicy,
+          ...this.readWorkspaceAccess({
+            allowedAgentIds,
+            allowedSkills,
+            allowedTools,
+            allowedMCPServers,
+            allowedKnowledgeBases,
+          }),
+        };
+      });
   }
   getCodeWorkspace(id: string): CodeWorkspace {
     const row = this.db.prepare('SELECT * FROM code_workspaces WHERE id=?').get(id) as
-      (Omit<CodeWorkspace, 'permissions'> & { permissions: string }) | undefined;
+      | (Omit<
+          CodeWorkspace,
+          | 'permissions'
+          | 'allowedAgentIds'
+          | 'allowedSkills'
+          | 'allowedTools'
+          | 'allowedMCPServers'
+          | 'allowedKnowledgeBases'
+        > & {
+          permissions: string;
+          allowedAgentIds: string | null;
+          allowedSkills: string | null;
+          allowedTools: string | null;
+          allowedMCPServers: string | null;
+          allowedKnowledgeBases: string | null;
+        })
+      | undefined;
     if (!row) throw new Error('Workspace no longer exists');
-    return { ...row, permissions: JSON.parse(row.permissions) as WorkspacePermissionPolicy };
+    const {
+      permissions,
+      allowedAgentIds,
+      allowedSkills,
+      allowedTools,
+      allowedMCPServers,
+      allowedKnowledgeBases,
+      ...workspace
+    } = row;
+    return {
+      ...workspace,
+      permissions: JSON.parse(permissions) as WorkspacePermissionPolicy,
+      ...this.readWorkspaceAccess({
+        allowedAgentIds,
+        allowedSkills,
+        allowedTools,
+        allowedMCPServers,
+        allowedKnowledgeBases,
+      }),
+    };
+  }
+  private readWorkspaceAccess(
+    fields: Record<
+      | 'allowedAgentIds'
+      | 'allowedSkills'
+      | 'allowedTools'
+      | 'allowedMCPServers'
+      | 'allowedKnowledgeBases',
+      string | null
+    >,
+  ) {
+    return Object.fromEntries(
+      Object.entries(fields)
+        .filter(([, value]) => value !== null)
+        .map(([key, value]) => [key, JSON.parse(value!) as string[]]),
+    ) as Pick<
+      CodeWorkspace,
+      | 'allowedAgentIds'
+      | 'allowedSkills'
+      | 'allowedTools'
+      | 'allowedMCPServers'
+      | 'allowedKnowledgeBases'
+    >;
+  }
+  setCodeWorkspaceAccess(
+    workspaceId: string,
+    policy: Pick<
+      CodeWorkspace,
+      | 'allowedAgentIds'
+      | 'allowedSkills'
+      | 'allowedTools'
+      | 'allowedMCPServers'
+      | 'allowedKnowledgeBases'
+    >,
+  ): CodeWorkspace {
+    this.getCodeWorkspace(workspaceId);
+    this.db
+      .prepare(
+        'UPDATE code_workspaces SET allowedAgentIds=?,allowedSkills=?,allowedTools=?,allowedMCPServers=?,allowedKnowledgeBases=? WHERE id=?',
+      )
+      .run(
+        JSON.stringify([...new Set(policy.allowedAgentIds ?? [])]),
+        JSON.stringify([...new Set(policy.allowedSkills ?? [])]),
+        JSON.stringify([...new Set(policy.allowedTools ?? [])]),
+        JSON.stringify([...new Set(policy.allowedMCPServers ?? [])]),
+        JSON.stringify([...new Set(policy.allowedKnowledgeBases ?? [])]),
+        workspaceId,
+      );
+    return this.getCodeWorkspace(workspaceId);
   }
   connectCodeWorkspace(conversationId: string, canonicalPath: string): CodeWorkspace {
     this.get(conversationId);
@@ -134,7 +262,7 @@ export class ChatDatabase {
     const timestamp = new Date().toISOString();
     this.db
       .prepare(
-        'UPDATE code_workspaces SET name=?,canonicalPath=?,lastOpenedAt=?,permissions=?,selectedAgentId=NULL,preferredProviderId=NULL,preferredModelId=NULL WHERE id=?',
+        'UPDATE code_workspaces SET name=?,canonicalPath=?,lastOpenedAt=?,permissions=?,selectedAgentId=NULL,preferredProviderId=NULL,preferredModelId=NULL,allowedAgentIds=NULL,allowedSkills=NULL,allowedTools=NULL,allowedMCPServers=NULL,allowedKnowledgeBases=NULL WHERE id=?',
       )
       .run(
         canonicalPath.split(/[\\/]/).filter(Boolean).at(-1) ?? canonicalPath,

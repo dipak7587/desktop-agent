@@ -156,6 +156,8 @@ export const librarySchema = z.object({
   skills: z.array(idSchema).max(100).default([]),
   tools: z.array(z.string().max(300)).max(200).default([]),
   knowledgeSources: z.array(z.string().max(200)).max(100).default([]),
+  memory: z.array(text.max(2000)).max(100).optional(),
+  selectedForChat: z.boolean().optional(),
   autoStart: z.boolean().default(false),
   maxIterations: z.number().int().min(1).max(500).optional(),
   capabilityConfig: capabilityConfigSchema.optional(),

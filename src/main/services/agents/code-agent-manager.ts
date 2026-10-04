@@ -17,6 +17,7 @@ import {
 } from 'langchain';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { AppEvent, Settings } from '../../../shared/types';
+import type { CodeWorkspace } from '../../../shared/types';
 import type { AgentLoopInput } from '../ai/agent-graph';
 import { createCapabilityTools } from '../ai/capability-tools';
 import { createChatModel } from '../ai/langchain-model';
@@ -29,10 +30,19 @@ export interface CodeSessionContext {
   providerId: string;
   configurationKey?: string;
   history: string;
+  access?: Pick<
+    CodeWorkspace,
+    | 'allowedAgentIds'
+    | 'allowedSkills'
+    | 'allowedTools'
+    | 'allowedMCPServers'
+    | 'allowedKnowledgeBases'
+  >;
 }
 interface Turn {
   input: AgentLoopInput;
-  tools: Map<string, StructuredToolInterface>;
+  agentId: string;
+  agentTools: Map<string, Map<string, StructuredToolInterface>>;
   approve: Approve;
   output: string;
   toolsSupported: boolean;
@@ -138,7 +148,15 @@ export class CodeAgentManager {
           context.configurationKey ?? this.settings(),
           input.model,
           input.systemPrompt,
+          input.agent.id,
           tools.map((t) => t.name),
+          input.acpAgents?.map((agent) => [
+            agent.id,
+            agent.name,
+            agent.modelId,
+            agent.systemPrompt,
+            agent.tools.map((tool) => tool.name),
+          ]),
           this.settings().contextSize,
         ]),
       )
@@ -156,7 +174,24 @@ export class CodeAgentManager {
     if (session?.turn) throw new Error('This Code conversation is already running');
     const turn: Turn = {
       input,
-      tools: new Map(tools.map((t) => [t.name, t])),
+      agentId: input.acpAgents?.some((agent) => agent.id === input.agent.id)
+        ? input.agent.id
+        : (input.acpAgents?.[0]?.id ?? input.agent.id),
+      agentTools: new Map(
+        (
+          input.acpAgents ?? [
+            {
+              id: input.agent.id,
+              name: input.agent.name,
+              description: input.agent.description,
+              modelId: input.model,
+              model: createChatModel({ provider: llm, model: input.model, disableStreaming: true }),
+              systemPrompt: input.systemPrompt,
+              tools,
+            },
+          ]
+        ).map((agent) => [agent.id, new Map(agent.tools.map((tool) => [tool.name, tool]))]),
+      ),
       approve,
       output: '',
       toolsSupported: true,
@@ -224,19 +259,46 @@ export class CodeAgentManager {
   ): Promise<Session> {
     const state: { session?: Session } = {};
     const current = () => state.session?.turn ?? initial;
-    const names = new Set([...initial.tools.keys(), 'write_todos']);
-    const tools = [...initial.tools.values()].map((original) =>
+    const configuredAgents = input.acpAgents?.length
+      ? input.acpAgents
+      : [
+          {
+            id: input.agent.id,
+            name: input.agent.name,
+            description: input.agent.description,
+            modelId: input.model,
+            model: createChatModel({ provider: llm, model: input.model, disableStreaming: true }),
+            systemPrompt: input.systemPrompt,
+            tools: [...initial.agentTools.get(input.agent.id)!.values()],
+          },
+        ];
+    const selectedConfiguration = configuredAgents.find((agent) => agent.id === initial.agentId);
+    const configurations = selectedConfiguration
+      ? [
+          selectedConfiguration,
+          ...configuredAgents.filter((agent) => agent.id !== selectedConfiguration.id),
+        ]
+      : configuredAgents;
+    const names = new Set([
+      ...configurations.flatMap((agent) =>
+        agent.tools.map((configuredTool) => configuredTool.name),
+      ),
+      'write_todos',
+    ]);
+    const agentNames = new Map(
+      configurations.map((agent) => [agent.id, `${agent.name} (${agent.id})`]),
+    );
+    const wrapTool = (agentId: string, original: StructuredToolInterface) =>
       tool(
         async (args: Record<string, unknown>) => {
           const turn = current();
           turn.input.signal.throwIfAborted();
-          const target = turn.tools.get(original.name);
-          if (!target) throw new Error('Capability is no longer permitted');
+          const target = turn.agentTools.get(agentId)?.get(original.name);
+          if (!target) throw new Error('Capability is no longer permitted for this agent');
           return target.invoke(args);
         },
         { name: original.name, description: original.description, schema: original.schema },
-      ),
-    );
+      );
     const lifecycle = createMiddleware({
       name: 'CodeWorkspaceBoundary',
       wrapModelCall: async (request, handler) => {
@@ -275,7 +337,10 @@ export class CodeAgentManager {
             ...request,
             messages,
             tools: request.tools.filter(
-              (t) => 'name' in t && names.has(String(t.name)) && turn.toolsSupported,
+              (t) =>
+                'name' in t &&
+                (turn.agentTools.get(turn.agentId)?.has(String(t.name)) ?? false) &&
+                turn.toolsSupported,
             ),
           });
           signal.throwIfAborted();
@@ -288,7 +353,10 @@ export class CodeAgentManager {
       },
       wrapToolCall: async (request, handler) => {
         current().input.signal.throwIfAborted();
-        if (!names.has(request.toolCall.name))
+        if (
+          request.toolCall.name !== 'write_todos' &&
+          !current().agentTools.get(current().agentId)?.has(request.toolCall.name)
+        )
           return new ToolMessage({
             content: 'This tool is unavailable. Use the permitted workspace capabilities.',
             tool_call_id: request.toolCall.id ?? '',
@@ -323,16 +391,17 @@ export class CodeAgentManager {
     const server = new DeepAgentsServer({
       workspaceRoot: input.project,
       authMethods: [],
-      agents: {
-        name: 'code-agent',
-        model,
-        tools,
-        systemPrompt: input.systemPrompt,
+      agents: configurations.map((agent) => ({
+        name: agentNames.get(agent.id)!,
+        description: agent.description,
+        model: agent.model ?? model,
+        tools: agent.tools.map((configuredTool) => wrapTool(agent.id, configuredTool)),
+        systemPrompt: agent.systemPrompt,
         middleware: [lifecycle],
         // No implicit host filesystem, shell, skills scan or subagent access.
         // Workspace I/O is supplied by the existing guarded capability tools.
         backend: (config) => new StateBackend(config),
-      },
+      })),
     });
     let agentInput!: ReadableStreamDefaultController<AnyMessage>;
     let clientInput!: ReadableStreamDefaultController<AnyMessage>;

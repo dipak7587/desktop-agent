@@ -93,6 +93,11 @@ export interface CodeWorkspace {
   lastOpenedAt: string;
   permissions: WorkspacePermissionPolicy;
   selectedAgentId: string | null;
+  allowedAgentIds?: string[];
+  allowedSkills?: string[];
+  allowedTools?: string[];
+  allowedMCPServers?: string[];
+  allowedKnowledgeBases?: string[];
   preferredProviderId?: string | null;
   preferredModelId?: string | null;
   available?: boolean;
@@ -173,6 +178,8 @@ export interface LibraryItem extends Partial<
   skills: string[];
   tools: string[];
   knowledgeSources: string[];
+  memory?: string[];
+  selectedForChat?: boolean;
   autoStart: boolean;
   maxIterations?: number;
   capabilityConfig?: AgentCapabilityConfig;
@@ -181,6 +188,18 @@ export interface LibraryItem extends Partial<
   command: string;
   args: string[];
   env: Record<string, string>;
+}
+export interface AgentConfig {
+  id: string;
+  name: string;
+  description?: string;
+  model?: string;
+  enabled: boolean;
+  skills: string[];
+  tools: string[];
+  mcpServers: string[];
+  knowledgeBases: string[];
+  memory?: string[];
 }
 export interface KnowledgeSource {
   id: string;

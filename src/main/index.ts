@@ -149,6 +149,9 @@ app
       providers,
       new DeepAgentEngine(),
       checkpoints,
+      memory,
+      (project) =>
+        db.listCodeWorkspaces().find((workspace) => workspace.canonicalPath === project),
     );
     const workflowDb = new WorkflowRunDatabase(join(root, 'database', 'workflow-runs.sqlite'));
     const workflows = new WorkflowService(

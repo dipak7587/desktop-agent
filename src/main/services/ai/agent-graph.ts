@@ -11,6 +11,8 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import type { AppEvent, LibraryItem, RunState, Settings } from '../../../shared/types';
 import type { LLMProvider } from '../ollama/provider';
 import type { CapabilityRouter } from '../agents/capabilities';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { StructuredToolInterface } from '@langchain/core/tools';
 import { createChatModel } from './langchain-model';
 import { createCapabilityTools } from './capability-tools';
 import type { DeepAgentEngine } from './deep-agents';
@@ -28,6 +30,15 @@ export interface AgentLoopInput {
   resolveToolName?: (toolId: string) => string;
   persist?: (run: RunState) => void;
   deep?: DeepAgentEngine;
+  acpAgents?: {
+    id: string;
+    name: string;
+    description?: string;
+    modelId: string;
+    model: BaseChatModel;
+    systemPrompt: string;
+    tools: StructuredToolInterface[];
+  }[];
 }
 
 /** Application lifecycle adapter. LangChain owns the model/tool loop and message state. */

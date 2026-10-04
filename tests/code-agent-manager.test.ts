@@ -14,6 +14,8 @@ import { AgentTools } from '../src/main/services/agents/tools';
 import { workspaceToolSchemas } from '../src/main/services/ai/tool-schemas';
 import { capabilityConfig } from '../src/shared/capabilities';
 import { librarySchema, settingsSchema } from '../src/shared/schemas';
+import { createCapabilityTools } from '../src/main/services/ai/capability-tools';
+import { createChatModel } from '../src/main/services/ai/langchain-model';
 import type { AgentLoopInput } from '../src/main/services/ai/agent-graph';
 import type { AppEvent } from '../src/shared/types';
 import type { ChatRequest, LLMProvider } from '../src/main/services/ollama/provider';
@@ -124,6 +126,54 @@ it('uses real ACP sessions, retains turns, streams text and isolates conversatio
   ).not.toContain('ALPHA');
   expect(events.some((e) => e.status === 'Streaming' && e.content === 'Answer')).toBe(true);
   expect(approve).not.toHaveBeenCalled();
+});
+it('registers selected agents with only their own configured ACP tools', async () => {
+  const base = input();
+  const capabilities = createCapabilityTools({
+    run: base.run,
+    signal: base.signal,
+    router: base.router,
+    redact: (text) => text,
+    emit: () => {},
+  });
+  const readTool = capabilities.find((entry) => entry.description.includes('filesystem.read'))!;
+  const searchTool = capabilities.find((entry) => entry.description.includes('filesystem.search'))!;
+  const model = createChatModel({ provider, model: 'local', disableStreaming: true });
+  base.acpAgents = [
+    {
+      id: 'reader',
+      name: 'Reader',
+      modelId: 'local',
+      model,
+      systemPrompt: 'Reader prompt',
+      tools: [readTool],
+    },
+    {
+      id: 'searcher',
+      name: 'Searcher',
+      modelId: 'local',
+      model,
+      systemPrompt: 'Searcher prompt',
+      tools: [searchTool],
+    },
+  ];
+  base.agent = { ...base.agent, id: 'reader', name: 'Reader' };
+  await manager.run(base, provider, context(), approve);
+  const readerTools = complete.mock.calls[0][0].tools.map(
+    (entry: { function: { name: string } }) => entry.function.name,
+  );
+  expect(readerTools).toContain(readTool.name);
+  expect(readerTools).not.toContain(searchTool.name);
+
+  const search = input();
+  search.acpAgents = base.acpAgents;
+  search.agent = { ...search.agent, id: 'searcher', name: 'Searcher' };
+  await manager.run(search, provider, context(), approve);
+  const searcherTools = complete.mock.calls[1][0].tools.map(
+    (entry: { function: { name: string } }) => entry.function.name,
+  );
+  expect(searcherTools).toContain(searchTool.name);
+  expect(searcherTools).not.toContain(readTool.name);
 });
 it('replaces sessions when workspace or model changes', async () => {
   const first = input();

@@ -154,6 +154,93 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     return s.db.reconnectCodeWorkspace(workspaceId, conversationId);
   });
   handle(
+    'code:set-access',
+    z.tuple([
+      idSchema,
+      z.object({
+        agentIds: z.array(idSchema).max(100),
+        skills: z.array(idSchema).max(100),
+        tools: z.array(z.string().max(300)).max(200),
+        mcpServers: z.array(idSchema).max(100),
+        knowledgeBases: z.array(z.string().max(200)).max(100),
+      }),
+    ]),
+    async (
+      workspaceId: string,
+      policy: {
+        agentIds: string[];
+        skills: string[];
+        tools: string[];
+        mcpServers: string[];
+        knowledgeBases: string[];
+      },
+    ) => {
+      const knownAgents = new Set((await s.library.list('agents')).map((agent) => agent.id));
+      const unknownAgent = policy.agentIds.find((agentId) => !knownAgents.has(agentId));
+      if (unknownAgent) throw new Error('Choose only existing agents for this folder.');
+      const [skills, tools, mcpServers, knowledge] = await Promise.all([
+        s.library.list('skills'),
+        s.library.list('tools'),
+        s.library.list('mcp'),
+        s.knowledge.list(),
+      ]);
+      if (
+        policy.skills.some((resourceId) => !skills.some((resource) => resource.id === resourceId))
+      )
+        throw new Error('Choose only existing skills for this folder.');
+      const builtinTools = new Set([
+        'filesystem.read',
+        'filesystem.write',
+        'filesystem.edit',
+        'filesystem.delete',
+        'filesystem.list',
+        'filesystem.search',
+        'filesystem.exists',
+        'project.detect',
+        'git.status',
+        'git.diff',
+        'git.log',
+        'git.add',
+        'git.commit',
+        'git.push',
+        'shell.execute',
+      ]);
+      if (
+        policy.tools.some(
+          (resourceId) =>
+            !builtinTools.has(resourceId) &&
+            !(
+              resourceId.startsWith('custom:') &&
+              tools.some((resource) => `custom:${resource.id}` === resourceId)
+            ),
+        )
+      )
+        throw new Error('Choose only existing tools for this folder.');
+      if (
+        policy.mcpServers.some(
+          (resourceId) => !mcpServers.some((resource) => resource.id === resourceId),
+        )
+      )
+        throw new Error('Choose only existing MCP servers for this folder.');
+      if (
+        policy.knowledgeBases.some(
+          (resourceId) =>
+            resourceId !== 'all' &&
+            !resourceId.startsWith('collection:') &&
+            !knowledge.some((resource) => resource.id === resourceId),
+        )
+      )
+        throw new Error('Choose only existing knowledge bases for this folder.');
+      return s.db.setCodeWorkspaceAccess(workspaceId, {
+        allowedAgentIds: policy.agentIds,
+        allowedSkills: policy.skills,
+        allowedTools: policy.tools,
+        allowedMCPServers: policy.mcpServers,
+        allowedKnowledgeBases: policy.knowledgeBases,
+      });
+    },
+  );
+  handle(
     'code:choose-and-relink',
     z.tuple([idSchema, idSchema]),
     async (workspaceId, conversationId) => {
