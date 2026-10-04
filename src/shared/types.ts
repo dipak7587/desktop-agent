@@ -164,6 +164,7 @@ export interface LibraryItem extends Partial<
     | 'discovered'
   >
 > {
+  builtIn?: boolean;
   group?: string;
   agentRuntime?: 'deepagents-acp';
   providerId?: string;
@@ -203,6 +204,7 @@ export interface AgentConfig {
   memory?: string[];
 }
 export interface KnowledgeSource {
+  builtIn?: boolean;
   id: string;
   type: 'file' | 'folder' | 'url';
   name: string;

@@ -1,17 +1,58 @@
 import { LibraryService } from '../filesystem/library';
 import * as lancedb from '@lancedb/lancedb';
 import { join, basename, extname, relative } from 'node:path';
-import { readFile, rm, mkdir } from 'node:fs/promises';
+import { readFile, rm, mkdir, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import Turndown from 'turndown';
 import type { KnowledgeSource, SearchResult, AppEvent, Settings } from '../../../shared/types';
 import { atomicWrite, readJSON, hash, errorMessage } from '../filesystem/storage';
-import { librarySchema } from '../../../shared/schemas';
+import { idSchema, librarySchema } from '../../../shared/schemas';
 import { BUILT_IN_GROUP } from '../../../shared/types';
 import { walk, readText, ignored, supportedExtensions } from '../filesystem/walk';
 import { chunkText } from './chunker';
 import type { EmbeddingProvider } from '../ollama/provider';
 export class KnowledgeService {
+  private builtInIds = new Set<string>();
+  async loadBuiltIns(root: string) {
+    const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
+    const ids = new Set<string>();
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const id = idSchema.parse(`builtin-kb-${entry.name}`);
+      ids.add(id);
+      const previous = this.sources.find((source) => source.id === id);
+      const source: KnowledgeSource = {
+        id,
+        type: 'folder',
+        name: entry.name.replaceAll('-', ' '),
+        collection: '',
+        createdAt: 0,
+        updatedAt: 0,
+        status: 'idle',
+        documentCount: 0,
+        chunkCount: 0,
+        ...previous,
+        location: join(root, entry.name),
+        group: BUILT_IN_GROUP,
+        builtIn: true,
+      };
+      this.sources = [...this.sources.filter((item) => item.id !== id), source];
+    }
+    for (const source of this.sources.filter((source) => source.builtIn && !ids.has(source.id))) {
+      await this.deleteVectors(source.id);
+      await rm(join(this.root, 'cache', `${source.id}.md`), { force: true });
+      await rm(join(this.root, 'cache', `${source.id}.json`), { force: true });
+    }
+    this.builtInIds = ids;
+    this.sources = this.sources.filter((source) => !source.builtIn || ids.has(source.id));
+    await this.persist();
+  }
+  private assertWritable(id: string) {
+    if (this.builtInIds.has(id)) throw new Error('Built-in knowledge cannot be moved or deleted.');
+  }
   private pendingResync = new Set<string>();
   private indexQueue: Promise<void> = Promise.resolve();
   private sources: KnowledgeSource[] = [];
@@ -105,6 +146,7 @@ export class KnowledgeService {
     await this.sync(id);
   }
   async setGroup(ids: string[], group: string) {
+    for (const id of ids) this.assertWritable(id);
     const name = librarySchema.shape.group.parse(group);
     const sources = [...new Set(ids)].map((id) => this.source(id));
     for (const source of sources) {
@@ -135,6 +177,7 @@ export class KnowledgeService {
     await this.indexQueue;
   }
   async remove(id: string) {
+    this.assertWritable(id);
     if (this.jobs.has(id))
       throw new Error('Cancel indexing and wait for it to stop before removing this source');
     this.source(id);
@@ -149,6 +192,18 @@ export class KnowledgeService {
     try {
       return await readFile(join(this.root, 'cache', `${id}.md`), 'utf8');
     } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT' && this.builtInIds.has(id)) {
+        const documents: string[] = [];
+        let size = 0;
+        for await (const file of walk(this.source(id).location)) {
+          if (!supportedExtensions.has(extname(file).toLowerCase())) continue;
+          const text = await readText(file);
+          documents.push(text.slice(0, 600000 - size));
+          size += text.length;
+          if (size >= 600000) break;
+        }
+        return documents.join('\n\n---\n\n').slice(0, 600000);
+      }
       if ((e as NodeJS.ErrnoException).code === 'ENOENT')
         return 'No preview yet. Sync this source to fetch its content.';
       throw e;

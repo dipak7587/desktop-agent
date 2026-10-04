@@ -123,11 +123,18 @@ export function Knowledge() {
               <input
                 type="checkbox"
                 checked={
-                  !!visibleSources.length && visibleSources.every((s) => selected.includes(s.id))
+                  visibleSources.some((s) => !s.builtIn) &&
+                  visibleSources.filter((s) => !s.builtIn).every((s) => selected.includes(s.id))
                 }
-                disabled={!visibleSources.length}
+                disabled={!visibleSources.some((s) => !s.builtIn)}
                 onChange={(event) =>
-                  setSelected(event.target.checked ? visibleSources.map((source) => source.id) : [])
+                  setSelected(
+                    event.target.checked
+                      ? visibleSources
+                          .filter((source) => !source.builtIn)
+                          .map((source) => source.id)
+                      : [],
+                  )
                 }
               />
               Select all sources
@@ -266,6 +273,7 @@ export function Knowledge() {
                       <input
                         type="checkbox"
                         aria-label={`Select ${source.name}`}
+                        disabled={source.builtIn}
                         checked={selected.includes(source.id)}
                         onChange={(event) =>
                           setSelected((ids) =>
@@ -277,6 +285,7 @@ export function Knowledge() {
                       />
                     </label>
                     {source.name}
+                    {source.builtIn && <span className="badge">Built-in · Read-only</span>}
                     <span className="badge">{source.status}</span>
                   </h2>
                   <p title={source.location}>{source.location}</p>
@@ -328,13 +337,15 @@ export function Knowledge() {
                       Sync / Re-index
                     </button>
                   )}
-                  <button
-                    disabled={active}
-                    className="danger-text text-button"
-                    onClick={() => setRemove(source)}
-                  >
-                    Remove
-                  </button>
+                  {!source.builtIn && (
+                    <button
+                      disabled={active}
+                      className="danger-text text-button"
+                      onClick={() => setRemove(source)}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               </article>
             );

@@ -6,7 +6,7 @@ import {
 } from '../tools/files';
 import { mcpConfigFromItem } from '../../../shared/mcp-schema';
 import { capabilityConfig } from '../../../shared/capabilities';
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
+import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import matter from 'gray-matter';
 import { randomUUID } from 'node:crypto';
@@ -14,6 +14,34 @@ import { librarySchema, idSchema } from '../../../shared/schemas';
 import { BUILT_IN_GROUP, type LibraryKind, type LibraryItem } from '../../../shared/types';
 import { atomicWrite, readJSON } from './storage';
 export class LibraryService {
+  private builtIns = new Map<LibraryKind, Map<string, LibraryItem>>();
+  async loadBuiltIns(root: string) {
+    const bundled = new LibraryService(root);
+    const next = new Map<LibraryKind, Map<string, LibraryItem>>();
+    for (const kind of ['agents', 'skills', 'mcp', 'tools'] as const) {
+      const items = await bundled.list(kind);
+      next.set(
+        kind,
+        new Map(
+          items.map((item) => [
+            item.id,
+            {
+              ...item,
+              builtIn: true,
+              group: BUILT_IN_GROUP,
+            },
+          ]),
+        ),
+      );
+    }
+    this.builtIns = next;
+  }
+  assertWritable(kind: LibraryKind, id: string) {
+    idSchema.parse(id);
+    if (this.builtIns.get(kind)?.has(id))
+      throw new Error('Built-in items cannot be edited, moved, or deleted.');
+  }
+
   constructor(
     private root: string,
     private onSavedTextChange?: () => Promise<void>,
@@ -54,8 +82,10 @@ export class LibraryService {
     ].sort((a, b) => a.localeCompare(b));
   }
   async list(kind: LibraryKind): Promise<LibraryItem[]> {
-    await mkdir(join(this.root, kind), { recursive: true });
-    const entries = await readdir(join(this.root, kind), { withFileTypes: true });
+    const entries = await readdir(join(this.root, kind), { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
     const items: LibraryItem[] = [];
     for (const entry of entries) {
       if (
@@ -84,7 +114,11 @@ export class LibraryService {
         ),
       );
     }
-    return items.sort((a, b) => b.updatedAt - a.updatedAt);
+    const bundled = this.builtIns.get(kind);
+    return [
+      ...items.filter((item) => !bundled?.has(item.id)),
+      ...structuredClone([...(bundled?.values() ?? [])]),
+    ].sort((a, b) => b.updatedAt - a.updatedAt);
   }
   parse(kind: LibraryKind, raw: string, id: string = randomUUID()): LibraryItem {
     if (kind === 'tools' && !/^---\r?\n/.test(raw)) return parseToolFile(raw, id);
@@ -130,6 +164,7 @@ export class LibraryService {
     );
   }
   async save(kind: LibraryKind, input: LibraryItem) {
+    this.assertWritable(kind, input.id);
     const value = librarySchema.parse(input);
     const now = Date.now();
     const item = { ...value, createdAt: value.createdAt || now, updatedAt: now };
@@ -155,6 +190,7 @@ export class LibraryService {
       : item;
   }
   async assertRemovable(kind: LibraryKind, id: string) {
+    this.assertWritable(kind, id);
     if (kind !== 'skills' && kind !== 'mcp' && kind !== 'tools') return;
     const prefix = kind === 'mcp' ? `mcp:${id}:` : `custom:${id}`;
     const agents = (await this.list('agents')).filter(
@@ -180,6 +216,7 @@ export class LibraryService {
       );
   }
   async setGroup(kind: LibraryKind, ids: string[], group: string) {
+    for (const id of ids) this.assertWritable(kind, id);
     const name = librarySchema.shape.group.parse(group);
     const items = await Promise.all([...new Set(ids)].map((id) => this.get(kind, id)));
     const groups = new Set(await this.readGroups(kind));
@@ -229,6 +266,9 @@ export class LibraryService {
     if (kind === 'saved-text') await this.onSavedTextChange?.();
   }
   async get(kind: LibraryKind, id: string) {
+    idSchema.parse(id);
+    const bundled = this.builtIns.get(kind)?.get(id);
+    if (bundled) return structuredClone(bundled);
     let raw: string;
     try {
       raw = await readFile(this.path(kind, id), 'utf8');

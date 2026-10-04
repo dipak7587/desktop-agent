@@ -31,9 +31,12 @@ export class SettingsService {
     readonly root: string,
     private secrets?: ProviderSecrets,
     private listAgents: () => Promise<Pick<LibraryItem, 'name' | 'providerId'>[]> = async () => [],
+    private bundledDefaults: Partial<Settings> = {},
   ) {}
   async init() {
-    const loaded = settingsSchema.parse(await readJSON(join(this.root, 'settings.json'), {}));
+    const loaded = settingsSchema.parse(
+      await readJSON(join(this.root, 'settings.json'), this.bundledDefaults),
+    );
     const registry = await readJSON<unknown>(join(this.root, 'config', 'providers.json'), null);
     if (registry) {
       const saved = registrySchema.parse(registry);

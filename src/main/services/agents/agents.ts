@@ -170,6 +170,12 @@ export class AgentService {
       throw new Error(`Agent "${agent.name}" is not allowed to access this project folder.`);
     if (codeSession?.access?.allowedAgentIds && codeSession.access.allowedAgentIds.length === 0)
       throw new Error('Allow at least one coding agent to access this project folder first.');
+    if (agent.builtIn)
+      agent = {
+        ...agent,
+        providerId: agent.providerId || this.settings().activeProviderId,
+        model: agent.model || this.settings().chatModel,
+      };
     if (this.providers && !selected && (!agent.providerId || !agent.model))
       throw new Error('Select and save a provider and model for this agent.');
     if (!agent.model && !this.settings().chatModel) throw new Error('Select an agent model');
@@ -672,9 +678,7 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
               !codeSession.access?.allowedAgentIds ||
               codeSession.access.allowedAgentIds.includes(agentId);
             const selectedAgents = configuredAgents.filter(
-              (candidate) =>
-                candidate.enabled &&
-                allowedInFolder(candidate.id),
+              (candidate) => candidate.enabled && allowedInFolder(candidate.id),
             );
             if (
               agent.enabled &&

@@ -7,6 +7,7 @@ import { AgentRunDatabase } from './database/agent-runs';
 import { app, BrowserWindow, session, dialog } from 'electron';
 import { join } from 'node:path';
 import { mkdir, appendFile, readdir } from 'node:fs/promises';
+import { readBuiltInDefaults } from './services/filesystem/built-in';
 import { SettingsService } from './services/settings/settings';
 import { MemoryService } from './services/ai/memory';
 import { DeepAgentEngine } from './services/ai/deep-agents';
@@ -83,8 +84,14 @@ app
     session.defaultSession.setPermissionCheckHandler(() => false);
     const secrets = new SecretStore(root);
     await secrets.init();
-    const settings = new SettingsService(root, secrets, () =>
-      new LibraryService(root).list('agents'),
+    const builtInRoot = join(app.getAppPath(), 'built-in');
+    const library: LibraryService = new LibraryService(root, () => knowledge.syncSavedText());
+    await library.loadBuiltIns(builtInRoot);
+    const settings = new SettingsService(
+      root,
+      secrets,
+      () => library.list('agents'),
+      await readBuiltInDefaults(builtInRoot),
     );
     await settings.init();
     app.setName(settings.get().appName);
@@ -100,9 +107,8 @@ app
     };
     const db = new ChatDatabase(join(root, 'database', 'app.sqlite'));
     db.migrateProviders(settings.get().activeProviderId);
-    const library = new LibraryService(root, () => knowledge.syncSavedText());
     for (const agent of await library.list('agents')) {
-      if (!agent.providerId && settings.get().activeProviderId)
+      if (!agent.builtIn && !agent.providerId && settings.get().activeProviderId)
         await library.save('agents', {
           ...agent,
           providerId: settings.get().activeProviderId,
@@ -119,6 +125,7 @@ app
     };
     const knowledge = new KnowledgeService(root, getSettings, embeddings, emit);
     await knowledge.init();
+    await knowledge.loadBuiltIns(join(builtInRoot, 'kb'));
     if (
       (await readdir(join(root, 'saved-text'))).some((name) => name.endsWith('.md')) ||
       knowledge.list().some((source) => source.id === 'saved-text')
@@ -150,8 +157,7 @@ app
       new DeepAgentEngine(),
       checkpoints,
       memory,
-      (project) =>
-        db.listCodeWorkspaces().find((workspace) => workspace.canonicalPath === project),
+      (project) => db.listCodeWorkspaces().find((workspace) => workspace.canonicalPath === project),
     );
     const workflowDb = new WorkflowRunDatabase(join(root, 'database', 'workflow-runs.sqlite'));
     const workflows = new WorkflowService(

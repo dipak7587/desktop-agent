@@ -248,9 +248,16 @@ export function Library({ kind }: { kind: LibraryKind }) {
           <label className="check">
             <input
               type="checkbox"
-              checked={!!visible.length && visible.every((i) => selected.includes(i.id))}
-              disabled={!visible.length}
-              onChange={(e) => setSelected(e.target.checked ? visible.map((i) => i.id) : [])}
+              checked={
+                visible.some((i) => !i.builtIn) &&
+                visible.filter((i) => !i.builtIn).every((i) => selected.includes(i.id))
+              }
+              disabled={!visible.some((i) => !i.builtIn)}
+              onChange={(e) =>
+                setSelected(
+                  e.target.checked ? visible.filter((i) => !i.builtIn).map((i) => i.id) : [],
+                )
+              }
             />
             Select all {titles[kind]}
           </label>
@@ -331,8 +338,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
             const state = states.find((s) => s.id === item.id);
             const actions = (
               <div className="card-actions">
-                <button onClick={() => setEditing(item)}>Edit</button>
-                {kind === 'mcp' && (
+                {!item.builtIn && <button onClick={() => setEditing(item)}>Edit</button>}
+                {item.builtIn && <span className="badge">Built-in · Read-only</span>}
+                {kind === 'mcp' && !item.builtIn && (
                   <div className="mcp-group-actions">
                     <button
                       disabled={savingGroup}
@@ -361,7 +369,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     Run
                   </button>
                 )}
-                {kind === 'agents' && (
+                {kind === 'agents' && !item.builtIn && (
                   <>
                     <button
                       type="button"
@@ -384,8 +392,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     onClick={() =>
                       void attempt(async () => {
                         await useChat.getState().newChat({
-                          providerId: item.providerId ?? '',
-                          model: item.model,
+                          providerId:
+                            item.providerId ||
+                            useSettings.getState().settings?.activeProviderId ||
+                            '',
+                          model: item.model || useSettings.getState().settings?.chatModel || '',
                           agentId: item.id,
                         });
                         useUI.setState({
@@ -420,9 +431,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
                 >
                   Export
                 </button>
-                <button className="text-button danger-text" onClick={() => setRemove(item)}>
-                  Delete
-                </button>
+                {!item.builtIn && (
+                  <button className="text-button danger-text" onClick={() => setRemove(item)}>
+                    Delete
+                  </button>
+                )}
               </div>
             );
             const details = (
@@ -449,9 +462,18 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     <span>
                       {useSettings
                         .getState()
-                        .settings?.providers.find((p) => p.id === item.providerId)?.name ??
-                        'Unavailable provider'}{' '}
-                      / {item.model || 'Select model'}
+                        .settings?.providers.find(
+                          (p) =>
+                            p.id ===
+                            (item.providerId ||
+                              (item.builtIn
+                                ? useSettings.getState().settings?.activeProviderId
+                                : '')),
+                        )?.name ?? 'Unavailable provider'}{' '}
+                      /{' '}
+                      {item.model ||
+                        (item.builtIn ? useSettings.getState().settings?.chatModel : '') ||
+                        'Select model in Settings'}
                     </span>
                     <span>
                       {item.skills.length} skills · {item.tools.length} tools
@@ -530,6 +552,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     <input
                       type="checkbox"
                       aria-label={`Select ${item.name}`}
+                      disabled={item.builtIn}
                       checked={selected.includes(item.id)}
                       onChange={(e) =>
                         setSelected((ids) =>
@@ -569,6 +592,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                       <input
                         type="checkbox"
                         aria-label={`Select ${item.name}`}
+                        disabled={item.builtIn}
                         checked={selected.includes(item.id)}
                         onChange={(e) =>
                           setSelected((ids) =>

@@ -75,6 +75,7 @@
     "productName": "LocalAI Workspace",
     "files": [
       "out/**/*",
+      "built-in/**/*",
       "package.json"
     ],
     "asarUnpack": [

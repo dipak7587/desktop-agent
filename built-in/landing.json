@@ -1,0 +1,23 @@
+{
+  "eyebrow": "YOUR LOCAL INTELLIGENCE",
+  "title": "Good ideas start here.",
+  "description": "Explore the built-in samples, connect your model, and make this workspace your own.",
+  "logo": "",
+  "suggestions": [
+    {
+      "icon": "code",
+      "title": "Plan a project",
+      "text": "Help me plan a small application. Ask me what I want to build and who will use it."
+    },
+    {
+      "icon": "book",
+      "title": "Explore your knowledge",
+      "text": "Summarize the key ideas in my selected knowledge sources and suggest a useful next step."
+    },
+    {
+      "icon": "terminal",
+      "title": "Think it through",
+      "text": "Help me compare two approaches to a technical decision. Ask me about the options and constraints."
+    }
+  ]
+}

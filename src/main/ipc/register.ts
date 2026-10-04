@@ -372,6 +372,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     (kind, ids, group) => s.library.setGroup(kind, ids, group),
   );
   handle('library:save', z.tuple([kindSchema, librarySchema]), async (kind, item) => {
+    s.library.assertWritable(kind, item.id);
     if (kind === 'agents') {
       item = { ...item, providerId: item.providerId ?? s.settings.get().activeProviderId };
       s.settings.validateSelection(item.providerId, item.model);
@@ -618,11 +619,11 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
         })),
       },
       libraries: {
-        skills: await s.library.list('skills'),
-        'saved-text': await s.library.list('saved-text'),
-        agents: await s.library.list('agents'),
-        mcp: await s.library.list('mcp'),
-        tools: await s.library.list('tools'),
+        skills: (await s.library.list('skills')).filter((item) => !item.builtIn),
+        'saved-text': (await s.library.list('saved-text')).filter((item) => !item.builtIn),
+        agents: (await s.library.list('agents')).filter((item) => !item.builtIn),
+        mcp: (await s.library.list('mcp')).filter((item) => !item.builtIn),
+        tools: (await s.library.list('tools')).filter((item) => !item.builtIn),
       },
       workflows: await s.workflows.definitions.list(),
       conversations: s.db.exportAll(),
@@ -671,6 +672,8 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
         if (!agentIds.has(node.agentId))
           throw new Error(`Workflow “${workflow.name}” references missing agent “${node.name}”.`);
 
+    for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools'] as const)
+      for (const item of backup.libraries[kind]) s.library.assertWritable(kind, item.id);
     await s.settings.save(mergedSettings);
     for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools'] as const) {
       for (const item of backup.libraries[kind]) {

@@ -1,0 +1,8 @@
+{
+  "appName": "LocalAI Workspace",
+  "appLogo": "",
+  "theme": "system",
+  "language": "en",
+  "startAtLogin": false,
+  "defaultAgent": ""
+}
