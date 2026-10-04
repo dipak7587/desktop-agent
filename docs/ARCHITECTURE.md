@@ -25,7 +25,8 @@ Each phase is checked before the next. No simulated application data or model re
 
 ## Data
 
-All runtime data lives beneath Electron `app.getPath('userData')` (a test-only
+All runtime data lives beneath Electron `app.getPath('userData')`, which defaults to
+`~/.local-ai-workspace` (a test-only
 environment override permits isolated smoke tests). `database/app.sqlite` stores
 conversations and messages. `database/agent-runs.sqlite` stores execution history.
 `database/memory.sqlite` stores scoped long-term agent memory and

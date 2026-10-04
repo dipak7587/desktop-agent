@@ -5,6 +5,7 @@ import { ProviderRouter } from './services/providers/router';
 import { CustomToolService } from './services/tools/custom';
 import { AgentRunDatabase } from './database/agent-runs';
 import { app, BrowserWindow, session, dialog } from 'electron';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, appendFile, readdir } from 'node:fs/promises';
 import { readBuiltInDefaults } from './services/filesystem/built-in';
@@ -30,8 +31,11 @@ import type { AppEvent } from '../shared/types';
 let window: BrowserWindow | null = null;
 let services: Services | undefined;
 let quitting = false;
-if (process.env.LOCALAI_DATA_DIR && !app.isPackaged)
-  app.setPath('userData', process.env.LOCALAI_DATA_DIR);
+// Keep workspace data in a predictable user-owned directory. Tests and local
+// development can still override it with LOCALAI_DATA_DIR.
+const configuredDataRoot = process.env.LOCALAI_DATA_DIR;
+if (configuredDataRoot && !app.isPackaged) app.setPath('userData', configuredDataRoot);
+else app.setPath('userData', join(homedir(), '.local-ai-workspace'));
 const root = app.getPath('userData');
 async function log(error: unknown) {
   await mkdir(join(root, 'logs'), { recursive: true });

@@ -99,7 +99,9 @@ If an IDE exports `ELECTRON_RUN_AS_NODE=1`, clear that variable when launching E
 
 ## Data and privacy
 
-The exact data directory is shown at the bottom of Settings. It is Electron's `userData`
+The exact data directory is shown at the bottom of Settings. By default it is
+`~/.local-ai-workspace` (for example, `/Users/your-name/.local-ai-workspace` on macOS).
+It is Electron's `userData`
 directory, never the project repository. Definitions are portable Markdown/JSON files.
 Chat and agent run history use SQLite; vectors use local LanceDB. Provider metadata lives in
 `config/providers.json`, separate from encrypted credentials. Hosted inference sends conversation
