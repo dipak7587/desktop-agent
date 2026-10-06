@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isHttpUrlTemplate } from './environment';
 
 const text = z.string().refine((v) => !v.includes('\0'), 'Null bytes are not allowed');
 const strings = z.record(z.string(), text);
@@ -22,13 +23,7 @@ export const mcpServerConfigSchema = z
       z
         .object({
           type: z.literal('streamable-http'),
-          url: z
-            .string()
-            .url()
-            .refine((v) => {
-              const u = new URL(v);
-              return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password;
-            }, 'Use an HTTP(S) URL without credentials'),
+          url: text.refine(isHttpUrlTemplate, 'Use an HTTP(S) URL or environment reference'),
           headers: strings.optional(),
         })
         .strict(),

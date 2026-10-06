@@ -136,3 +136,18 @@ permissions. Skills, MCP tools, custom/built-in tools and knowledge searches pas
 central relevance and permission check. See [Capability decisions](docs/CAPABILITIES.md).
 
 See [LangChain migration](docs/LANGCHAIN_MIGRATION.md) for the current AI architecture and validation scope.
+
+Environment references are resolved at execution time from stored credentials, the environment
+file selected in Settings, then the app process environment (in that order). Use `${NAME}`
+in MCP URLs, headers, commands, arguments, working directories, and explicit `env` entries;
+API tool URLs and headers; and agent or skill instruction text. Embedded references such as
+`Bearer ${API_TOKEN}` are supported. Missing variables produce an error; saved and exported
+definitions retain their placeholders. Resolved MCP/API URLs must still be HTTP(S) URLs
+without embedded credentials.
+
+JavaScript/TypeScript tools read the selected environment file through `process.env.NAME`.
+A tool's `env` metadata can also map a variable explicitly, for example
+`"env": { "API_TOKEN": "${MY_API_TOKEN}" }`; these entries override the selected file.
+Source code is not interpolated. Environment references in agent and skill instructions
+become part of the prompt sent to the selected model, so use those for configuration text;
+keep authentication values in tool environments or MCP headers.

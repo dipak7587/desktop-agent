@@ -212,7 +212,7 @@ export class ChatCommands {
     if (command.kind === 'skills')
       return {
         command: metadata,
-        instructions: item.content,
+        instructions: this.library.resolveInstructions(item.content),
         available: async () => (await this.library.get('skills', item.id)).enabled,
         capability: {
           id: `skill:${item.id}`,

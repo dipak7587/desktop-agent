@@ -75,4 +75,6 @@ register(
   (args) => savePack(root, args),
   false,
 );
+console.log('Starting order-service-demo MCP server on stdio...', server.connect);
+
 await server.connect(new StdioServerTransport());

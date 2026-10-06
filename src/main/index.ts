@@ -89,7 +89,11 @@ app
     const secrets = new SecretStore(root);
     await secrets.init();
     const builtInRoot = join(app.getAppPath(), 'built-in');
-    const library: LibraryService = new LibraryService(root, () => knowledge.syncSavedText());
+    const library: LibraryService = new LibraryService(
+      root,
+      () => knowledge.syncSavedText(),
+      secrets,
+    );
     await library.loadBuiltIns(builtInRoot);
     const settings = new SettingsService(
       root,

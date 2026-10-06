@@ -810,7 +810,7 @@ p {
 }
 
 .message-column {
-  max-width: 800px;
+  max-width: 80%;
   margin: auto;
   padding: 24px 32px;
 }

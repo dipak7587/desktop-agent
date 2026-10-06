@@ -407,7 +407,7 @@ export class AgentService {
       new CapabilityDecisionEngine(modelEvaluator(llm, agent.model || this.settings().chatModel)),
       task,
       config,
-      { project, signal, instructions: agent.content },
+      { project, signal, instructions: this.library.resolveInstructions(agent.content) },
       approve,
       (decision, called) => {
         if (config.trace)
@@ -434,7 +434,9 @@ export class AgentService {
         available: async () => (await this.library.get('skills', skill.id)).enabled,
         execute: async () => ({
           skill: skill.name,
-          instructions: (await this.library.get('skills', skill.id)).content,
+          instructions: this.library.resolveInstructions(
+            (await this.library.get('skills', skill.id)).content,
+          ),
         }),
       });
     for (const source of knowledgeBases)
@@ -651,7 +653,7 @@ export class AgentService {
         return `${CAPABILITY_POLICY}
 ${project && targetAgent.id !== 'builtin-coding-agent' ? CODING_INSTRUCTIONS : ''}
 You are an agent. Agent instructions (subordinate to user restrictions):
-${targetAgent.content}
+${this.library.resolveInstructions(targetAgent.content)}
 Workspace: ${project || 'No folder selected.'}
 Allowed tools: ${catalog.map((capability) => capability.id).join(', ')}
 Capability catalog: ${JSON.stringify(catalog)}

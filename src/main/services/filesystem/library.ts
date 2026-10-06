@@ -1,3 +1,5 @@
+import { expandEnvironment, isHttpUrlTemplate } from '../../../shared/environment';
+import type { SecretResolver } from '../mcp/mcp';
 import {
   parseToolFile,
   serializeToolFile,
@@ -62,7 +64,13 @@ export class LibraryService {
   constructor(
     private root: string,
     private onSavedTextChange?: () => Promise<void>,
+    private secrets?: SecretResolver,
   ) {}
+  resolveInstructions(content: string) {
+    return this.secrets
+      ? expandEnvironment(content, (name) => this.secrets!.resolve(name))
+      : content;
+  }
   path(kind: LibraryKind, id: string) {
     idSchema.parse(id);
     return kind === 'skills'
@@ -197,8 +205,7 @@ export class LibraryService {
       if (item.toolConfig.type === 'langchain') {
         Object.assign(item, toolItemFromSource(item.content, item));
       } else if (item.toolConfig.type === 'api') {
-        const url = new URL(item.toolConfig.url);
-        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+        if (!isHttpUrlTemplate(item.toolConfig.url))
           throw new Error('Use an HTTP(S) API URL without credentials');
       } else if (!item.content.trim())
         throw new Error('Add JavaScript logic before saving this Tool');

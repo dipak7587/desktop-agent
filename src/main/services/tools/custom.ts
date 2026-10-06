@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { expandEnvironment } from '../../../shared/environment';
 import { analyzeToolSource, toolModuleBase } from './typescript';
 import { spawn } from 'node:child_process';
 import { toolItemFromSource } from './files';
@@ -49,7 +50,7 @@ export class CustomToolService {
       }
       let output: string;
       if (config.type === 'api') {
-        const url = new URL(config.url);
+        const url = new URL(expandEnvironment(config.url, (name) => this.secrets.resolve(name)));
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
           throw new Error('Use an HTTP(S) URL without credentials');
         const headers = Object.fromEntries(
@@ -112,7 +113,18 @@ export class CustomToolService {
             cwd: project,
             signal: combined,
             killSignal: 'SIGKILL',
-            env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, ELECTRON_RUN_AS_NODE: '1' },
+            env: {
+              PATH: process.env.PATH,
+              TMPDIR: process.env.TMPDIR,
+              ...this.secrets.executionEnvironment?.(),
+              ...Object.fromEntries(
+                Object.entries(item.env).map(([key, value]) => [
+                  key,
+                  expandEnvironment(value, (name) => this.secrets.resolve(name)),
+                ]),
+              ),
+              ELECTRON_RUN_AS_NODE: '1',
+            },
             stdio: ['pipe', 'pipe', 'pipe'],
           });
           let stdout = '',

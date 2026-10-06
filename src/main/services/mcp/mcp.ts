@@ -1,3 +1,4 @@
+import { expandEnvironment, isHttpUrl } from '../../../shared/environment';
 import { mcpConfigFromItem } from '../../../shared/mcp-schema';
 import { MCPAdapter } from '@langchain/mcp-adapters';
 import { isToolMessage } from '@langchain/core/messages';
@@ -7,6 +8,7 @@ import type { AppEvent, MCPState } from '../../../shared/types';
 export interface SecretResolver {
   resolve(name: string): string;
   redact(text: string): string;
+  executionEnvironment?(): Record<string, string>;
 }
 export class MCPService {
   private clients = new Map<string, { adapter: MCPAdapter; tools: DynamicStructuredTool[] }>();
@@ -36,14 +38,25 @@ export class MCPService {
     )
       throw new Error('Add an executable command before starting this MCP server.');
     const server = mcpConfigFromItem({ ...config });
-    const connection = server.connection;
+    const expand = (value: string) =>
+      expandEnvironment(value, (name) => this.secrets.resolve(name));
+    const connection =
+      server.connection.type === 'stdio'
+        ? {
+            ...server.connection,
+            command: expand(server.connection.command),
+            args: server.connection.args?.map(expand),
+            cwd: server.connection.cwd ? expand(server.connection.cwd) : undefined,
+          }
+        : { ...server.connection, url: expand(server.connection.url) };
+    if (connection.type !== 'stdio' && !isHttpUrl(connection.url))
+      throw new Error('Use an HTTP(S) URL without credentials');
     const env: Record<string, string> = {};
     const secretValues: string[] = [];
     for (const [name, value] of Object.entries(
       connection.type === 'stdio' ? (connection.env ?? {}) : (connection.headers ?? {}),
     )) {
-      const reference = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
-      env[name] = reference ? this.secrets.resolve(reference[1]) : value;
+      env[name] = expand(value);
       secretValues.push(env[name]);
     }
     const redact = (text: string) =>

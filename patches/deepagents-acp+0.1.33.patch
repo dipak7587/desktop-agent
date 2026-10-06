@@ -1,7 +1,7 @@
-diff --git a/dist/index.cjs b/dist/index.cjs
+diff --git a/node_modules/deepagents-acp/dist/index.cjs b/node_modules/deepagents-acp/dist/index.cjs
 index 52b5a5b4a5261dc1422400babf11caed9ecdb992..476c6a20d422ee4a15accdad99726879187d1fe5 100644
---- a/dist/index.cjs
-+++ b/dist/index.cjs
+--- a/node_modules/deepagents-acp/dist/index.cjs
++++ b/node_modules/deepagents-acp/dist/index.cjs
 @@ -611,6 +611,13 @@ var DeepAgentsServer = class {
  	*
  	* Uses stdio transport by default (stdin/stdout)
@@ -16,10 +16,10 @@ index 52b5a5b4a5261dc1422400babf11caed9ecdb992..476c6a20d422ee4a15accdad99726879
  	async start() {
  		if (this.isRunning) throw new Error("Server is already running");
  		const handleSignal = (signal) => {
-diff --git a/dist/index.d.cts b/dist/index.d.cts
+diff --git a/node_modules/deepagents-acp/dist/index.d.cts b/node_modules/deepagents-acp/dist/index.d.cts
 index cdb8c7f7c1a5d330df151bd33133630eecbd319a..a0e00b2fd68f383446be1a4e5b395e2ebaa4ade4 100644
---- a/dist/index.d.cts
-+++ b/dist/index.d.cts
+--- a/node_modules/deepagents-acp/dist/index.d.cts
++++ b/node_modules/deepagents-acp/dist/index.d.cts
 @@ -448,6 +448,7 @@ declare class DeepAgentsServer {
     *
     * Uses stdio transport by default (stdin/stdout)
@@ -28,10 +28,10 @@ index cdb8c7f7c1a5d330df151bd33133630eecbd319a..a0e00b2fd68f383446be1a4e5b395e2e
    start(): Promise<void>;
    /**
     * Stop the ACP server
-diff --git a/dist/index.d.ts b/dist/index.d.ts
+diff --git a/node_modules/deepagents-acp/dist/index.d.ts b/node_modules/deepagents-acp/dist/index.d.ts
 index 872d924aee1880f0f60734995761d9c482ec29a6..8485eabd8b7ff6d0d9c172bfd61048fb20b58698 100644
---- a/dist/index.d.ts
-+++ b/dist/index.d.ts
+--- a/node_modules/deepagents-acp/dist/index.d.ts
++++ b/node_modules/deepagents-acp/dist/index.d.ts
 @@ -448,6 +448,7 @@ declare class DeepAgentsServer {
     *
     * Uses stdio transport by default (stdin/stdout)
@@ -40,10 +40,10 @@ index 872d924aee1880f0f60734995761d9c482ec29a6..8485eabd8b7ff6d0d9c172bfd61048fb
    start(): Promise<void>;
    /**
     * Stop the ACP server
-diff --git a/dist/index.js b/dist/index.js
+diff --git a/node_modules/deepagents-acp/dist/index.js b/node_modules/deepagents-acp/dist/index.js
 index bb7f74026940901fb20668d71c814dbecad65906..f428453486e4c87d4f04a2ffe938dee2cf5170ff 100644
---- a/dist/index.js
-+++ b/dist/index.js
+--- a/node_modules/deepagents-acp/dist/index.js
++++ b/node_modules/deepagents-acp/dist/index.js
 @@ -586,6 +586,13 @@ var DeepAgentsServer = class {
  	*
  	* Uses stdio transport by default (stdin/stdout)

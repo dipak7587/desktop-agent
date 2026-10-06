@@ -55,6 +55,7 @@ function input(ctx = context(), controller = new AbortController()): AgentLoopIn
   const toolIds = [
     'filesystem.write',
     'filesystem.read',
+    'filesystem.list',
     'filesystem.edit',
     'filesystem.search',
     'shell.execute',
@@ -399,3 +400,43 @@ it.skipIf(!process.env.CODE_AGENT_LIVE_MODEL)(
   },
   240000,
 );
+
+it('reads an explicitly requested package before a model that makes no tool calls answers', async () => {
+  await writeFile(join(root, 'package.json'), '{"name":"workspace-proof","version":"2.3.4"}');
+  const request = input();
+  request.task = 'get the package.json details';
+  const result = await manager.run(request, provider, context(), approve);
+  expect(result.reason).toBe('completed');
+  expect(request.run.tools).toEqual([
+    expect.objectContaining({
+      toolId: 'filesystem.read',
+      status: 'completed',
+      input: { path: 'package.json' },
+    }),
+  ]);
+  expect(JSON.stringify(complete.mock.calls)).toContain('workspace-proof');
+  expect(approve).toHaveBeenCalled();
+});
+
+it('honors a rejected explicit file read without exposing the file to the model', async () => {
+  await writeFile(join(root, 'package.json'), '{"name":"must-not-be-read"}');
+  approve.mockResolvedValue(false);
+  const request = input();
+  request.task = 'read package.json';
+  await manager.run(request, provider, context(), approve);
+  expect(request.run.tools[0].status).toBe('failed');
+  expect(JSON.stringify(complete.mock.calls)).not.toContain('must-not-be-read');
+});
+
+it('lists the selected folder before answering a folder inspection request', async () => {
+  await mkdir(join(root, 'workspace-child'));
+  const request = input();
+  request.task = 'list my folders';
+  await manager.run(request, provider, context(), approve);
+  expect(request.run.tools[0]).toMatchObject({
+    toolId: 'filesystem.list',
+    status: 'completed',
+    input: { path: '.' },
+  });
+  expect(JSON.stringify(complete.mock.calls)).toContain('workspace-child');
+});

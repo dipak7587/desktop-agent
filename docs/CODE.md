@@ -54,7 +54,7 @@ Relevant implementation files:
 - `src/main/services/ai/{capability-tools,chat-graph,tool-schemas}.ts`: native tools,
   Chat streaming and validated tool arguments.
 - `src/main/ipc/register.ts`: folder switching, disconnect/removal and conversation cleanup.
-- `patches/deepagents-acp@0.1.33.patch`: embedded transport support (see below).
+- `patches/deepagents-acp+0.1.33.patch`: embedded transport support (see below).
 
 **Local inference.** Existing Settings and Chat model selection are the only configuration.
 Ollama and compatible `custom`/`openai` profiles must use loopback or a private IPv4 endpoint.

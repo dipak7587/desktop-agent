@@ -36,6 +36,7 @@ export function serializeToolFile(item: LibraryItem): string {
           id: item.id,
           group: item.group,
           enabled: item.enabled,
+          env: item.env,
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
         }
