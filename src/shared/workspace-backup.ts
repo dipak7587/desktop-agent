@@ -37,6 +37,7 @@ export const workspaceBackupSchema = z
         agents: z.array(librarySchema).max(10000),
         mcp: z.array(librarySchema).max(10000),
         tools: z.array(librarySchema).max(10000),
+        hooks: z.array(librarySchema).max(10000).default([]),
       })
       .strict(),
     workflows: z.array(workflowSchema).max(10000),

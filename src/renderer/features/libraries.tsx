@@ -22,6 +22,7 @@ import {
   CircleStop,
   Pencil,
   Trash2,
+  Code2,
 } from 'lucide-react';
 import type { LibraryKind, LibraryItem } from '../../shared/types';
 import { BUILT_IN_GROUP } from '../../shared/types';
@@ -36,6 +37,7 @@ import {
   useSettings,
   useSkills,
   useTools,
+  useHooks,
   useKnowledge,
   useMCPStatus,
   useRuns,
@@ -46,6 +48,7 @@ import {
 import { PageHeader, Empty, Modal, Confirm, Markdown, CopyButton } from '../components/common';
 const descriptions = {
   tools: 'Reusable API calls and custom Node.js logic for your agents.',
+  hooks: 'Run JavaScript or TypeScript at an agent’s lifecycle stages.',
   skills: 'Reusable instructions that make your models work your way.',
   'saved-text': 'Notes and prompts, automatically indexed in your local knowledge base.',
   agents: 'Purpose-built workers for your local projects.',
@@ -53,12 +56,20 @@ const descriptions = {
 };
 const titles = {
   tools: 'Tools',
+  hooks: 'Hooks',
   skills: 'Skills',
   'saved-text': 'Saved Text',
   agents: 'Agents',
   mcp: 'MCP',
 };
-const icons = { tools: Wrench, skills: Zap, 'saved-text': FileText, agents: Bot, mcp: Plug };
+const icons = {
+  tools: Wrench,
+  skills: Zap,
+  'saved-text': FileText,
+  agents: Bot,
+  mcp: Plug,
+  hooks: Code2,
+};
 export const builtinTools = [
   'filesystem.read',
   'filesystem.write',
@@ -143,6 +154,15 @@ export function Library({ kind }: { kind: LibraryKind }) {
         kind === 'agents'
           ? ['project.detect', 'filesystem.read', 'filesystem.search', 'filesystem.list']
           : [],
+      hooks: [],
+      hookType: kind === 'hooks' ? 'pre' : undefined,
+      content:
+        kind === 'hooks'
+          ? `export default async function hook(context: { agent: { id: string; name: string }; task: string }) {
+  console.log(\`Starting \${context.agent.name}: \${context.task}\`);
+}
+`
+          : '',
     });
   };
   return (
@@ -196,7 +216,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     ? 'skill'
                     : kind === 'tools'
                       ? 'tool'
-                      : 'agent'}
+                      : kind === 'hooks'
+                        ? 'hook'
+                        : 'agent'}
             </button>
           </>
         }
@@ -216,7 +238,11 @@ export function Library({ kind }: { kind: LibraryKind }) {
         </div>
         <span className="muted small">
           {items.length} {items.length === 1 ? 'item' : 'items'} · stored as{' '}
-          {kind === 'mcp' ? 'JSON' : kind === 'tools' ? 'TypeScript' : 'Markdown'}
+          {kind === 'mcp'
+            ? 'JSON'
+            : kind === 'tools' || kind === 'hooks'
+              ? 'TypeScript'
+              : 'Markdown'}
         </span>
       </div>
       {grouped && (!!items.length || !!groups.length) && (
@@ -319,7 +345,9 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     ? 'server'
                     : kind === 'tools'
                       ? 'tool'
-                      : 'note'}
+                      : kind === 'hooks'
+                        ? 'hook'
+                        : 'note'}
             </button>
           }
         />
@@ -344,7 +372,7 @@ export function Library({ kind }: { kind: LibraryKind }) {
                   </button>
                 )}
                 {item.builtIn && <span className="badge">Built-in · Read-only</span>}
-                {kind === 'mcp' && !item.builtIn && (
+                {(kind === 'mcp' || kind === 'hooks') && !item.builtIn && (
                   <div className="mcp-group-actions">
                     <button
                       disabled={savingGroup}
@@ -480,7 +508,8 @@ export function Library({ kind }: { kind: LibraryKind }) {
                         'Select model in Settings'}
                     </span>
                     <span>
-                      {item.skills.length} skills · {item.tools.length} tools
+                      {item.skills.length} skills · {item.tools.length} tools ·{' '}
+                      {(item.hooks ?? []).length} hooks
                     </span>
                   </div>
                 )}
@@ -583,13 +612,15 @@ export function Library({ kind }: { kind: LibraryKind }) {
                     <h2>{item.name}</h2>
                   </div>
                   <span className="badge">
-                    {kind === 'mcp'
-                      ? state?.status === 'connected'
-                        ? 'Running'
-                        : (state?.status ?? 'stopped')
-                      : item.enabled
-                        ? 'Local'
-                        : 'Disabled'}
+                    {kind === 'hooks'
+                      ? `${item.hookType ?? 'pre'} hook`
+                      : kind === 'mcp'
+                        ? state?.status === 'connected'
+                          ? 'Running'
+                          : (state?.status ?? 'stopped')
+                        : item.enabled
+                          ? 'Local'
+                          : 'Disabled'}
                   </span>
                   {grouped && (
                     <label className="check" onClick={(e) => e.stopPropagation()}>
@@ -766,6 +797,7 @@ export function LibraryEditor({
     JSON.stringify(initial.toolConfig?.headers ?? {}, null, 2),
   );
   const { items: customTools } = useTools();
+  const { items: hooks } = useHooks();
   const [args, setArgs] = useState(
     (initial.connection?.type === 'stdio' ? (initial.connection.args ?? []) : initial.args).join(
       '\n',
@@ -955,7 +987,7 @@ export function LibraryEditor({
   return (
     <Modal
       wide
-      title={`${initial.createdAt ? 'Edit' : 'Create'} ${kind === 'saved-text' ? 'saved text' : kind === 'skills' ? 'skill' : kind === 'agents' ? 'agent' : kind === 'tools' ? 'tool' : 'MCP server'}`}
+      title={`${initial.createdAt ? 'Edit' : 'Create'} ${kind === 'saved-text' ? 'saved text' : kind === 'skills' ? 'skill' : kind === 'agents' ? 'agent' : kind === 'tools' ? 'tool' : kind === 'hooks' ? 'hook' : 'MCP server'}`}
       onClose={onClose}
     >
       <form
@@ -1064,17 +1096,16 @@ export function LibraryEditor({
               onChange={(value) => update('group', value)}
               groups={groups}
             />
-            {kind !== 'saved-text' && (
-              <label>
-                Description
-                <input
-                  required={false}
-                  maxLength={2000}
-                  value={item.description}
-                  onChange={(e) => update('description', e.target.value)}
-                />
-              </label>
-            )}
+            <label>
+              Description
+              <input
+                required
+                minLength={1}
+                maxLength={2000}
+                value={item.description}
+                onChange={(e) => update('description', e.target.value)}
+              />
+            </label>
             {kind === 'skills' && (
               <label>
                 Version
@@ -1126,6 +1157,80 @@ export function LibraryEditor({
                     }))}
                   />
                 )}
+                <fieldset className="capability-section agent-hooks">
+                  <legend>Agent hooks</legend>
+                  <p className="small muted">
+                    Hooks run around this agent’s execution. JavaScript / TypeScript hooks execute
+                    as trusted local Node.js code.
+                    {item.builtIn &&
+                      ' Built-in agents only allow provider, model, and hook changes.'}
+                  </p>
+                  {(['pre', 'post', 'success', 'error'] as const).map((hookType) => {
+                    const options = hooks.filter((hook) => hook.hookType === hookType);
+                    const selected = options.filter((hook) => (item.hooks ?? []).includes(hook.id));
+                    return (
+                      <details
+                        className="capability-group hook-group"
+                        aria-label={`${hookType} hooks`}
+                        key={hookType}
+                      >
+                        <summary>
+                          <span className="hook-type-name">{hookType}</span>
+                          <span className="capability-group-meta">
+                            {selected.length} selected · {options.length} available
+                            <ChevronDown size={16} className="capability-chevron" />
+                          </span>
+                        </summary>
+                        <div className="capability-group-body">
+                          {options.length ? (
+                            options.map((hook) => (
+                              <label className="check" key={hook.id}>
+                                <input
+                                  type="checkbox"
+                                  checked={(item.hooks ?? []).includes(hook.id)}
+                                  disabled={!hook.enabled}
+                                  onChange={(event) =>
+                                    update(
+                                      'hooks',
+                                      event.target.checked
+                                        ? [...new Set([...(item.hooks ?? []), hook.id])]
+                                        : (item.hooks ?? []).filter((id) => id !== hook.id),
+                                    )
+                                  }
+                                />
+                                <span>{hook.name}</span>
+                                {!hook.enabled && <span className="muted small">Disabled</span>}
+                              </label>
+                            ))
+                          ) : (
+                            <p className="small muted">No {hookType} hooks created yet.</p>
+                          )}
+                        </div>
+                      </details>
+                    );
+                  })}
+                </fieldset>
+              </>
+            )}
+            {kind === 'hooks' && (
+              <>
+                <label>
+                  Lifecycle type
+                  <select
+                    value={item.hookType ?? 'pre'}
+                    onChange={(event) => update('hookType', event.target.value)}
+                  >
+                    {(['pre', 'post', 'success', 'error'] as const).map((hookType) => (
+                      <option key={hookType} value={hookType}>
+                        {hookType}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="small muted">
+                  Hooks receive {`{ agent, task, project, run }`}. Success and error hooks also
+                  receive result or error. Post hooks run after either outcome.
+                </p>
               </>
             )}
             {kind === 'skills' && (
@@ -1350,13 +1455,19 @@ export function LibraryEditor({
                   ? 'Text'
                   : kind === 'tools'
                     ? 'JavaScript logic · use input, return the result (Node.js require available)'
-                    : 'Instructions'}
+                    : kind === 'hooks'
+                      ? 'JavaScript / TypeScript hook source · export a default async function'
+                      : 'Instructions'}
                 <textarea
                   className="editor"
-                  rows={10}
+                  rows={kind === 'hooks' ? 18 : 10}
                   value={item.content}
                   onChange={(e) => update('content', e.target.value)}
-                  placeholder="Write in plain text or Markdown…"
+                  placeholder={
+                    kind === 'hooks'
+                      ? 'export default async function hook(context) {\n  // Hook logic\n}'
+                      : 'Write in plain text or Markdown…'
+                  }
                 />
               </label>
             )}

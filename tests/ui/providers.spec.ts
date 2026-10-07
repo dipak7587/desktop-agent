@@ -106,6 +106,7 @@ test('provider selection, historical badges, agent overrides, and restart persis
     await page.getByRole('button', { name: 'New agent', exact: true }).click();
     const modal = page.getByRole('dialog');
     await modal.getByLabel('Name', { exact: true }).fill('Provider agent');
+    await modal.getByLabel('Description', { exact: true }).fill('Agent for provider selection');
     await modal.getByLabel('Provider', { exact: true }).selectOption({ label: 'Second Ollama' });
     await modal.getByLabel('Model', { exact: true }).selectOption('second-model');
     await modal.getByRole('button', { name: 'Save', exact: true }).click();

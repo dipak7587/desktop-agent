@@ -1330,6 +1330,150 @@ label select {
   overflow-wrap: anywhere;
 }
 
+.capability-settings > .capability-group,
+.agent-hooks > .hook-group {
+  margin: 10px 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--raised);
+}
+
+.capability-group > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.capability-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.capability-group > summary:hover {
+  background: var(--panel);
+}
+
+.capability-group[open] > summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.capability-group > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.capability-group-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.capability-chevron {
+  flex: 0 0 auto;
+  transition: transform 120ms ease;
+}
+
+.capability-group[open] > summary .capability-chevron {
+  transform: rotate(180deg);
+}
+
+.capability-group-body,
+.capability-group > fieldset {
+  padding: 12px;
+}
+
+.capability-group > fieldset {
+  margin: 0;
+  border: 0;
+}
+
+.capability-group-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 12px;
+}
+
+.capability-group-body .check {
+  min-width: 0;
+  align-items: flex-start;
+  padding: 7px 8px;
+  margin: 0;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.capability-group-body .check:hover {
+  background: var(--panel);
+}
+
+.capability-group-body .check input {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.capability-permissions-body {
+  padding: 12px;
+}
+
+.capability-permissions-body > p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.capability-permissions-body > p:last-child {
+  margin-bottom: 0;
+}
+
+.capability-permission {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 220px);
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  margin: 0;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.capability-permission:hover {
+  background: var(--panel);
+}
+
+.capability-permission select {
+  margin: 0;
+}
+
+.hook-type-name {
+  text-transform: capitalize;
+}
+
+.agent-hooks > p {
+  margin: 4px 0 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .capability-group-body,
+  .capability-permission {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 fieldset {
   border: 1px solid var(--border);
   border-radius: 8px;

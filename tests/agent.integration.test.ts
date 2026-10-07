@@ -11,6 +11,7 @@ import { KnowledgeService } from '../src/main/services/rag/knowledge';
 import { MCPService } from '../src/main/services/mcp/mcp';
 import { librarySchema, settingsSchema } from '../src/shared/schemas';
 import type { AppEvent } from '../src/shared/types';
+import { CustomToolService } from '../src/main/services/tools/custom';
 it('a real model reads, proposes a diff, waits for approval, writes and verifies a project file', async () => {
   if (!process.env.LOCALAI_LIVE_TEST) return;
   const root = await mkdtemp(join(tmpdir(), 'agent-live-'));
@@ -31,6 +32,76 @@ it('a real model reads, proposes a diff, waits for approval, writes and verifies
         'Complete the task with allowed tools. Before writing read the file and use its hash. After writing read it again. Then give a final summary. Do not merely describe changes.',
     }),
   );
+
+  it('runs attached pre, success and post hooks in lifecycle order', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-hooks-'));
+    for (const dir of ['agents', 'skills', 'tools', 'mcp', 'hooks', 'project'])
+      await mkdir(join(root, dir));
+    const project = join(root, 'project');
+    const log = join(project, 'hook-log.txt');
+    const settings = () => settingsSchema.parse({ chatModel: 'test-model' });
+    const library = new LibraryService(root);
+    for (const [id, hookType] of [
+      ['before', 'pre'],
+      ['after-success', 'success'],
+      ['after-error', 'error'],
+      ['after', 'post'],
+    ] as const) {
+      await library.save('hooks', {
+        ...librarySchema.parse({ id, name: id, hookType }),
+        content: `export default async function hook(context) {
+    require('node:fs').appendFileSync(${JSON.stringify(log)}, '${hookType},');
+  }`,
+      });
+    }
+    const agent = librarySchema.parse({
+      id: 'hooked-agent',
+      name: 'Hooked agent',
+      model: 'test-model',
+      hooks: ['before', 'after-success', 'after-error', 'after'],
+    });
+    await library.save('agents', agent);
+    const llm = new OllamaLLMProvider(settings);
+    useProviderBridge(llm);
+    const complete = vi
+      .spyOn(llm, 'complete')
+      .mockResolvedValue({ role: 'assistant', content: 'Done.' });
+    const knowledge = new KnowledgeService(
+      root,
+      settings,
+      { embed: async () => [], embedBatch: async () => [] },
+      () => {},
+    );
+    const customTools = new CustomToolService(
+      library,
+      { resolve: () => '', redact: (text) => text },
+      () => 3000,
+    );
+    const service = new AgentService(
+      library,
+      llm,
+      knowledge,
+      new MCPService(library, { resolve: () => '', redact: (text) => text }, () => {}),
+      settings,
+      () => {},
+      undefined,
+      customTools,
+    );
+    try {
+      await expect(
+        service.runInChat(agent, 'Do the task', project, new AbortController().signal, () => {}),
+      ).resolves.toBe('Done.');
+      expect(await readFile(log, 'utf8')).toBe('pre,success,post,');
+      complete.mockRejectedValueOnce(new Error('Model failed'));
+      await expect(
+        service.runInChat(agent, 'Fail the task', project, new AbortController().signal, () => {}),
+      ).rejects.toThrow('Model failed');
+      expect(await readFile(log, 'utf8')).toBe('pre,success,post,pre,error,post,');
+    } finally {
+      await service.stopAll();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   const llm = new OllamaLLMProvider(settings);
   const kb = new KnowledgeService(
     root,

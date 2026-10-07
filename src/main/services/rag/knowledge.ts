@@ -96,7 +96,15 @@ export class KnowledgeService {
     if (!source) throw new Error('Knowledge source no longer exists');
     return source;
   }
-  async add(type: KnowledgeSource['type'], location: string, collection = '', group = '') {
+  async add(
+    type: KnowledgeSource['type'],
+    location: string,
+    description: string,
+    collection = '',
+    group = '',
+  ) {
+    const sourceDescription = description.trim();
+    if (!sourceDescription) throw new Error('A description is required for this knowledge source.');
     if (type === 'url' && !['http:', 'https:'].includes(new URL(location).protocol))
       throw new Error('Only HTTP(S) URLs are supported');
     if (
@@ -111,6 +119,7 @@ export class KnowledgeService {
       id: randomUUID(),
       type,
       name,
+      description: sourceDescription,
       location,
       collection,
       group: librarySchema.shape.group.parse(group),

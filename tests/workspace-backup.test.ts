@@ -15,7 +15,7 @@ const backup = (): WorkspaceBackup => ({
   formatVersion: 1,
   exportedAt: new Date().toISOString(),
   settings: settingsSchema.parse({}),
-  libraries: { skills: [], 'saved-text': [], agents: [], mcp: [], tools: [] },
+  libraries: { skills: [], 'saved-text': [], agents: [], mcp: [], tools: [], hooks: [] },
   workflows: [],
   conversations: [
     {

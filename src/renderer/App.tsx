@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Plug,
   Wrench,
+  Code2,
   Zap,
   FileText,
   Bot,
@@ -16,7 +17,6 @@ import {
   Search,
   X,
   ArrowUpRight,
-  Code2,
 } from 'lucide-react';
 import type { Section } from '../shared/types';
 import {
@@ -39,6 +39,7 @@ const nav = [
   { name: 'Chat', icon: MessageSquare },
   { name: 'MCP', icon: Plug },
   { name: 'Tools', icon: Wrench },
+  { name: 'Hooks', icon: Code2 },
   { name: 'Skills', icon: Zap },
   { name: 'Saved Text', icon: FileText },
   { name: 'Agents', icon: Bot },
@@ -125,11 +126,7 @@ export function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
-            {settings?.appLogo ? (
-              <img src={settings.appLogo} alt="" />
-            ) : (
-              <Orbit size={23} />
-            )}
+            {settings?.appLogo ? <img src={settings.appLogo} alt="" /> : <Orbit size={23} />}
           </div>
           {!collapsed && (
             <div>
@@ -247,7 +244,9 @@ export function App() {
                     ? 'mcp'
                     : section === 'Tools'
                       ? 'tools'
-                      : 'agents'
+                      : section === 'Hooks'
+                        ? 'hooks'
+                        : 'agents'
             }
           />
         )}
@@ -307,6 +306,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       agents: 'Agents',
                       mcp: 'MCP',
                       tools: 'Tools',
+                      hooks: 'Hooks',
                       'saved-text': 'Saved Text',
                     } as Record<string, Section>
                   )[kind],

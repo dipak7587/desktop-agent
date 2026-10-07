@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { librarySchema, settingsSchema } from '../src/shared/schemas';
+import { validateHookSource } from '../src/main/services/tools/typescript';
 it.each(['agents', 'mcp', 'skills', 'tools', 'saved-text'] as const)(
   'persists portable groups for %s without changing definitions',
   async (kind) => {
@@ -85,6 +86,59 @@ it('round trips saved text and skills as portable markdown, with edits and delet
     expect(await lib.list(kind)).toEqual([]);
   }
   await rm(root, { recursive: true, force: true });
+});
+it('stores Hooks as valid TypeScript with only Hook metadata', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'library-hooks-'));
+  try {
+    const library = new LibraryService(root);
+    const hook = librarySchema.parse({
+      id: 'review-hook',
+      name: 'Review hook',
+      description: 'A hook for reviews',
+      group: 'Reviews',
+      hookType: 'success',
+      providerId: 'ollama-local',
+      model: 'unused',
+      hooks: ['another-hook'],
+      content: 'export default async function hook() {}',
+    });
+
+    await library.save('hooks', hook);
+    const source = await readFile(library.path('hooks', hook.id), 'utf8');
+    expect(source).toMatch(/^\/\/ @localai-hook /);
+    expect(source).not.toContain('providerId');
+    expect(source).not.toContain('"hooks"');
+    expect(source).not.toContain('\n---\n');
+    expect(() => validateHookSource(source)).not.toThrow();
+    expect(await library.get('hooks', hook.id)).toMatchObject({
+      id: hook.id,
+      name: hook.name,
+      description: hook.description,
+      group: hook.group,
+      hookType: hook.hookType,
+      content: hook.content,
+    });
+    expect(library.parse('hooks', source, 'imported-hook')).toMatchObject({
+      id: 'imported-hook',
+      name: hook.name,
+      hookType: hook.hookType,
+      content: hook.content,
+    });
+
+    const legacy = library.parse(
+      'hooks',
+      '---\nname: Legacy hook\nhookType: error\n---\nexport default async function hook() {}',
+      'legacy-hook',
+    );
+    expect(legacy).toMatchObject({
+      id: 'legacy-hook',
+      name: 'Legacy hook',
+      hookType: 'error',
+      content: 'export default async function hook() {}',
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 it('rejects path traversal, invalid environment names and invalid chunking', () => {
   expect(() => librarySchema.parse({ id: '../outside', name: 'Bad' })).toThrow();

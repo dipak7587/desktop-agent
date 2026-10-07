@@ -75,8 +75,13 @@ it('rejects duplicate knowledge source names before persisting', async () => {
       { embed: async () => [1], embedBatch: async () => [[1]] },
       () => {},
     );
-    await knowledge.add('folder', '/first/Example');
-    await expect(knowledge.add('folder', '/second/example')).rejects.toThrow('already exists');
+    await expect(knowledge.add('folder', '/first/Example', '   ')).rejects.toThrow(
+      'description is required',
+    );
+    await knowledge.add('folder', '/first/Example', 'First knowledge source');
+    await expect(
+      knowledge.add('folder', '/second/example', 'Duplicate knowledge source'),
+    ).rejects.toThrow('already exists');
     expect(knowledge.list()).toHaveLength(1);
   } finally {
     await rm(root, { recursive: true, force: true });

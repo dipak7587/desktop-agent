@@ -42,6 +42,31 @@ function syntaxTree(source: string) {
     );
   return ts.createSourceFile('tool.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 }
+export function validateHookSource(source: string) {
+  if (!source.trim()) throw new Error('Add JavaScript or TypeScript hook code before saving');
+  if (source.length > 2_000_000) throw new Error('Hook source exceeds 2 MB');
+  const result = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS },
+    reportDiagnostics: true,
+    fileName: 'hook.ts',
+  });
+  const errors =
+    result.diagnostics?.filter(
+      (diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error,
+    ) ?? [];
+  if (errors.length)
+    throw new Error(
+      errors
+        .map((diagnostic) => {
+          const position =
+            diagnostic.file && diagnostic.start !== undefined
+              ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+              : undefined;
+          return `${position ? `Line ${position.line + 1}: ` : ''}${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`;
+        })
+        .join('\n'),
+    );
+}
 function key(node: ts.PropertyName) {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
   throw new Error('Use static property names in tool metadata and input schemas');

@@ -329,6 +329,8 @@ function WorkflowEditor({ initial, onClose }: { initial: AgentWorkflow; onClose(
         Description
         <textarea
           name="description"
+          required
+          minLength={1}
           maxLength={2000}
           value={workflow.description}
           onChange={(e) => patch({ description: e.target.value })}

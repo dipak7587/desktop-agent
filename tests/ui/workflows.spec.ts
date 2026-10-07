@@ -298,10 +298,40 @@ for (const [kind, section] of [
     await expect(groupsAfterReload.getByRole('button', { name: /Ungrouped 3/ })).toBeVisible();
   });
 }
+test('Hooks can be moved to a group from the Hook card', async () => {
+  await page.getByRole('button', { name: 'Hooks', exact: true }).click();
+  await page.getByRole('button', { name: 'New hook', exact: true }).click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveAttribute('required', '');
+  await page.getByLabel('Name', { exact: true }).fill('Review hook');
+  await page.getByLabel('Description', { exact: true }).fill('Runs after successful reviews');
+  await page
+    .getByLabel(/JavaScript \/ TypeScript hook source/)
+    .fill('export default async function hook() {}');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  const hook = page.locator('.library-card').filter({ hasText: 'Review hook' });
+  await hook.locator(':scope > summary').click();
+  await hook.getByRole('button', { name: 'Move to group', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Move selected items to group' });
+  await dialog.getByLabel('Group', { exact: true }).selectOption('__new_group__');
+  await dialog.getByLabel('New group name', { exact: true }).fill('Review');
+  await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+
+  await expect(
+    page.getByRole('navigation', { name: 'Hooks groups' }).getByRole('button', {
+      name: 'Review 1',
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('checkbox', { name: 'Select Review hook', exact: true }),
+  ).toBeVisible();
+});
 test('saved text and skills create, edit, export-ready files, delete; settings persist', async () => {
   await page.getByRole('button', { name: 'Saved Text', exact: true }).click();
   await page.getByRole('button', { name: 'New text' }).click();
   await page.getByLabel('Title', { exact: true }).fill('Architecture notes');
+  await page.getByLabel('Description', { exact: true }).fill('Private local architecture notes');
   await page.getByLabel('Text', { exact: true }).fill('# Design\nPrivate local notes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Architecture notes' })).toBeVisible();
@@ -322,16 +352,23 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   await page.getByRole('button', { name: 'Skills', exact: true }).click();
   await page.getByRole('button', { name: 'New skill' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Citation guide');
+  await page.getByLabel('Description', { exact: true }).fill('Guidance for reliable citations');
   await page.getByLabel('Instructions', { exact: true }).fill('Cite reliable sources.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'New skill' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Review code');
   await page.getByLabel('Description', { exact: true }).fill('Check code quality');
   const skillCapabilities = page.getByRole('group', { name: 'Skill Capabilities' });
+  await skillCapabilities.locator('details[aria-label="Skills capabilities"] > summary').click();
   await skillCapabilities.getByLabel('Citation guide', { exact: true }).check();
   await page.getByLabel('Instructions', { exact: true }).fill('Read before making changes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.locator('summary').filter({ hasText: 'Review code' }).click();
+  await page
+    .locator('details.skill-card')
+    .filter({ hasText: 'Review code' })
+    .evaluate((element) => {
+      (element as HTMLDetailsElement).open = true;
+    });
   await expect(page.getByText('Read before making changes.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(
@@ -341,10 +378,19 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   ).toBeChecked();
   await page
     .getByRole('group', { name: 'Skill Capabilities' })
+    .locator('details[aria-label="Skills capabilities"] > summary')
+    .click();
+  await page
+    .getByRole('group', { name: 'Skill Capabilities' })
     .getByLabel('Citation guide', { exact: true })
     .uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.locator('summary').filter({ hasText: 'Review code' }).click();
+  await page
+    .locator('details.skill-card')
+    .filter({ hasText: 'Review code' })
+    .evaluate((element) => {
+      (element as HTMLDetailsElement).open = true;
+    });
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Careful reviewer');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -353,7 +399,8 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   await page.locator('summary').filter({ hasText: 'Citation guide' }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(page.getByText('Your skills start here')).toBeVisible();
+  await expect(page.locator('.skill-card').filter({ hasText: 'Careful reviewer' })).toHaveCount(0);
+  await expect(page.locator('.skill-card').filter({ hasText: 'Citation guide' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Theme', { exact: true }).selectOption('dark');
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
@@ -876,8 +923,10 @@ test('real Ollama chat streams, persists across relaunch and continues', async (
 test('Knowledge sources support adding, moving, renaming and deleting groups', async () => {
   await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
   await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveAttribute('required', '');
   await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
   await page.getByLabel('URL', { exact: true }).fill('https://first.example/docs');
+  await page.getByLabel('Description', { exact: true }).fill('First project documentation source');
   await page.getByLabel('Collection · optional').fill('Project docs');
   await page.getByLabel('Group · optional').selectOption('__new_group__');
   await page.getByLabel('New group name', { exact: true }).fill('Research');
@@ -885,11 +934,12 @@ test('Knowledge sources support adding, moving, renaming and deleting groups', a
   await page.getByRole('button', { name: 'Add source', exact: true }).click();
   await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
   await page.getByLabel('URL', { exact: true }).fill('https://second.example/docs');
+  await page.getByLabel('Description', { exact: true }).fill('Second project documentation source');
   await page.getByLabel('Collection · optional').fill('Project docs');
   await page.getByRole('button', { name: 'Add URL', exact: true }).click();
 
   const groups = page.getByRole('navigation', { name: 'Knowledge Base groups' });
-  await expect(groups.getByRole('button', { name: 'Built-in 0', exact: true })).toBeVisible();
+  await expect(groups.getByRole('button', { name: /^Built-in \d+$/ })).toBeVisible();
   await expect(groups.getByRole('button', { name: 'Research 1', exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: 'Select second.example', exact: true }).check();
   await page
@@ -951,6 +1001,7 @@ test('knowledge URL sync, preview, semantic search and RAG chat use real local e
     await page.getByRole('button', { name: 'Add source', exact: true }).click();
     await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
     await page.getByLabel('URL', { exact: true }).fill(`http://127.0.0.1:${port}/docs`);
+    await page.getByLabel('Description', { exact: true }).fill('Local integration documentation');
     await page.getByRole('button', { name: 'Add URL' }).click();
     await page.getByRole('button', { name: 'Sync / Re-index' }).click();
     await expect(page.locator('.source-card .badge')).toHaveText('ready', { timeout: 60000 });
@@ -991,6 +1042,7 @@ test('agent UI creates a worker, reviews a real diff and applies approved change
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
   await page.getByRole('button', { name: 'New agent' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Careful file editor');
+  await page.getByLabel('Description', { exact: true }).fill('Edits project files after approval');
   await page
     .getByLabel('Instructions', { exact: true })
     .fill(
@@ -1034,7 +1086,10 @@ test('selected agent-desktop KB scopes give me chat details to project documenta
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
   }, folder);
   await page.evaluate(async () => {
-    await window.workspace.knowledge.add({ type: 'folder' });
+    await window.workspace.knowledge.add({
+      type: 'folder',
+      description: 'Project files used by the Code test',
+    });
     const source = (await window.workspace.knowledge.list()).find(
       (s) => s.name === 'agent-desktop',
     )!;

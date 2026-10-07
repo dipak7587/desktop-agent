@@ -16,13 +16,14 @@ import { randomUUID } from 'node:crypto';
 import { librarySchema, idSchema } from '../../../shared/schemas';
 import { BUILT_IN_GROUP, type LibraryKind, type LibraryItem } from '../../../shared/types';
 import { atomicWrite, readJSON } from './storage';
+import { validateHookSource } from '../tools/typescript';
 export class LibraryService {
   private saveQueue = new SaveQueue();
   private builtIns = new Map<LibraryKind, Map<string, LibraryItem>>();
   async loadBuiltIns(root: string) {
     const bundled = new LibraryService(root);
     const next = new Map<LibraryKind, Map<string, LibraryItem>>();
-    for (const kind of ['agents', 'skills', 'mcp', 'tools'] as const) {
+    for (const kind of ['agents', 'skills', 'mcp', 'tools', 'hooks'] as const) {
       const items = await bundled.list(kind);
       next.set(
         kind,
@@ -53,6 +54,7 @@ export class LibraryService {
       const {
         providerId: _provider,
         model: _model,
+        hooks: _hooks,
         updatedAt: _updated,
         builtIn: _builtIn,
         ...rest
@@ -60,7 +62,9 @@ export class LibraryService {
       return rest;
     };
     if (JSON.stringify(comparable(current)) !== JSON.stringify(comparable(input)))
-      throw new Error('Built-in agents only allow changing the provider and model.');
+      throw new Error(
+        'Built-in agents only allow changing the provider, model, and hook assignments.',
+      );
   }
 
   constructor(
@@ -77,7 +81,11 @@ export class LibraryService {
     idSchema.parse(id);
     return kind === 'skills'
       ? join(this.root, kind, id, 'SKILL.md')
-      : join(this.root, kind, `${id}.${kind === 'mcp' ? 'json' : kind === 'tools' ? 'ts' : 'md'}`);
+      : join(
+          this.root,
+          kind,
+          `${id}.${kind === 'mcp' ? 'json' : kind === 'tools' || kind === 'hooks' ? 'ts' : 'md'}`,
+        );
   }
   private groupPath(kind: LibraryKind) {
     return join(this.root, kind, 'groups.registry');
@@ -118,14 +126,14 @@ export class LibraryService {
       if (
         kind === 'skills'
           ? !entry.isDirectory()
-          : !(kind === 'tools'
+          : !(kind === 'tools' || kind === 'hooks'
               ? /\.(ts|md)$/.test(entry.name)
               : entry.name.endsWith(kind === 'mcp' ? '.json' : '.md'))
       )
         continue;
       const id = kind === 'skills' ? entry.name : entry.name.replace(/\.(json|md|ts)$/, '');
       if (
-        kind === 'tools' &&
+        (kind === 'tools' || kind === 'hooks') &&
         entry.name.endsWith('.md') &&
         entries.some((candidate) => candidate.name === `${id}.ts`)
       )
@@ -134,7 +142,9 @@ export class LibraryService {
         this.parse(
           kind,
           await readFile(
-            kind === 'tools' ? join(this.root, kind, entry.name) : this.path(kind, id),
+            kind === 'tools' || kind === 'hooks'
+              ? join(this.root, kind, entry.name)
+              : this.path(kind, id),
             'utf8',
           ),
           id,
@@ -145,7 +155,7 @@ export class LibraryService {
     const bundledItems = [...(bundled?.values() ?? [])].map((item) => {
       const override = items.find((candidate) => candidate.id === item.id);
       return override && kind === 'agents'
-        ? { ...item, providerId: override.providerId, model: override.model }
+        ? { ...item, providerId: override.providerId, model: override.model, hooks: override.hooks }
         : item;
     });
     return [
@@ -161,6 +171,17 @@ export class LibraryService {
         value.connection ? { ...value, ...mcpConfigFromItem(value) } : value,
       );
     }
+    if (kind === 'hooks') {
+      const header = /^\/\/ @localai-hook ([^\r\n]+)\r?\n/.exec(raw);
+      if (header)
+        return librarySchema.parse({
+          ...JSON.parse(header[1]),
+          content: raw.slice(header[0].length),
+          id,
+        });
+      if (!/^---\r?\n/.test(raw))
+        return librarySchema.parse({ id, name: id, hookType: 'pre', content: raw });
+    }
     if (!/^---\r?\n/.test(raw))
       throw new Error('Markdown definitions require YAML frontmatter (--- on its own line)');
     const parsed = matter(raw);
@@ -175,6 +196,24 @@ export class LibraryService {
   }
   serialize(kind: LibraryKind, item: LibraryItem) {
     if (kind === 'tools') return serializeToolFile(item);
+    if (kind === 'hooks') {
+      const metadata = Object.fromEntries(
+        (
+          [
+            'id',
+            'name',
+            'group',
+            'description',
+            'version',
+            'enabled',
+            'createdAt',
+            'updatedAt',
+            'hookType',
+          ] as const
+        ).map((key) => [key, item[key]]),
+      );
+      return `// @localai-hook ${JSON.stringify(metadata)}\n${item.content}`;
+    }
     if (kind === 'mcp') {
       return JSON.stringify(
         {
@@ -215,6 +254,10 @@ export class LibraryService {
       } else if (!item.content.trim())
         throw new Error('Add JavaScript logic before saving this Tool');
     }
+    if (kind === 'hooks') {
+      if (!item.hookType) throw new Error('Choose a lifecycle type for this Hook');
+      validateHookSource(item.content);
+    }
     if (kind === 'tools' && item.toolConfig?.type !== 'langchain')
       item.toolSource = legacyToolSource(item);
     if (kind === 'mcp') Object.assign(item, mcpConfigFromItem({ ...item }));
@@ -224,10 +267,12 @@ export class LibraryService {
       skills: 'A skill',
       tools: 'A tool',
       'saved-text': 'Saved text',
+      hooks: 'A Hook',
     };
     assertUniqueName(await this.list(kind), item, labels[kind]);
     await atomicWrite(this.path(kind, item.id), this.serialize(kind, item));
-    if (kind === 'tools') await rm(join(this.root, kind, `${item.id}.md`), { force: true });
+    if (kind === 'tools' || kind === 'hooks')
+      await rm(join(this.root, kind, `${item.id}.md`), { force: true });
     if (kind === 'saved-text') await this.onSavedTextChange?.();
     return kind === 'mcp' || kind === 'tools'
       ? this.parse(kind, this.serialize(kind, item), item.id)
@@ -235,15 +280,17 @@ export class LibraryService {
   }
   async assertRemovable(kind: LibraryKind, id: string) {
     this.assertWritable(kind, id);
-    if (kind !== 'skills' && kind !== 'mcp' && kind !== 'tools') return;
+    if (!['skills', 'mcp', 'tools', 'hooks'].includes(kind)) return;
     const prefix = kind === 'mcp' ? `mcp:${id}:` : `custom:${id}`;
     const agents = (await this.list('agents')).filter(
       (a) =>
         (kind === 'skills'
           ? [...a.skills, ...capabilityConfig(a).skills].includes(id)
-          : [...a.tools, ...capabilityConfig(a).tools].some((t) =>
-              kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
-            )) ||
+          : kind === 'hooks'
+            ? (a.hooks ?? []).includes(id)
+            : [...a.tools, ...capabilityConfig(a).tools].some((t) =>
+                kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
+              )) ||
         (kind === 'mcp' && capabilityConfig(a).mcpServers.includes(id)),
     );
     const dependentSkills =
@@ -256,7 +303,7 @@ export class LibraryService {
     const dependents = [...agents, ...dependentSkills];
     if (dependents.length)
       throw new Error(
-        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${dependents.map((item) => item.name).join(', ')}. Remove it from these definitions before deleting it.`,
+        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : kind === 'hooks' ? 'Hook' : 'Tool'}. It is currently used by: ${dependents.map((item) => item.name).join(', ')}. Remove it from these definitions before deleting it.`,
       );
   }
   async setGroup(kind: LibraryKind, ids: string[], group: string) {
@@ -305,7 +352,8 @@ export class LibraryService {
   async remove(kind: LibraryKind, id: string) {
     await this.assertRemovable(kind, id);
     await rm(this.path(kind, id), { force: true });
-    if (kind === 'tools') await rm(join(this.root, kind, `${id}.md`), { force: true });
+    if (kind === 'tools' || kind === 'hooks')
+      await rm(join(this.root, kind, `${id}.md`), { force: true });
     if (kind === 'skills') await rm(join(this.root, kind, id), { recursive: true, force: true });
     if (kind === 'saved-text') await this.onSavedTextChange?.();
   }
@@ -320,6 +368,7 @@ export class LibraryService {
             ...bundled,
             providerId: override.providerId,
             model: override.model,
+            hooks: override.hooks,
           });
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -331,7 +380,8 @@ export class LibraryService {
     try {
       raw = await readFile(this.path(kind, id), 'utf8');
     } catch (error) {
-      if (kind !== 'tools' || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (!['tools', 'hooks'].includes(kind) || (error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw error;
       raw = await readFile(join(this.root, kind, `${id}.md`), 'utf8');
     }
     return this.parse(kind, raw, id);

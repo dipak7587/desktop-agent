@@ -24,6 +24,7 @@ test('custom tools, dependency errors, temporary folders and agent deletion', as
     await page.getByRole('button', { name: 'Tools', exact: true }).click();
     await page.getByRole('button', { name: 'New tool', exact: true }).click();
     await page.getByLabel('Name', { exact: true }).fill('Double');
+    await page.getByLabel('Description', { exact: true }).fill('Doubles a numeric input');
     await page.getByLabel('Parameter Name').fill('value');
     await page
       .getByRole('group', { name: 'Parameter 1', exact: true })
@@ -41,16 +42,21 @@ test('custom tools, dependency errors, temporary folders and agent deletion', as
     for (const name of ['Reviewer', 'Writer']) {
       await page.getByRole('button', { name: 'New agent' }).click();
       await page.getByLabel('Name', { exact: true }).fill(name);
+      await page.getByLabel('Description', { exact: true }).fill(`${name} agent`);
       await page.getByLabel('Maximum execution iterations').fill('500');
       await page.getByRole('radio', { name: 'None', exact: true }).check();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
+      const capabilityPanel = page.getByRole('group', { name: 'Agent Capabilities' });
+      await capabilityPanel.locator('details[aria-label="Skills capabilities"] > summary').click();
       await expect(page.getByLabel('Allow Skills', { exact: true })).toBeDisabled();
+      await capabilityPanel.locator('details[aria-label="Tools capabilities"] > summary').click();
       await page.getByRole('radio', { name: 'Auto', exact: true }).check();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
       await page.getByRole('radio', { name: 'Selected', exact: true }).check();
       await page.getByLabel('Allow Tools', { exact: true }).uncheck();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
       await page.getByLabel('Allow Tools', { exact: true }).check();
+      await expect(page.getByLabel('filesystem.read', { exact: true })).toBeVisible();
       await page.getByLabel('Show capability decisions in history and Chat').check();
       await page.getByText('Capability permissions', { exact: true }).click();
       await expect(page.getByLabel('Permission: shell.execute', { exact: true })).toHaveCount(0);

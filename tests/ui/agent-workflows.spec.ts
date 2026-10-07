@@ -28,6 +28,13 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     for (const name of ['Analysis', 'Review']) {
       await page.getByRole('button', { name: 'New agent', exact: true }).click();
       await page.getByLabel('Name', { exact: true }).fill(name);
+      await page.getByLabel('Description', { exact: true }).fill(`${name} agent`);
+      const agentCapabilities = page.getByRole('group', { name: 'Agent Capabilities' });
+      await agentCapabilities.locator('details[aria-label="Tools capabilities"] > summary').click();
+      await expect(agentCapabilities.getByLabel('filesystem.read', { exact: true })).toBeVisible();
+      const hooks = page.locator('.agent-hooks');
+      await page.locator('details.hook-group[aria-label="pre hooks"] > summary').click();
+      await expect(hooks.getByText('No pre hooks created yet.')).toBeVisible();
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
@@ -36,6 +43,10 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     const modal = page.getByRole('dialog');
     await modal.getByRole('tab', { name: 'Default', exact: true }).click();
     await modal.getByRole('tabpanel').getByLabel('Name (required)').fill('Quality workflow');
+    await modal
+      .getByRole('tabpanel')
+      .getByLabel('Description', { exact: true })
+      .fill('Review changes through analysis and verification');
     await modal.getByLabel('Execution mode').selectOption('mixed');
     for (const name of ['Analysis', 'Review']) {
       await modal.getByLabel('Add agent', { exact: true }).selectOption({ label: name });
@@ -104,7 +115,7 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
       '/all-kb',
       '/workflow-Quality workflow',
     ]);
-    await page.getByRole('option', { name: '/workflow-Quality workflow', exact: true }).click();
+    await page.getByRole('option').filter({ hasText: '/workflow-Quality workflow' }).click();
     await expect(page.locator('.command-chip')).toContainText('/workflow');
     await expect(page.locator('.composer .folder-selection')).toHaveCount(0);
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();

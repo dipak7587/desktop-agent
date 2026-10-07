@@ -41,7 +41,13 @@ it('indexes real LanceDB vectors, replaces URL content, skips unchanged files an
     expect(kb.list().find((s) => s.id === id)?.error).toBeUndefined();
   };
   try {
-    await kb.add('url', `http://127.0.0.1:${address.port}`, 'Project docs', 'Research');
+    await kb.add(
+      'url',
+      `http://127.0.0.1:${address.port}`,
+      'Project documentation and authentication behavior',
+      'Project docs',
+      'Research',
+    );
     const id = kb.list()[0].id;
     expect(kb.list()[0].group).toBe('Research');
     await kb.setGroup([id], 'Reference');
@@ -64,7 +70,7 @@ it('indexes real LanceDB vectors, replaces URL content, skips unchanged files an
     await mkdir(folder);
     await writeFile(join(folder, 'doc.md'), '# Project\nAuthentication uses session tokens.');
     await writeFile(join(folder, '.env'), 'SECRET=do not index');
-    await kb.add('folder', folder);
+    await kb.add('folder', folder, 'Project documentation and local configuration guidance');
     const fileId = kb.list()[0].id;
     await finish(fileId);
     const previous = calls;

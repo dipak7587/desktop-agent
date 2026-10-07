@@ -73,14 +73,16 @@ it('folder sources index only Markdown and TXT files, recursively', async () => 
     await writeFile(join(docs, 'nested', 'NOTES.TXT'), 'textword');
     for (const ext of ['json', 'yaml', 'yml', 'csv', 'js', 'pdf'])
       await writeFile(join(docs, `ignored.${ext}`), 'excludedword');
-    await kb.add('folder', docs);
+    await kb.add('folder', docs, 'Documentation used by the indexing test');
     const id = kb.list()[0].id;
     await kb.sync(id);
     await expect.poll(() => kb.list()[0].status).toBe('ready');
     expect(kb.list()[0].documentCount).toBe(2);
     expect(await kb.search('excludedword', 'keyword')).toEqual([]);
     expect(await kb.search('textword', 'keyword')).toHaveLength(1);
-    await expect(kb.add('file', join(docs, 'ignored.json'))).rejects.toThrow('supported text');
+    await expect(
+      kb.add('file', join(docs, 'ignored.json'), 'Unsupported document fixture'),
+    ).rejects.toThrow('supported text');
   } finally {
     await kb.stopAll();
     await rm(root, { recursive: true, force: true });
@@ -129,7 +131,7 @@ it('requires reindexing after changing the shared embedding model and searches a
   );
   await kb.init();
   try {
-    await kb.add('folder', docs);
+    await kb.add('folder', docs, 'Documentation used by the embedding test');
     const id = kb.list()[0].id;
     await kb.sync(id);
     await expect.poll(() => kb.list()[0].status).toBe('ready');

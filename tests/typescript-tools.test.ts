@@ -73,6 +73,47 @@ it('converts JSON, YAML, and simple Markdown to one executable TS format', async
     expect(await tools.runSource(value.source, { a: 4, b: 7 })).toBe('11');
   }
 });
+it('validates and runs JavaScript and TypeScript lifecycle hooks', async () => {
+  const typescript = `export default async function hook(context: { value: string }) {
+  if (context.value !== 'typescript') throw new Error('Unexpected hook context');
+}`;
+  const javascript = `module.exports.default = async function(context) {
+  if (context.value !== 'javascript') throw new Error('Unexpected hook context');
+}`;
+  await library.save('hooks', {
+    ...librarySchema.parse({ id: 'typed-hook', name: 'Typed hook', hookType: 'pre' }),
+    content: typescript,
+  });
+  await tools.runHook(typescript, { value: 'typescript' }, undefined, root);
+  await tools.runHook(javascript, { value: 'javascript' }, undefined, root);
+  await expect(tools.runHook(typescript, { value: 'wrong' }, undefined, root)).rejects.toThrow(
+    'Unexpected hook context',
+  );
+  await expect(tools.runHook('export default function {', {}, undefined, root)).rejects.toThrow();
+});
+it('persists hook assignments on built-in agents without allowing other edits', async () => {
+  const builtInRoot = join(root, 'built-ins');
+  const builtIns = new LibraryService(builtInRoot);
+  await builtIns.save(
+    'agents',
+    librarySchema.parse({ id: 'built-in-agent', name: 'Built-in agent', model: 'model' }),
+  );
+  await library.loadBuiltIns(builtInRoot);
+  const hook = await library.save('hooks', {
+    ...librarySchema.parse({ id: 'attached-hook', name: 'Attached hook', hookType: 'pre' }),
+    content: 'export default async function hook() {}',
+  });
+  const agent = await library.get('agents', 'built-in-agent');
+  await library.save('agents', { ...agent, hooks: [hook.id] });
+  expect((await library.get('agents', 'built-in-agent')).hooks).toEqual([hook.id]);
+  await expect(
+    library.save('agents', {
+      ...agent,
+      hooks: [hook.id],
+      content: 'Built-in instructions changed',
+    }),
+  ).rejects.toThrow('provider, model, and hook assignments');
+});
 it('supports required/optional inputs, arrays, objects, dates, enums, any, and defaults', async () => {
   const definition: ToolDefinition = {
     name: 'inputs',

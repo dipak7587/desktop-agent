@@ -20,6 +20,7 @@ export function Knowledge() {
   const [adding, setAdding] = useState(false);
   const [type, setType] = useState<'file' | 'folder' | 'url'>('file');
   const [url, setUrl] = useState('');
+  const [description, setDescription] = useState('');
   const [collection, setCollection] = useState('');
   const [group, setGroup] = useState('');
   const [addingNewGroup, setAddingNewGroup] = useState(false);
@@ -289,6 +290,7 @@ export function Knowledge() {
                     <span className="badge">{source.status}</span>
                   </h2>
                   <p title={source.location}>{source.location}</p>
+                  {source.description && <p className="small muted">{source.description}</p>}
                   <div className="small muted">
                     {source.documentCount} documents · {source.chunkCount} chunks
                     {source.collection && ` · ${source.collection}`}
@@ -361,10 +363,12 @@ export function Knowledge() {
                 await window.workspace.knowledge.add({
                   type,
                   url: type === 'url' ? url : undefined,
+                  description,
                   collection,
                   group,
                 });
                 await load();
+                setDescription('');
                 setGroup('');
                 setAddingNewGroup(false);
                 setAdding(false);
@@ -397,6 +401,17 @@ export function Knowledge() {
                 are excluded.
               </p>
             )}
+            <label>
+              Description
+              <textarea
+                required
+                minLength={1}
+                maxLength={2000}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Describe what this source contains"
+              />
+            </label>
             <label>
               Collection · optional
               <input

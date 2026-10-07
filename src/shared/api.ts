@@ -96,6 +96,7 @@ export interface WorkspaceAPI {
     add(input: {
       type: 'file' | 'folder' | 'url';
       url?: string;
+      description: string;
       collection?: string;
       group?: string;
     }): Promise<void>;

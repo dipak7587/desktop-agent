@@ -371,6 +371,8 @@ export function ToolEditor({
             <label>
               Description
               <textarea
+                required
+                minLength={1}
                 rows={2}
                 value={definition.description}
                 onChange={(e) => changeDefinition({ description: e.target.value })}

@@ -364,15 +364,13 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   );
   handle(
     'library:set-group',
-    z.tuple([
-      z.enum(['agents', 'mcp', 'skills', 'tools', 'saved-text']),
-      z.array(idSchema).min(1).max(1000),
-      librarySchema.shape.group,
-    ]),
+    z.tuple([kindSchema, z.array(idSchema).min(1).max(1000), librarySchema.shape.group]),
     (kind, ids, group) => s.library.setGroup(kind, ids, group),
   );
   handle('library:save', z.tuple([kindSchema, librarySchema]), async (kind, item) => {
     await s.library.assertSaveAllowed(kind, item);
+    if (!item.builtIn && !item.description.trim())
+      throw new Error('A description is required for this item.');
     if (kind === 'agents') {
       item = { ...item, providerId: item.providerId ?? s.settings.get().activeProviderId };
       s.settings.validateSelection(item.providerId, item.model);
@@ -400,7 +398,9 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
               ? ['ts', 'json', 'yaml', 'yml', 'md']
               : kind === 'mcp'
                 ? ['json', 'yaml', 'yml', 'md']
-                : ['md'],
+                : kind === 'hooks'
+                  ? ['ts', 'md']
+                  : ['md'],
         },
       ],
     });
@@ -414,24 +414,35 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
             convertToolSource(raw, extension === 'json' ? 'json' : 'yaml').source,
             { id: randomUUID() },
           )
-        : kind === 'mcp' && extension !== 'json'
+        : kind === 'hooks' && extension === 'ts' && !/^---\r?\n/.test(raw)
           ? librarySchema.parse({
-              ...parseLibraryDefinition(raw, extension === 'md' ? 'md' : 'yaml', kind),
               id: randomUUID(),
+              name: result.filePaths[0].split(/[\\/]/).pop()?.replace(/\.ts$/i, '') || 'Hook',
+              description: `Imported from ${result.filePaths[0].split(/[\\/]/).pop() || 'TypeScript source'}`,
+              content: raw,
+              hookType: 'pre',
             })
-          : s.library.parse(kind, raw);
+          : kind === 'mcp' && extension !== 'json'
+            ? librarySchema.parse({
+                ...parseLibraryDefinition(raw, extension === 'md' ? 'md' : 'yaml', kind),
+                id: randomUUID(),
+              })
+            : s.library.parse(kind, raw);
+    if (!item.description.trim())
+      item.description = `Imported ${kind === 'hooks' ? 'Hook' : kind === 'skills' ? 'Skill' : kind === 'agents' ? 'Agent' : kind === 'tools' ? 'Tool' : kind === 'mcp' ? 'MCP server' : 'saved text'} definition`;
     if (kind === 'agents') {
       item.providerId ??= s.settings.get().activeProviderId;
       item.model ||=
         s.settings.get().providers.find((p) => p.id === item.providerId)?.chatModel ?? '';
       s.settings.validateSelection(item.providerId, item.model);
     }
+    if (!item.description.trim()) throw new Error('A description is required for this item.');
     await s.library.save(kind, item);
   });
   handle('library:export', z.tuple([kindSchema, idSchema]), async (kind, id) => {
     const item = await s.library.get(kind, id);
     const result = await dialog.showSaveDialog({
-      defaultPath: `${item.id}.${kind === 'mcp' ? 'json' : kind === 'tools' ? 'ts' : 'md'}`,
+      defaultPath: `${item.id}.${kind === 'mcp' ? 'json' : kind === 'tools' || kind === 'hooks' ? 'ts' : 'md'}`,
     });
     if (!result.canceled && result.filePath)
       await atomicWrite(result.filePath, s.library.serialize(kind, item));
@@ -445,7 +456,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
   handle('knowledge:add', z.tuple([sourceInputSchema]), async (input) => {
     if (input.type === 'url') {
       if (!input.url) throw new Error('Enter a URL');
-      await s.knowledge.add('url', input.url, input.collection, input.group);
+      await s.knowledge.add('url', input.url, input.description, input.collection, input.group);
       return;
     }
     const result = await dialog.showOpenDialog({
@@ -458,6 +469,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
       await s.knowledge.add(
         input.type,
         await realpath(result.filePaths[0]),
+        input.description,
         input.collection,
         input.group,
       );
@@ -568,9 +580,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     },
   );
   handle('workflows:list', none, () => s.workflows.definitions.list());
-  handle('workflows:save', z.tuple([workflowSchema]), (input) =>
-    s.workflows.definitions.save(input),
-  );
+  handle('workflows:save', z.tuple([workflowSchema]), (input) => {
+    if (!input.description.trim()) throw new Error('A description is required for this workflow.');
+    return s.workflows.definitions.save(input);
+  });
   handle('workflows:duplicate', id, (id) => s.workflows.definitions.duplicate(id));
   handle('workflows:remove', id, (id) => s.workflows.definitions.remove(id));
   handle('workflows:runs', none, () => s.workflows.runs());
@@ -651,6 +664,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
         agents: (await s.library.list('agents')).filter((item) => !item.builtIn),
         mcp: (await s.library.list('mcp')).filter((item) => !item.builtIn),
         tools: (await s.library.list('tools')).filter((item) => !item.builtIn),
+        hooks: (await s.library.list('hooks')).filter((item) => !item.builtIn),
       },
       workflows: await s.workflows.definitions.list(),
       conversations: s.db.exportAll(),
@@ -699,16 +713,26 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
         if (!agentIds.has(node.agentId))
           throw new Error(`Workflow “${workflow.name}” references missing agent “${node.name}”.`);
 
-    for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools'] as const)
-      for (const item of backup.libraries[kind]) s.library.assertWritable(kind, item.id);
+    for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools', 'hooks'] as const) {
+      for (const item of backup.libraries[kind]) {
+        s.library.assertWritable(kind, item.id);
+        if (!item.description.trim())
+          throw new Error(`A description is required for "${item.name}".`);
+      }
+    }
+    for (const workflow of backup.workflows)
+      if (!workflow.description.trim())
+        throw new Error(`A description is required for workflow "${workflow.name}".`);
     await s.settings.save(mergedSettings);
-    for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools'] as const) {
+    for (const kind of ['skills', 'saved-text', 'agents', 'mcp', 'tools', 'hooks'] as const) {
       for (const item of backup.libraries[kind]) {
         if (kind === 'mcp') await s.mcp.stop(item.id);
         await s.library.save(kind, item);
       }
     }
-    for (const workflow of backup.workflows) await s.workflows.definitions.save(workflow);
+    for (const workflow of backup.workflows) {
+      await s.workflows.definitions.save(workflow);
+    }
     s.db.importConversations(backup.conversations);
     return {
       conversations: backup.conversations.length,
@@ -719,6 +743,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
         agents: backup.libraries.agents.length,
         mcp: backup.libraries.mcp.length,
         tools: backup.libraries.tools.length,
+        hooks: backup.libraries.hooks.length,
       },
     };
   });

@@ -4,6 +4,7 @@ import type { LandingSettings } from './landing';
 export type Section =
   | 'Chat'
   | 'Tools'
+  | 'Hooks'
   | 'MCP'
   | 'Skills'
   | 'Saved Text'
@@ -12,7 +13,8 @@ export type Section =
   | 'Workflows'
   | 'Knowledge Base'
   | 'Settings';
-export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
+export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools' | 'hooks';
+export type AgentHookType = 'pre' | 'post' | 'success' | 'error';
 export const BUILT_IN_GROUP = 'Built-in';
 export type LLMProviderName =
   'ollama' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'groq' | 'custom';
@@ -187,6 +189,8 @@ export interface LibraryItem extends Partial<
   capabilityConfig?: AgentCapabilityConfig;
   toolConfig?: ToolConfig;
   toolSource?: string;
+  hookType?: AgentHookType;
+  hooks?: string[];
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -202,12 +206,14 @@ export interface AgentConfig {
   mcpServers: string[];
   knowledgeBases: string[];
   memory?: string[];
+  hooks: string[];
 }
 export interface KnowledgeSource {
   builtIn?: boolean;
   id: string;
   type: 'file' | 'folder' | 'url';
   name: string;
+  description?: string;
   location: string;
   collection: string;
   group?: string;

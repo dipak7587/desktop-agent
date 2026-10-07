@@ -17,6 +17,12 @@ it('rejects malformed IPC requests before they reach a service', () => {
   expect(() =>
     sourceInputSchema.parse({ type: 'executable', url: 'file:///etc/passwd' }),
   ).toThrow();
+  expect(() => sourceInputSchema.parse({ type: 'folder', description: '   ' })).toThrow();
+  expect(
+    sourceInputSchema.parse({ type: 'folder', description: 'Project documentation' }),
+  ).toMatchObject({
+    description: 'Project documentation',
+  });
 });
 it('rejects credential-bearing provider URLs and unsafe numerical settings', () => {
   expect(() => settingsSchema.parse({ ollamaUrl: 'https://user:password@example.com' })).toThrow();

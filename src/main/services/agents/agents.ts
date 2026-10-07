@@ -614,8 +614,37 @@ export class AgentService {
   ) {
     const timer = setTimeout(() => this.stop(id), 15 * 60 * 1000);
     const signal = controller.signal;
+    const run = this.history.get(id)!;
+    let errorHookStarted = false;
+    let postHookStarted = false;
+    const invokeHooks = async (
+      hookType: NonNullable<LibraryItem['hookType']>,
+      extra: Record<string, unknown> = {},
+    ) => {
+      for (const hookId of agent.hooks ?? []) {
+        const hook = await this.library.get('hooks', hookId);
+        if (!hook.enabled || hook.hookType !== hookType) continue;
+        if (!this.customTools) throw new Error('Hook execution is unavailable');
+        await this.customTools.runHook(
+          hook.content,
+          {
+            agent: { id: agent.id, name: agent.name },
+            task,
+            project,
+            run: {
+              id,
+              status: run.status,
+              iterationsUsed: run.iterationsUsed,
+            },
+            ...extra,
+          },
+          hookType === 'post' || hookType === 'error' ? undefined : signal,
+          project || undefined,
+        );
+      }
+    };
     try {
-      const run = this.history.get(id)!;
+      await invokeHooks('pre');
       const config = capabilityConfig(agent);
       const showApproval = async (tool: string, description: string, diff?: string) => {
         signal.throwIfAborted();
@@ -667,12 +696,14 @@ export class AgentService {
         const result = await selectedTool.invoke(directTool.input);
         if (run.tools.at(-1)?.status !== 'completed')
           throw new Error(run.tools.at(-1)?.error ?? 'Tool failed');
-        this.event({
-          type: 'agent',
-          id,
-          status: 'Completed',
-          content: typeof result === 'string' ? result : JSON.stringify(result),
-        });
+        const output =
+          typeof result === 'string'
+            ? result
+            : (JSON.stringify(result) ?? 'Tool completed without a result.');
+        await invokeHooks('success', { result: output });
+        postHookStarted = true;
+        await invokeHooks('post', { status: 'Completed', result: output });
+        this.event({ type: 'agent', id, status: 'Completed', content: output });
         return;
       }
       const buildPrompt = async (targetAgent: LibraryItem, targetRouter: CapabilityRouter) => {
@@ -842,21 +873,46 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
       const outcome = codeSession
         ? await this.codeAgents.run(loopInput, llm, codeSession, showApproval)
         : await graph.run(loopInput);
-      if (outcome.reason === 'completed')
+      if (outcome.reason === 'completed') {
+        await invokeHooks('success', { result: outcome.result });
+        postHookStarted = true;
+        await invokeHooks('post', { status: 'Completed', result: outcome.result });
         this.event({ type: 'agent', id, status: 'Completed', content: outcome.result });
-      else
-        this.event({
-          type: 'agent',
-          id,
-          status: 'Max iterations reached',
-          error: 'Maximum iterations reached. Review the run and continue with a narrower task.',
-        });
+      } else {
+        const error =
+          'Maximum iterations reached. Review the run and continue with a narrower task.';
+        errorHookStarted = true;
+        await invokeHooks('error', { error });
+        postHookStarted = true;
+        await invokeHooks('post', { status: 'Max iterations reached', error });
+        this.event({ type: 'agent', id, status: 'Max iterations reached', error });
+      }
     } catch (e) {
+      let failure = e instanceof Error ? e.message : String(e);
+      if (!errorHookStarted && !signal.aborted) {
+        errorHookStarted = true;
+        try {
+          await invokeHooks('error', { error: failure });
+        } catch (hookError) {
+          failure += `\nError hook failed: ${(hookError as Error).message}`;
+        }
+      }
+      if (!postHookStarted) {
+        postHookStarted = true;
+        try {
+          await invokeHooks('post', {
+            status: signal.aborted ? 'Cancelled' : 'Failed',
+            error: failure,
+          });
+        } catch (hookError) {
+          failure += `\nPost hook failed: ${(hookError as Error).message}`;
+        }
+      }
       this.event({
         type: 'agent',
         id,
         status: signal.aborted ? 'Cancelled' : 'Failed',
-        error: signal.aborted ? undefined : (e as Error).message,
+        error: signal.aborted ? undefined : failure,
       });
     } finally {
       const run = this.history.get(id)!;

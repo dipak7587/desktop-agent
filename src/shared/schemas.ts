@@ -2,7 +2,7 @@ import { mcpServerConfigSchema } from './mcp-schema';
 import { z } from 'zod';
 import { landingSchema } from './landing';
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
-export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools']);
+export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools', 'hooks']);
 export const providerURLSchema = z
   .string()
   .max(2048)
@@ -152,6 +152,8 @@ export const librarySchema = z.object({
   updatedAt: z.number().default(0),
   providerId: idSchema.optional(),
   agentRuntime: z.literal('deepagents-acp').optional(),
+  hookType: z.enum(['pre', 'post', 'success', 'error']).optional(),
+  hooks: z.array(idSchema).max(100).default([]),
   model: z.string().max(200).default(''),
   skills: z.array(idSchema).max(100).default([]),
   tools: z.array(z.string().max(300)).max(200).default([]),
@@ -229,6 +231,7 @@ export const sendSchema = z
 export const sourceInputSchema = z.object({
   type: z.enum(['file', 'folder', 'url']),
   url: z.url().optional(),
+  description: z.string().trim().min(1).max(2000),
   collection: z.string().max(100).optional(),
   group: librarySchema.shape.group.optional(),
 });

@@ -1,5 +1,6 @@
 import { capabilityConfig } from '../../shared/capabilities';
 import type { AgentCapabilityConfig, LibraryItem } from '../../shared/types';
+import { ChevronDown } from 'lucide-react';
 
 export function CapabilitySettings({
   item,
@@ -70,7 +71,7 @@ export function CapabilitySettings({
           })),
   );
   return (
-    <fieldset>
+    <fieldset className="capability-settings">
       <legend>{title}</legend>
       <fieldset>
         <legend>Capability mode</legend>
@@ -92,72 +93,99 @@ export function CapabilitySettings({
         without capabilities. Selection never triggers execution.
       </p>
       {visibleGroups.map((group) => (
-        <fieldset key={group.title} disabled={config.mode === 'none'}>
-          <legend>{group.title}</legend>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={config[group.flag]}
-              onChange={(e) => update({ [group.flag]: e.target.checked })}
-            />
-            Allow {group.title}
-          </label>
-          <div className="check-grid">
-            {group.options.map((option) => (
-              <label className="check" key={option.id}>
-                <input
-                  type="checkbox"
-                  disabled={config.mode !== 'selected' || !config[group.flag]}
-                  checked={config[group.key].includes(option.id)}
-                  onChange={(e) =>
-                    update({
-                      [group.key]: e.target.checked
-                        ? [...config[group.key], option.id]
-                        : config[group.key].filter((id) => id !== option.id),
-                    })
-                  }
-                />
-                {option.name}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <details
+          className="capability-group"
+          aria-label={`${group.title} capabilities`}
+          key={group.title}
+        >
+          <summary>
+            <span>{group.title}</span>
+            <span className="capability-group-meta">
+              {config.mode === 'auto'
+                ? `${group.options.length} available in Auto`
+                : config.mode === 'none'
+                  ? `${group.options.length} disabled`
+                  : `${config[group.key].length} selected · ${group.options.length} available`}
+              <ChevronDown size={16} className="capability-chevron" />
+            </span>
+          </summary>
+          <fieldset disabled={config.mode === 'none'}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={config[group.flag]}
+                onChange={(e) => update({ [group.flag]: e.target.checked })}
+              />
+              Allow {group.title}
+            </label>
+            <div className="check-grid">
+              {group.options.map((option) => (
+                <label className="check" key={option.id}>
+                  <input
+                    type="checkbox"
+                    disabled={config.mode !== 'selected' || !config[group.flag]}
+                    checked={config[group.key].includes(option.id)}
+                    onChange={(e) =>
+                      update({
+                        [group.key]: e.target.checked
+                          ? [...config[group.key], option.id]
+                          : config[group.key].filter((id) => id !== option.id),
+                      })
+                    }
+                  />
+                  {option.name}
+                </label>
+              ))}
+              {!group.options.length && (
+                <p className="small muted">No {group.title.toLowerCase()} are available.</p>
+              )}
+            </div>
+          </fieldset>
+        </details>
       ))}
-      <details>
-        <summary>Capability permissions</summary>
-        <p className="small muted">
-          Skills and Knowledge Base need no approval. Defaults: MCP and custom tools ask; local
-          tools follow Settings and show change previews. Always allow skips approval for that
-          capability. Deny always blocks it.
-        </p>
-        {!permissions.length && (
+      <details className="capability-group capability-permissions">
+        <summary>
+          <span>Capability permissions</span>
+          <span className="capability-group-meta">
+            {permissions.length} configurable
+            <ChevronDown size={16} className="capability-chevron" />
+          </span>
+        </summary>
+        <div className="capability-permissions-body">
           <p className="small muted">
-            {config.mode === 'none'
-              ? 'Capabilities are disabled in None mode.'
-              : 'Select a tool or MCP server to configure its permission.'}
+            Skills and Knowledge Base need no approval. Defaults: MCP and custom tools ask; local
+            tools follow Settings and show change previews. Always allow skips approval for that
+            capability. Deny always blocks it.
           </p>
-        )}
-        {permissions.map((option) => (
-          <label key={option.id}>
-            Permission: {option.name}
-            <select
-              aria-label={`Permission: ${option.name}`}
-              value={config.permissions[option.id] ?? ''}
-              onChange={(e) => {
-                const next = { ...config.permissions };
-                if (e.target.value)
-                  next[option.id] = e.target.value as 'ask' | 'deny' | 'always_allow';
-                else delete next[option.id];
-                update({ permissions: next });
-              }}
-            >
-              <option value="">Default</option>
-              <option value="always_allow">Always allow</option>
-              <option value="ask">Ask</option>
-              <option value="deny">Deny</option>
-            </select>
-          </label>
-        ))}
+          {!permissions.length && (
+            <p className="small muted">
+              {config.mode === 'none'
+                ? 'Capabilities are disabled in None mode.'
+                : 'Select a tool or MCP server to configure its permission.'}
+            </p>
+          )}
+          {permissions.map((option) => (
+            <label className="capability-permission" key={option.id}>
+              <span>{option.name}</span>
+              <select
+                aria-label={`Permission: ${option.name}`}
+                value={config.permissions[option.id] ?? ''}
+                onChange={(e) => {
+                  const next = { ...config.permissions };
+                  if (e.target.value)
+                    next[option.id] = e.target.value as 'ask' | 'deny' | 'always_allow';
+                  else delete next[option.id];
+                  update({ permissions: next });
+                }}
+              >
+                <option value="">Default</option>
+                <option value="always_allow">Always allow</option>
+                <option value="ask">Ask</option>
+                <option value="deny">Deny</option>
+              </select>
+            </label>
+          ))}
+        </div>
       </details>
       <label className="check">
         <input

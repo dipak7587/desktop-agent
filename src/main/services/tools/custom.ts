@@ -1,7 +1,8 @@
 import ts from 'typescript';
 import { expandEnvironment } from '../../../shared/environment';
-import { analyzeToolSource, toolModuleBase } from './typescript';
+import { analyzeToolSource, toolModuleBase, validateHookSource } from './typescript';
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { toolItemFromSource } from './files';
 import type { LibraryItem } from '../../../shared/types';
 import type { LibraryService } from '../filesystem/library';
@@ -18,6 +19,79 @@ export class CustomToolService {
   async runSource(source: string, input: Record<string, unknown>) {
     const item = toolItemFromSource(source, { id: 'preview', enabled: true });
     return this.run(item.id, input, undefined, undefined, item);
+  }
+  async runHook(
+    source: string,
+    context: Record<string, unknown>,
+    signal?: AbortSignal,
+    project?: string,
+  ) {
+    validateHookSource(source);
+    if (this.active.size >= 3) throw new Error('At most three custom scripts may run at once');
+    if (JSON.stringify(context).length > 100_000) throw new Error('Hook context exceeds 100 KB');
+    const controller = new AbortController();
+    this.active.add(controller);
+    const combined = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(this.timeout()),
+      ...(signal ? [signal] : []),
+    ]);
+    try {
+      combined.throwIfAborted();
+      const code = ts.transpileModule(source, {
+        compilerOptions: {
+          target: ts.ScriptTarget.ES2023,
+          module: ts.ModuleKind.CommonJS,
+          esModuleInterop: true,
+        },
+      }).outputText;
+      await new Promise<void>((resolve, reject) => {
+        const wrapper = `let raw='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>raw+=c);process.stdin.on('end',async()=>{try{const {code,context,base}=JSON.parse(raw);const Module=require('node:module');const path=require('node:path');const instance=new Module(base);instance.filename=base;instance.paths=Module._nodeModulePaths(path.dirname(base));instance._compile(code,base);const hook=instance.exports.default??instance.exports.hook;if(typeof hook!=='function')throw new Error('Export a default async hook function');await hook(context);}catch(e){console.error(e.message);process.exitCode=1;}});`;
+        const cwd = project || process.cwd();
+        const base = join(cwd, 'agent-hook.cjs');
+        const child = spawn(process.execPath, ['-e', wrapper], {
+          cwd,
+          signal: combined,
+          killSignal: 'SIGKILL',
+          env: {
+            PATH: process.env.PATH,
+            TMPDIR: process.env.TMPDIR,
+            ELECTRON_RUN_AS_NODE: '1',
+          },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        let outputTooLarge = false;
+        let outputSize = 0;
+        const collect = (data: Buffer, isError: boolean) => {
+          outputSize += data.length;
+          if (outputSize > 100_000) {
+            outputTooLarge = true;
+            child.kill('SIGKILL');
+          } else if (isError) stderr += data.toString();
+        };
+        child.stdout.on('data', (data: Buffer) => collect(data, false));
+        child.stderr.on('data', (data: Buffer) => collect(data, true));
+        child.on('error', reject);
+        child.stdin.on('error', reject);
+        child.on('close', (code) =>
+          code === 0
+            ? resolve()
+            : reject(
+                new Error(
+                  outputTooLarge
+                    ? 'Hook output exceeds 100 KB'
+                    : stderr || 'Hook execution failed or timed out',
+                ),
+              ),
+        );
+        child.stdin.end(JSON.stringify({ code, context, base }));
+      });
+    } catch (error) {
+      throw new Error(this.secrets.redact((error as Error).message));
+    } finally {
+      this.active.delete(controller);
+    }
   }
   async run(
     id: string,

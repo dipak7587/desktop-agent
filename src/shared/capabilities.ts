@@ -32,5 +32,6 @@ export function agentConfig(agent: LibraryItem): AgentConfig {
     mcpServers: [...capabilities.mcpServers],
     knowledgeBases: [...capabilities.knowledgeBases],
     memory: [...(agent.memory ?? [])],
+    hooks: [...(agent.hooks ?? [])],
   };
 }

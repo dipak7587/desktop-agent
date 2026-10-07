@@ -39,6 +39,10 @@ test('dynamic workflows import, switch all formats, edit nested forms, validate 
         'name: Dynamic example\ninputs:\n  target:\n    type: string\nsteps:\n  - id: each\n    type: loop\n    over: []\n    as: item\n    steps:\n      - id: review\n        type: agent\n        agent: reviewer\n        input: "{{item}}"\n',
       ),
     });
+    await modal
+      .getByRole('tabpanel')
+      .getByLabel('Description', { exact: true })
+      .fill('A dynamic workflow test');
     await expect(modal.getByRole('tabpanel').getByLabel('Name (required)')).toHaveValue(
       'Dynamic example',
     );
