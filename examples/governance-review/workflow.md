@@ -1,6 +1,6 @@
 # Governance review
 
-Import this document using Workflows → New dynamic workflow.
+Import this document using Workflows → New workflow.
 
 ```yaml
 name: Governance review

@@ -433,9 +433,11 @@ function Steps({
 export function DeclarativeWorkflowEditor({
   initial,
   onClose,
+  onChangeType,
 }: {
   initial: AgentWorkflow;
   onClose(): void;
+  onChangeType?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [workflow, setWorkflow] = useState(initial);
@@ -478,11 +480,7 @@ export function DeclarativeWorkflowEditor({
     }
   };
   return (
-    <Modal
-      title={initial.name ? 'Edit dynamic workflow' : 'New dynamic workflow'}
-      wide
-      onClose={onClose}
-    >
+    <Modal title={initial.name ? 'Edit workflow' : 'New workflow'} wide onClose={onClose}>
       <form
         ref={formRef}
         onSubmit={(e) => {
@@ -502,130 +500,142 @@ export function DeclarativeWorkflowEditor({
           })();
         }}
       >
-        <div className="actions" role="group" aria-label="Workflow format">
-          {(['form', 'md', 'json', 'yaml'] as const).map((key) => (
-            <button
-              type="button"
-              aria-pressed={format === key}
-              key={key}
-              onClick={() => changeFormat(key)}
-            >
-              {key === 'form' ? 'Form' : key === 'md' ? 'Markdown' : key.toUpperCase()}
-            </button>
-          ))}
-        </div>
-        <label>
-          Import workflow file
-          <input
-            name="workflow-file"
-            type="file"
-            accept=".md,.json,.yaml,.yml"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              void (async () => {
-                try {
-                  const ext = file.name.split('.').at(-1);
-                  const value = parseWorkflow(
-                    await file.text(),
-                    ext === 'json' ? 'json' : ext === 'md' ? 'md' : 'yaml',
-                    workflow,
-                  );
-                  if (!value.definition)
-                    throw new Error('Import a declarative workflow with steps.');
-                  setWorkflow(value);
-                  setFormat('form');
-                  setSource('');
-                  setError('');
-                } catch (error) {
-                  setError((error as Error).message);
-                }
-              })();
-            }}
-          />
-        </label>
-        {format !== 'form' ? (
+        {onChangeType && (
           <label>
-            Workflow source ({format})
-            <textarea
-              name="workflow-source"
-              rows={24}
-              spellCheck={false}
-              value={source}
+            Workflow type
+            <select name="workflowType" value="dynamic" onChange={onChangeType}>
+              <option value="dynamic">Dynamic</option>
+              <option value="default">Default (agent graph)</option>
+            </select>
+          </label>
+        )}
+        <fieldset className="workflow-type-group">
+          <legend>Dynamic</legend>
+          <div className="actions" role="group" aria-label="Workflow format">
+            {(['form', 'md', 'json', 'yaml'] as const).map((key) => (
+              <button
+                type="button"
+                aria-pressed={format === key}
+                key={key}
+                onClick={() => changeFormat(key)}
+              >
+                {key === 'form' ? 'Form' : key === 'md' ? 'Markdown' : key.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <label>
+            Import workflow file
+            <input
+              name="workflow-file"
+              type="file"
+              accept=".md,.json,.yaml,.yml"
               onChange={(e) => {
-                setSource(e.target.value);
-                setError('');
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void (async () => {
+                  try {
+                    const ext = file.name.split('.').at(-1);
+                    const value = parseWorkflow(
+                      await file.text(),
+                      ext === 'json' ? 'json' : ext === 'md' ? 'md' : 'yaml',
+                      workflow,
+                    );
+                    if (!value.definition)
+                      throw new Error('Import a declarative workflow with steps.');
+                    setWorkflow(value);
+                    setFormat('form');
+                    setSource('');
+                    setError('');
+                  } catch (error) {
+                    setError((error as Error).message);
+                  }
+                })();
               }}
             />
           </label>
-        ) : (
-          <div key={JSON.stringify([workflow.id, source])}>
+          {format !== 'form' ? (
             <label>
-              Name (required)
-              <input
-                name="name"
-                required
-                maxLength={200}
-                value={definition.name}
-                onChange={(e) => patch({ name: e.target.value })}
-              />
-            </label>
-            <label>
-              Description
+              Workflow source ({format})
               <textarea
-                name="description"
-                value={definition.description ?? ''}
-                onChange={(e) => patch({ description: e.target.value })}
+                name="workflow-source"
+                rows={24}
+                spellCheck={false}
+                value={source}
+                onChange={(e) => {
+                  setSource(e.target.value);
+                  setError('');
+                }}
               />
             </label>
-            <JsonField
-              label="Input definitions"
-              value={definition.inputs}
-              onChange={(inputs) => patch({ inputs: inputs as DeclarativeWorkflow['inputs'] })}
-            />
-            <JsonField
-              label="Agent aliases"
-              value={definition.agents}
-              onChange={(agents) => patch({ agents: agents as DeclarativeWorkflow['agents'] })}
-            />
-            <JsonField
-              label="Tool aliases"
-              value={definition.tools}
-              onChange={(tools) => patch({ tools: tools as DeclarativeWorkflow['tools'] })}
-            />
-            <JsonField
-              label="Workflow config (including defaultAgent)"
-              value={definition.config}
-              onChange={(config) => patch({ config: config as DeclarativeWorkflow['config'] })}
-            />
-            <label>
-              Maximum total step executions
-              <input
-                name="maxIterations"
-                type="number"
-                min={1}
-                max={100}
-                value={workflow.maxIterations}
-                onChange={(e) =>
-                  setWorkflow({ ...workflow, maxIterations: Number(e.target.value) })
-                }
+          ) : (
+            <div key={JSON.stringify([workflow.id, source])}>
+              <label>
+                Name (required)
+                <input
+                  name="name"
+                  required
+                  maxLength={200}
+                  value={definition.name}
+                  onChange={(e) => patch({ name: e.target.value })}
+                />
+              </label>
+              <label>
+                Description
+                <textarea
+                  name="description"
+                  value={definition.description ?? ''}
+                  onChange={(e) => patch({ description: e.target.value })}
+                />
+              </label>
+              <JsonField
+                label="Input definitions"
+                value={definition.inputs}
+                onChange={(inputs) => patch({ inputs: inputs as DeclarativeWorkflow['inputs'] })}
               />
-            </label>
-            <label>
-              Maximum nesting depth
-              <input
-                name="maxDepth"
-                type="number"
-                min={1}
-                max={100}
-                value={workflow.maxDepth}
-                onChange={(e) => setWorkflow({ ...workflow, maxDepth: Number(e.target.value) })}
+              <JsonField
+                label="Agent aliases"
+                value={definition.agents}
+                onChange={(agents) => patch({ agents: agents as DeclarativeWorkflow['agents'] })}
               />
-            </label>
-            <Hooks value={definition.hooks} onChange={(hooks) => patch({ hooks })} depth={0} />
-            <Steps value={definition.steps} onChange={(steps) => patch({ steps })} />
-          </div>
-        )}
+              <JsonField
+                label="Tool aliases"
+                value={definition.tools}
+                onChange={(tools) => patch({ tools: tools as DeclarativeWorkflow['tools'] })}
+              />
+              <JsonField
+                label="Workflow config (including defaultAgent)"
+                value={definition.config}
+                onChange={(config) => patch({ config: config as DeclarativeWorkflow['config'] })}
+              />
+              <label>
+                Maximum total step executions
+                <input
+                  name="maxIterations"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={workflow.maxIterations}
+                  onChange={(e) =>
+                    setWorkflow({ ...workflow, maxIterations: Number(e.target.value) })
+                  }
+                />
+              </label>
+              <label>
+                Maximum nesting depth
+                <input
+                  name="maxDepth"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={workflow.maxDepth}
+                  onChange={(e) => setWorkflow({ ...workflow, maxDepth: Number(e.target.value) })}
+                />
+              </label>
+              <Hooks value={definition.hooks} onChange={(hooks) => patch({ hooks })} depth={0} />
+              <Steps value={definition.steps} onChange={(steps) => patch({ steps })} />
+            </div>
+          )}
+        </fieldset>
         {error && (
           <p role="alert" className="error-text">
             {error}

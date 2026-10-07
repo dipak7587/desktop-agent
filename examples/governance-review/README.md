@@ -1,7 +1,7 @@
 # Governance review example
 
 The YAML, JSON, and Markdown files contain the same workflow. Import any one from
-**Workflows → New dynamic workflow → Import workflow file**. Select **Form** to
+**Workflows → New workflow → Import workflow file**. Select **Form** to
 edit its steps, nested loops, hooks, retries, inputs, and aliases. The JSON-valued
 fields in Form support structured input and alias/configuration objects.
 

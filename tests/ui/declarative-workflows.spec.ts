@@ -21,17 +21,20 @@ test('dynamic workflows import, switch all formats, edit nested forms, validate 
   try {
     const page = await app.firstWindow();
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();
-    await page.getByRole('button', { name: 'New dynamic workflow', exact: true }).click();
+    await page.getByRole('button', { name: 'New workflow', exact: true }).click();
     const modal = page.getByRole('dialog');
-    await modal
-      .getByLabel('Import workflow file')
-      .setInputFiles({
-        name: 'test.yaml',
-        mimeType: 'text/yaml',
-        buffer: Buffer.from(
-          'name: Dynamic example\ninputs:\n  target:\n    type: string\nsteps:\n  - id: each\n    type: loop\n    over: []\n    as: item\n    steps:\n      - id: review\n        type: agent\n        agent: reviewer\n        input: "{{item}}"\n',
-        ),
-      });
+    await expect(
+      page.getByRole('button', { name: 'New dynamic workflow', exact: true }),
+    ).toHaveCount(0);
+    await expect(modal.getByLabel('Workflow type')).toHaveValue('dynamic');
+    await expect(modal.getByRole('group', { name: 'Dynamic', exact: true })).toBeVisible();
+    await modal.getByLabel('Import workflow file').setInputFiles({
+      name: 'test.yaml',
+      mimeType: 'text/yaml',
+      buffer: Buffer.from(
+        'name: Dynamic example\ninputs:\n  target:\n    type: string\nsteps:\n  - id: each\n    type: loop\n    over: []\n    as: item\n    steps:\n      - id: review\n        type: agent\n        agent: reviewer\n        input: "{{item}}"\n',
+      ),
+    });
     await expect(modal.getByLabel('Name (required)')).toHaveValue('Dynamic example');
     await expect(modal.getByLabel('Item variable')).toHaveValue('item');
     for (const format of ['JSON', 'YAML', 'Markdown']) {

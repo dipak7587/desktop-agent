@@ -37,6 +37,7 @@ export function Workflows() {
           <p className="muted">Connect agents, combine results, and follow every execution.</p>
         </div>
         <button
+          className="primary"
           onClick={() =>
             setEditing({
               ...fresh(),
@@ -44,9 +45,6 @@ export function Workflows() {
             })
           }
         >
-          New dynamic workflow
-        </button>
-        <button className="primary" onClick={() => setEditing(fresh())}>
           <Plus size={16} />
           New workflow
         </button>
@@ -59,50 +57,60 @@ export function Workflows() {
         </div>
       )}
       <div className="workflow-list">
-        {items.map((workflow) => (
-          <details className="workflow-card" key={workflow.id}>
-            <summary>
-              <div className="item-icon">
-                <GitBranch size={21} />
-              </div>
-              <div className="library-card-heading">
-                <h2>{workflow.name}</h2>
-                <p className="muted">{workflow.description}</p>
-              </div>
-              <span className="badge">
-                {workflow.definition
-                  ? `${workflow.definition.steps.length} steps`
-                  : `${workflow.agents.length} agents`}
-              </span>
-              <span className="badge">{workflow.executionMode}</span>
-              <ChevronDown size={16} className="collapse-chevron" />
-            </summary>
-            <div className="library-card-body">
-              <p>
-                {workflow.definition
-                  ? `${workflow.definition.steps.length} steps`
-                  : `${workflow.agents.length} agents`}{' '}
-                · {workflow.executionMode}
-              </p>
-              <WorkflowGraph workflow={workflow} />
-              <div className="actions">
-                <button onClick={() => setRunning(workflow)}>Run workflow</button>
-                <button onClick={() => setEditing(structuredClone(workflow))}>Edit</button>
-                <button
-                  onClick={() =>
-                    void attempt(async () => {
-                      await window.workspace.workflows.duplicate(workflow.id);
-                      await load();
-                    })
-                  }
-                >
-                  Duplicate
-                </button>
-                <button onClick={() => setDeleting(workflow)}>Delete</button>
-              </div>
-            </div>
-          </details>
-        ))}
+        {(['default', 'dynamic'] as const).map((kind) => {
+          const grouped = items.filter(
+            (workflow) => Boolean(workflow.definition) === (kind === 'dynamic'),
+          );
+          return grouped.length ? (
+            <fieldset className="workflow-type-group" key={kind}>
+              <legend>{kind === 'dynamic' ? 'Dynamic' : 'Default'}</legend>
+              {grouped.map((workflow) => (
+                <details className="workflow-card" key={workflow.id}>
+                  <summary>
+                    <div className="item-icon">
+                      <GitBranch size={21} />
+                    </div>
+                    <div className="library-card-heading">
+                      <h2>{workflow.name}</h2>
+                      <p className="muted">{workflow.description}</p>
+                    </div>
+                    <span className="badge">
+                      {workflow.definition
+                        ? `${workflow.definition.steps.length} steps`
+                        : `${workflow.agents.length} agents`}
+                    </span>
+                    <span className="badge">{workflow.executionMode}</span>
+                    <ChevronDown size={16} className="collapse-chevron" />
+                  </summary>
+                  <div className="library-card-body">
+                    <p>
+                      {workflow.definition
+                        ? `${workflow.definition.steps.length} steps`
+                        : `${workflow.agents.length} agents`}{' '}
+                      · {workflow.executionMode}
+                    </p>
+                    <WorkflowGraph workflow={workflow} />
+                    <div className="actions">
+                      <button onClick={() => setRunning(workflow)}>Run workflow</button>
+                      <button onClick={() => setEditing(structuredClone(workflow))}>Edit</button>
+                      <button
+                        onClick={() =>
+                          void attempt(async () => {
+                            await window.workspace.workflows.duplicate(workflow.id);
+                            await load();
+                          })
+                        }
+                      >
+                        Duplicate
+                      </button>
+                      <button onClick={() => setDeleting(workflow)}>Delete</button>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </fieldset>
+          ) : null;
+        })}
       </div>
       <section className="runs">
         <div className="runs-heading">
@@ -168,9 +176,25 @@ export function Workflows() {
       </section>
       {editing &&
         (editing.definition ? (
-          <DeclarativeWorkflowEditor initial={editing} onClose={() => setEditing(null)} />
+          <DeclarativeWorkflowEditor
+            initial={editing}
+            onClose={() => setEditing(null)}
+            onChangeType={!editing.name ? () => setEditing(fresh()) : undefined}
+          />
         ) : (
-          <WorkflowEditor initial={editing} onClose={() => setEditing(null)} />
+          <WorkflowEditor
+            initial={editing}
+            onClose={() => setEditing(null)}
+            onChangeType={
+              !editing.name
+                ? () =>
+                    setEditing({
+                      ...fresh(),
+                      definition: { name: '', steps: [], config: { defaultAgent: '' } },
+                    })
+                : undefined
+            }
+          />
         ))}
       {running && <WorkflowRunner workflow={running} onClose={() => setRunning(null)} />}
       {clearingHistory && (
@@ -274,7 +298,15 @@ function WorkflowGraph({ workflow }: { workflow: AgentWorkflow }) {
   );
 }
 
-function WorkflowEditor({ initial, onClose }: { initial: AgentWorkflow; onClose(): void }) {
+function WorkflowEditor({
+  initial,
+  onClose,
+  onChangeType,
+}: {
+  initial: AgentWorkflow;
+  onClose(): void;
+  onChangeType?: () => void;
+}) {
   const [workflow, setWorkflow] = useState(initial);
   const agents = useAgents((s) => s.items);
   const [agentId, setAgentId] = useState(agents.find((a) => a.enabled)?.id ?? '');
@@ -306,6 +338,15 @@ function WorkflowEditor({ initial, onClose }: { initial: AgentWorkflow; onClose(
           })();
         }}
       >
+        {onChangeType && (
+          <label>
+            Workflow type
+            <select name="workflowType" value="default" onChange={onChangeType}>
+              <option value="dynamic">Dynamic</option>
+              <option value="default">Default (agent graph)</option>
+            </select>
+          </label>
+        )}
         <label>
           Name (required)
           <input

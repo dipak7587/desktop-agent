@@ -1,8 +1,9 @@
 # Declarative workflows
 
-Open **Workflows → New dynamic workflow** to build the workflows described in
-`DYNAMIC_GOVERNANCE_AGENT_WORKFLOW.md`. The existing graph builder remains available
-under **New workflow**. Both kinds use the same persistence, run history, cancellation,
+Open **Workflows → New workflow** to build the workflows described in
+`DYNAMIC_GOVERNANCE_AGENT_WORKFLOW.md`. Dynamic is selected by default, with its controls inside a bordered **Dynamic** group.
+Select **Workflow type → Default (agent graph)** for the existing graph builder.
+Saved workflows are grouped under **Default** and **Dynamic** border labels. Both kinds use the same persistence, run history, cancellation,
 and chat workflow command.
 
 ## Authoring formats
