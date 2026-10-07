@@ -1,3 +1,4 @@
+import { assertUniqueName, SaveQueue } from './unique-name';
 import { expandEnvironment, isHttpUrlTemplate } from '../../../shared/environment';
 import type { SecretResolver } from '../mcp/mcp';
 import {
@@ -16,6 +17,7 @@ import { librarySchema, idSchema } from '../../../shared/schemas';
 import { BUILT_IN_GROUP, type LibraryKind, type LibraryItem } from '../../../shared/types';
 import { atomicWrite, readJSON } from './storage';
 export class LibraryService {
+  private saveQueue = new SaveQueue();
   private builtIns = new Map<LibraryKind, Map<string, LibraryItem>>();
   async loadBuiltIns(root: string) {
     const bundled = new LibraryService(root);
@@ -194,7 +196,10 @@ export class LibraryService {
       kind === 'saved-text' ? { ...metadata, title: item.name } : metadata,
     );
   }
-  async save(kind: LibraryKind, input: LibraryItem) {
+  save(kind: LibraryKind, input: LibraryItem) {
+    return this.saveQueue.run(() => this.saveItem(kind, input));
+  }
+  private async saveItem(kind: LibraryKind, input: LibraryItem) {
     await this.assertSaveAllowed(kind, input);
     if (!this.builtIns.get(kind)?.has(input.id)) this.assertWritable(kind, input.id);
     const value = librarySchema.parse(input);
@@ -213,6 +218,14 @@ export class LibraryService {
     if (kind === 'tools' && item.toolConfig?.type !== 'langchain')
       item.toolSource = legacyToolSource(item);
     if (kind === 'mcp') Object.assign(item, mcpConfigFromItem({ ...item }));
+    const labels: Record<LibraryKind, string> = {
+      agents: 'An agent',
+      mcp: 'An MCP server',
+      skills: 'A skill',
+      tools: 'A tool',
+      'saved-text': 'Saved text',
+    };
+    assertUniqueName(await this.list(kind), item, labels[kind]);
     await atomicWrite(this.path(kind, item.id), this.serialize(kind, item));
     if (kind === 'tools') await rm(join(this.root, kind, `${item.id}.md`), { force: true });
     if (kind === 'saved-text') await this.onSavedTextChange?.();

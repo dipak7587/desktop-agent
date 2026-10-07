@@ -1,3 +1,4 @@
+import { assertUniqueName } from '../filesystem/unique-name';
 import { LibraryService } from '../filesystem/library';
 import * as lancedb from '@lancedb/lancedb';
 import { join, basename, extname, relative } from 'node:path';
@@ -103,11 +104,13 @@ export class KnowledgeService {
       (ignored(location) || !supportedExtensions.has(extname(location).toLowerCase()))
     )
       throw new Error('Choose a supported text file. Sensitive files are excluded.');
+    const name = type === 'url' ? new URL(location).hostname : basename(location);
+    assertUniqueName(this.sources, { name }, 'A knowledge source');
     const now = Date.now();
     this.sources.push({
       id: randomUUID(),
       type,
-      name: type === 'url' ? new URL(location).hostname : basename(location),
+      name,
       location,
       collection,
       group: librarySchema.shape.group.parse(group),

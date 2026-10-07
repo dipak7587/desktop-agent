@@ -1,3 +1,4 @@
+import { assertUniqueName, SaveQueue } from '../filesystem/unique-name';
 import { readdir, readFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -6,6 +7,7 @@ import { validateWorkflow } from '../../../shared/workflows';
 import { atomicWrite } from '../filesystem/storage';
 import type { LibraryService } from '../filesystem/library';
 export class WorkflowDefinitions {
+  private saveQueue = new SaveQueue();
   private directory: string;
   constructor(
     root: string,
@@ -23,9 +25,13 @@ export class WorkflowDefinitions {
       JSON.parse(await readFile(join(this.directory, `${idSchema.parse(id)}.json`), 'utf8')),
     );
   }
-  async save(input: unknown) {
+  save(input: unknown) {
+    return this.saveQueue.run(() => this.saveDefinition(input));
+  }
+  private async saveDefinition(input: unknown) {
     const workflow = validateWorkflow(input);
     for (const node of workflow.agents) await this.library.get('agents', node.agentId);
+    assertUniqueName(await this.list(), workflow, 'A workflow');
     workflow.updatedAt = new Date().toISOString();
     await atomicWrite(
       join(this.directory, `${workflow.id}.json`),
