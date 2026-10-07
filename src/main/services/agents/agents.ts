@@ -137,16 +137,30 @@ export class AgentService {
     return this.start(agent, input.task, input.project ?? '');
   }
   async runWorkflowNode(
-    input: { agentId: string; task: string; project?: string },
+    input: {
+      agentId: string;
+      task: string;
+      project?: string;
+      tool?: { id: string; input: Record<string, unknown> };
+    },
     signal: AbortSignal,
     observe: (event: AppEvent) => void,
   ): Promise<RunState> {
     const agent = await this.library.get('agents', input.agentId);
     while (this.controllers.size >= 3) await delay(50, undefined, { signal });
     signal.throwIfAborted();
-    const id = this.start(agent, input.task, input.project ?? '', observe);
+    const id = this.start(
+      agent,
+      input.task,
+      input.project ?? '',
+      observe,
+      undefined,
+      undefined,
+      input.tool,
+    );
     const stop = () => this.stop(id);
     signal.addEventListener('abort', stop, { once: true });
+    if (signal.aborted) stop();
     try {
       await this.jobs.get(id);
       return this.history.get(id)!;
@@ -162,6 +176,7 @@ export class AgentService {
     observe?: (event: AppEvent) => void,
     selected?: SelectedProvider,
     codeSession?: CodeSessionContext,
+    directTool?: { id: string; input: Record<string, unknown> },
   ) {
     if (this.controllers.size >= 3) throw new Error('At most three agents may run at once');
     if (!agent.enabled) throw new Error('Enable this agent first');
@@ -183,7 +198,7 @@ export class AgentService {
       agent.providerId,
       agent.model || this.settings().chatModel,
     );
-    const ownsCodeSession = !codeSession && agent.agentRuntime === 'deepagents-acp';
+    const ownsCodeSession = !directTool && !codeSession && agent.agentRuntime === 'deepagents-acp';
     if (ownsCodeSession) {
       if (!project) throw new Error('Select a project folder before starting a coding task.');
       codeSession = {
@@ -232,6 +247,7 @@ export class AgentService {
       controller,
       selected?.llm ?? this.llm,
       codeSession,
+      directTool,
     ).finally(async () => {
       if (ownsCodeSession && codeSession)
         await this.codeAgents.closeConversation(codeSession.conversationId);
@@ -299,6 +315,7 @@ export class AgentService {
     run: RunState;
     approve: Approve;
     configuredOnly: boolean;
+    declaredTool?: string;
     access?: Pick<
       CodeWorkspace,
       | 'allowedAgentIds'
@@ -404,7 +421,16 @@ export class AgentService {
           await this.mcp.start(server.id);
     }
     const router = new CapabilityRouter(
-      new CapabilityDecisionEngine(modelEvaluator(llm, agent.model || this.settings().chatModel)),
+      new CapabilityDecisionEngine(
+        options.declaredTool
+          ? async (_request, capability) => ({
+              relevant: capability.id === options.declaredTool,
+              necessary: capability.id === options.declaredTool,
+              canAnswerDirectly: false,
+              userForbids: false,
+            })
+          : modelEvaluator(llm, agent.model || this.settings().chatModel),
+      ),
       task,
       config,
       { project, signal, instructions: this.library.resolveInstructions(agent.content) },
@@ -584,6 +610,7 @@ export class AgentService {
     controller: AbortController,
     llm: LLMProvider,
     codeSession?: CodeSessionContext,
+    directTool?: { id: string; input: Record<string, unknown> },
   ) {
     const timer = setTimeout(() => this.stop(id), 15 * 60 * 1000);
     const signal = controller.signal;
@@ -616,10 +643,38 @@ export class AgentService {
         llm,
         run,
         approve,
-        configuredOnly: !!codeSession,
-        access: codeSession?.access,
+        configuredOnly: !!codeSession || !!directTool,
+        declaredTool: directTool?.id,
+        access:
+          codeSession?.access ??
+          (directTool && project ? this.workspaceAccess?.(project) : undefined),
       });
       const router = capabilitySet.router;
+      if (directTool) {
+        const index = router.catalog().findIndex((entry) => entry.id === directTool.id);
+        if (index < 0) throw new Error(`Tool ${directTool.id} is not permitted by this agent`);
+        const tools = createCapabilityTools({
+          run,
+          signal,
+          router,
+          redact: this.redact,
+          emit: (event) => this.event(event),
+          persist: (current) => this.runStore?.save(current),
+        });
+        const selectedTool = tools[index] as {
+          invoke(input: Record<string, unknown>): Promise<unknown>;
+        };
+        const result = await selectedTool.invoke(directTool.input);
+        if (run.tools.at(-1)?.status !== 'completed')
+          throw new Error(run.tools.at(-1)?.error ?? 'Tool failed');
+        this.event({
+          type: 'agent',
+          id,
+          status: 'Completed',
+          content: typeof result === 'string' ? result : JSON.stringify(result),
+        });
+        return;
+      }
       const buildPrompt = async (targetAgent: LibraryItem, targetRouter: CapabilityRouter) => {
         const catalog = targetRouter.catalog();
         const knowledgeContext: string[] = [];

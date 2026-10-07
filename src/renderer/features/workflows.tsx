@@ -1,3 +1,4 @@
+import { DeclarativeWorkflowEditor } from './declarative-workflow-editor';
 import { useState } from 'react';
 import { GitBranch, Plus, ChevronDown } from 'lucide-react';
 import { type AgentWorkflow, workflowEdges, validateWorkflow } from '../../shared/workflows';
@@ -35,6 +36,16 @@ export function Workflows() {
           <h1>Agent Workflows</h1>
           <p className="muted">Connect agents, combine results, and follow every execution.</p>
         </div>
+        <button
+          onClick={() =>
+            setEditing({
+              ...fresh(),
+              definition: { name: '', steps: [], config: { defaultAgent: '' } },
+            })
+          }
+        >
+          New dynamic workflow
+        </button>
         <button className="primary" onClick={() => setEditing(fresh())}>
           <Plus size={16} />
           New workflow
@@ -58,13 +69,20 @@ export function Workflows() {
                 <h2>{workflow.name}</h2>
                 <p className="muted">{workflow.description}</p>
               </div>
-              <span className="badge">{workflow.agents.length} agents</span>
+              <span className="badge">
+                {workflow.definition
+                  ? `${workflow.definition.steps.length} steps`
+                  : `${workflow.agents.length} agents`}
+              </span>
               <span className="badge">{workflow.executionMode}</span>
               <ChevronDown size={16} className="collapse-chevron" />
             </summary>
             <div className="library-card-body">
               <p>
-                {workflow.agents.length} agents · {workflow.executionMode}
+                {workflow.definition
+                  ? `${workflow.definition.steps.length} steps`
+                  : `${workflow.agents.length} agents`}{' '}
+                · {workflow.executionMode}
               </p>
               <WorkflowGraph workflow={workflow} />
               <div className="actions">
@@ -140,12 +158,20 @@ export function Workflows() {
                 </p>
                 {node.error && <p className="error-text">{node.error}</p>}
                 {node.runId && <AgentRuns ids={[node.runId]} />}
+                {node.result !== undefined && !node.runId && (
+                  <pre>{JSON.stringify(node.result, null, 2)}</pre>
+                )}
               </div>
             ))}
           </details>
         ))}
       </section>
-      {editing && <WorkflowEditor initial={editing} onClose={() => setEditing(null)} />}
+      {editing &&
+        (editing.definition ? (
+          <DeclarativeWorkflowEditor initial={editing} onClose={() => setEditing(null)} />
+        ) : (
+          <WorkflowEditor initial={editing} onClose={() => setEditing(null)} />
+        ))}
       {running && <WorkflowRunner workflow={running} onClose={() => setRunning(null)} />}
       {clearingHistory && (
         <Confirm
@@ -176,6 +202,16 @@ export function Workflows() {
 }
 
 function WorkflowGraph({ workflow }: { workflow: AgentWorkflow }) {
+  if (workflow.definition)
+    return (
+      <ol aria-label="Workflow steps">
+        {workflow.definition.steps.map((step, i) => (
+          <li key={i}>
+            {step.id ?? `Step ${i + 1}`} · {step.type}
+          </li>
+        ))}
+      </ol>
+    );
   const edges = workflowEdges(workflow);
   // A bounded layout also renders an invalid draft so the user can correct it.
   const levels = new Map(workflow.agents.map((node) => [node.id, 0]));
@@ -513,6 +549,7 @@ function WorkflowEditor({ initial, onClose }: { initial: AgentWorkflow; onClose(
   );
 }
 function WorkflowRunner({ workflow, onClose }: { workflow: AgentWorkflow; onClose(): void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
   const [task, setTask] = useState(''),
     [project, setProject] = useState(''),
     [busy, setBusy] = useState(false);
@@ -526,6 +563,16 @@ function WorkflowRunner({ workflow, onClose }: { workflow: AgentWorkflow; onClos
             try {
               await window.workspace.workflows.run({
                 workflowId: workflow.id,
+                input: Object.fromEntries(
+                  Object.entries(values)
+                    .filter(([, value]) => value !== '')
+                    .map(([key, value]) => [
+                      key,
+                      workflow.definition?.inputs?.[key].type === 'string'
+                        ? value
+                        : JSON.parse(value),
+                    ]),
+                ),
                 task,
                 project: project || undefined,
               });
@@ -547,6 +594,18 @@ function WorkflowRunner({ workflow, onClose }: { workflow: AgentWorkflow; onClos
             onChange={(e) => setTask(e.target.value)}
           />
         </label>
+        {Object.entries(workflow.definition?.inputs ?? {}).map(([key, spec]) => (
+          <label key={key}>
+            {key} ({spec.type}){spec.description && ` — ${spec.description}`}
+            <input
+              name={`input-${key}`}
+              required={spec.required !== false && spec.default === undefined}
+              value={values[key] ?? ''}
+              placeholder={spec.default === undefined ? undefined : JSON.stringify(spec.default)}
+              onChange={(e) => setValues({ ...values, [key]: e.target.value })}
+            />
+          </label>
+        ))}
         <FolderSelection value={project} onChange={setProject} />
         <button className="primary" disabled={busy}>
           Start workflow

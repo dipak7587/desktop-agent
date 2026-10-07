@@ -1,3 +1,4 @@
+import { executeDeclarative, workflowInputs } from './declarative';
 import { randomUUID } from 'node:crypto';
 import type { AppEvent, RunState } from '../../../shared/types';
 import {
@@ -12,7 +13,12 @@ import type { WorkflowRunStore } from '../../database/workflow-runs';
 import type { WorkflowDefinitions } from './definitions';
 interface WorkflowAgents {
   runWorkflowNode(
-    input: { agentId: string; task: string; project?: string },
+    input: {
+      agentId: string;
+      task: string;
+      project?: string;
+      tool?: { id: string; input: Record<string, unknown> };
+    },
     signal: AbortSignal,
     observe: (event: AppEvent) => void,
   ): Promise<RunState>;
@@ -54,6 +60,8 @@ export class WorkflowService {
   async run(input: WorkflowRunInput, observe?: (event: AppEvent) => void) {
     input = workflowRunInputSchema.parse(input);
     const workflow = validateWorkflow(await this.definitions.get(input.workflowId));
+    if (workflow.definition)
+      workflowInputs(workflow.definition, { task: input.task, ...input.input });
     if (this.controllers.size >= 3) throw new Error('At most three workflows may run at once.');
     const run: WorkflowRun = {
       id: randomUUID(),
@@ -109,6 +117,8 @@ export class WorkflowService {
       signal.throwIfAborted();
       const run = this.history.get(id)!;
       if (run.status !== 'completed') throw new Error(run.error ?? `Workflow ${run.status}`);
+      if (run.workflow.definition)
+        return typeof run.result === 'string' ? run.result : JSON.stringify(run.result, null, 2);
       const edges = workflowEdges(run.workflow);
       return run.nodes
         .filter((n) => !edges.some((e) => e.from === n.nodeId))
@@ -128,6 +138,112 @@ export class WorkflowService {
     for (const id of this.controllers.keys()) this.stop(id);
     await Promise.allSettled(this.jobs.values());
   }
+  private async executeDynamic(
+    run: WorkflowRun,
+    input: WorkflowRunInput,
+    signal: AbortSignal,
+    publish: (content?: string) => void,
+    observe?: (event: AppEvent) => void,
+  ) {
+    const clean = (value: unknown): unknown =>
+      JSON.parse(this.redact(JSON.stringify(value ?? null)));
+    const call = async (agentId: string, value: unknown, path: string, tool?: string) => {
+      if (!agentId)
+        throw new Error('Tool steps require agent or workflow config.defaultAgent for permissions');
+      if (tool && (!value || typeof value !== 'object' || Array.isArray(value)))
+        throw new Error('Tool input must be an object');
+      const task = [
+        input.task,
+        tool ? `Execute workflow tool ${tool}` : '',
+        typeof value === 'string' ? value : JSON.stringify(value),
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      if (task.length > 200000)
+        throw new Error('Combined workflow input exceeds 200,000 characters');
+      const node = run.nodes.find((entry) => entry.nodeId === path)!;
+      node.agentId = agentId;
+      const child = await this.agents.runWorkflowNode(
+        {
+          agentId,
+          task,
+          project: input.project,
+          ...(tool ? { tool: { id: tool, input: value as Record<string, unknown> } } : {}),
+        },
+        signal,
+        (event) => {
+          node.runId = event.id;
+          node.iterationsUsed = event.iterationsUsed ?? node.iterationsUsed;
+          node.status = event.status === 'Waiting for approval' ? 'waiting' : 'running';
+          publish();
+          observe?.(event);
+        },
+      );
+      node.runId = child.id;
+      node.iterationsUsed = child.iterationsUsed;
+      if (child.status !== 'Completed')
+        throw new Error(child.error ?? `Step ${path}: ${child.status}`);
+      let result: unknown = child.result ?? '';
+      try {
+        result = JSON.parse(child.result ?? '');
+      } catch {
+        /* Text is a valid output. */
+      }
+      return result;
+    };
+    run.status = 'running';
+    publish();
+    try {
+      run.result = clean(
+        await executeDeclarative(
+          run.workflow.definition!,
+          { task: input.task, ...input.input },
+          {
+            agent: (id, value, _signal, path) => call(id, value, path),
+            tool: (id, value, agent, _signal, path) => call(agent ?? '', value, path, id),
+            event: (path, step, status, output) => {
+              let node = run.nodes.find((entry) => entry.nodeId === path);
+              if (!node) {
+                node = {
+                  nodeId: path,
+                  agentId: '',
+                  agentName: step.id ?? step.type,
+                  status,
+                  iterationsUsed: 0,
+                };
+                run.nodes.push(node);
+              }
+              node.status = status;
+              if (status === 'failed') node.error = this.redact(String(output));
+              if (status === 'completed') {
+                node.result = clean(output);
+                delete node.error;
+              }
+              publish();
+            },
+          },
+          {
+            signal,
+            maxExecutions: run.workflow.maxIterations,
+            maxDepth: run.workflow.maxDepth,
+            env: process.env,
+          },
+        ),
+      );
+      run.status = 'completed';
+    } catch (error) {
+      run.status = signal.aborted ? 'cancelled' : 'failed';
+      run.error = this.redact(error instanceof Error ? error.message : String(error));
+      for (const node of run.nodes)
+        if (
+          ['running', 'waiting', 'pending'].includes(node.status) ||
+          (signal.aborted && node.status === 'failed')
+        )
+          node.status = signal.aborted ? 'cancelled' : 'failed';
+    }
+    run.completedAt = new Date().toISOString();
+    publish();
+  }
   private async execute(
     run: WorkflowRun,
     input: WorkflowRunInput,
@@ -135,6 +251,7 @@ export class WorkflowService {
     publish: (content?: string) => void,
     observe?: (event: AppEvent) => void,
   ) {
+    if (run.workflow.definition) return this.executeDynamic(run, input, signal, publish, observe);
     const edges = workflowEdges(run.workflow);
     const jobs = new Map<string, Promise<void>>();
     let executions = 0;
