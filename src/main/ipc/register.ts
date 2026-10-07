@@ -540,6 +540,33 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     z.tuple([idSchema, z.record(z.string().max(200), z.unknown())]),
     (id, input) => s.customTools.run(id, input),
   );
+  handle(
+    'workflows:export-document',
+    z.tuple([
+      z
+        .object({
+          name: z.string().max(200),
+          format: z.enum(['md', 'json', 'yaml']),
+          content: z.string().max(1000000),
+        })
+        .strict(),
+    ]),
+    async (input) => {
+      const name =
+        input.name.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'workflow';
+      const options = {
+        defaultPath: `${name}.${input.format}`,
+        filters: [{ name: `Workflow ${input.format.toUpperCase()}`, extensions: [input.format] }],
+      };
+      const window = getWindow();
+      const result = window
+        ? await dialog.showSaveDialog(window, options)
+        : await dialog.showSaveDialog(options);
+      if (result.canceled || !result.filePath) return false;
+      await atomicWrite(result.filePath, input.content);
+      return true;
+    },
+  );
   handle('workflows:list', none, () => s.workflows.definitions.list());
   handle('workflows:save', z.tuple([workflowSchema]), (input) =>
     s.workflows.definitions.save(input),

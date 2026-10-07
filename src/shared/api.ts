@@ -30,6 +30,11 @@ export interface WorkspaceAPI {
     stop(id: string): Promise<void>;
     runs(): Promise<WorkflowRun[]>;
     clearRuns(): Promise<void>;
+    exportDocument(input: {
+      name: string;
+      format: 'md' | 'json' | 'yaml';
+      content: string;
+    }): Promise<boolean>;
   };
   settings: {
     get(): Promise<Settings>;

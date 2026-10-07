@@ -8,6 +8,7 @@ import {
   type WorkflowStep,
 } from '../../shared/declarative-workflows';
 import {
+  convertWorkflowSource,
   parseWorkflow,
   serializeWorkflow,
   type WorkflowFormat,
@@ -465,9 +466,20 @@ export function DeclarativeWorkflowEditor({
   const [draftNotice, setDraftNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [feedback, setFeedback] = useState('');
   const definition = workflow.definition!;
-  const patch = (update: Partial<DeclarativeWorkflow>) =>
+  const patch = (update: Partial<DeclarativeWorkflow>) => {
+    setFeedback('');
     setWorkflow((value) => ({ ...value, definition: { ...value.definition!, ...update } }));
+  };
+  const assertReadableForm = () => {
+    if (format !== 'form') return;
+    const invalid = Array.from(formRef.current?.querySelectorAll('textarea') ?? []).find(
+      (field) => !field.validity.valid,
+    );
+    if (invalid) throw new Error(invalid.validationMessage);
+  };
   const current = () =>
     format === 'form'
       ? validateWorkflow({
@@ -585,6 +597,7 @@ export function DeclarativeWorkflowEditor({
                 onChange={(e) => {
                   setSource(e.target.value);
                   setError('');
+                  setFeedback('');
                 }}
               />
             </label>
@@ -664,6 +677,7 @@ export function DeclarativeWorkflowEditor({
               {draftNotice}
             </p>
           )}
+          {feedback && <p role="status">{feedback}</p>}
           {error && (
             <p role="alert" className="error-text">
               {error}
@@ -677,9 +691,12 @@ export function DeclarativeWorkflowEditor({
               type="button"
               onClick={() => {
                 try {
+                  assertReadableForm();
                   current();
                   setError('');
+                  setFeedback('Workflow is valid.');
                 } catch (e) {
+                  setFeedback('');
                   setError((e as Error).message);
                 }
               }}
@@ -690,21 +707,37 @@ export function DeclarativeWorkflowEditor({
               <button
                 type="button"
                 key={kind}
+                disabled={exporting}
                 onClick={() => {
-                  try {
-                    if (!formRef.current?.reportValidity()) return;
-                    const value = current();
-                    const url = URL.createObjectURL(
-                      new Blob([serializeWorkflow(value, kind)], { type: 'text/plain' }),
-                    );
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `${value.id}.${kind}`;
-                    link.click();
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                  } catch (e) {
-                    setError((e as Error).message);
-                  }
+                  setError('');
+                  setFeedback('');
+                  setExporting(true);
+                  void (async () => {
+                    try {
+                      assertReadableForm();
+                      const content =
+                        format === 'form'
+                          ? serializeWorkflow(
+                              {
+                                ...workflow,
+                                name: definition.name,
+                                description: definition.description ?? '',
+                              },
+                              kind,
+                            )
+                          : convertWorkflowSource(source, format, kind);
+                      const saved = await window.workspace.workflows.exportDocument({
+                        name: definition.name || workflow.id,
+                        format: kind,
+                        content,
+                      });
+                      if (saved) setFeedback(`Exported ${kind.toUpperCase()}.`);
+                    } catch (e) {
+                      setError(`Unable to export ${kind.toUpperCase()}: ${(e as Error).message}`);
+                    } finally {
+                      setExporting(false);
+                    }
+                  })();
                 }}
               >
                 Export {kind.toUpperCase()}

@@ -2,12 +2,7 @@ import { parse, stringify } from 'yaml';
 import { validateWorkflow, type AgentWorkflow } from './workflows';
 import { validateDeclarative } from './declarative-workflows';
 export type WorkflowFormat = 'form' | 'json' | 'yaml' | 'md';
-export function parseWorkflow(
-  source: string,
-  format: Exclude<WorkflowFormat, 'form'>,
-  base: AgentWorkflow,
-  options: { draft?: boolean } = {},
-): AgentWorkflow {
+function readWorkflowSource(source: string, format: Exclude<WorkflowFormat, 'form'>): unknown {
   if (source.length > 1000000) throw new Error('Workflow document exceeds 1 MB');
   source = source.replaceAll('\r\n', '\n');
   let text = source;
@@ -21,12 +16,37 @@ export function parseWorkflow(
       format = 'yaml';
     } else throw new Error('Markdown requires one YAML/JSON code block or YAML front matter.');
   }
-  const value =
-    format === 'json' ? JSON.parse(text) : parse(text, { maxAliasCount: 50, uniqueKeys: true });
+  return format === 'json'
+    ? JSON.parse(text)
+    : parse(text, { maxAliasCount: 50, uniqueKeys: true });
+}
+
+/** Export draft documents without requiring an executable workflow. */
+export function convertWorkflowSource(
+  source: string,
+  from: Exclude<WorkflowFormat, 'form'>,
+  to: Exclude<WorkflowFormat, 'form'>,
+): string {
+  if (from === to) return source;
+  const value = readWorkflowSource(source, from);
+  if (to === 'json') return JSON.stringify(value, null, 2);
+  const yaml = stringify(value);
+  return to === 'md' ? `# Workflow draft\n\n\`\`\`yaml\n${yaml}\`\`\`\n` : yaml;
+}
+
+export function parseWorkflow(
+  source: string,
+  format: Exclude<WorkflowFormat, 'form'>,
+  base: AgentWorkflow,
+  options: { draft?: boolean } = {},
+): AgentWorkflow {
+  const value = readWorkflowSource(source, format);
   if (value && typeof value === 'object' && 'steps' in value) {
     const definition = validateDeclarative(
       value,
-      typeof value.maxDepth === 'number' ? Math.min(100, value.maxDepth) : base.maxDepth,
+      'maxDepth' in value && typeof value.maxDepth === 'number'
+        ? Math.min(100, value.maxDepth)
+        : base.maxDepth,
       options.draft,
     );
     const workflow: AgentWorkflow = {
@@ -42,7 +62,7 @@ export function parseWorkflow(
     return options.draft ? workflow : validateWorkflow(workflow);
   }
   return validateWorkflow({
-    ...value,
+    ...(value && typeof value === 'object' ? value : {}),
     id: base.id,
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,

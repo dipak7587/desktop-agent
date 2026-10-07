@@ -16,7 +16,7 @@ and chat workflow command.
   retained when converting formats.
 
 Import `.md`, `.json`, `.yaml`, or `.yml` files; export Markdown, JSON, or YAML.
-Incomplete source does not block tab switching. Unreadable drafts are preserved in their source tab while other tabs show the last readable values. Save and export still require a valid workflow. Formats preserve workflow limits.
+Incomplete source does not block tab switching. Unreadable drafts are preserved in their source tab while other tabs show the last readable values. Save still requires a valid workflow. Export opens a native Save dialog and can save unfinished drafts independently of Validate. Exporting a source tab in its own format preserves its text; converting to another format requires readable JSON/YAML syntax. Formats preserve workflow limits.
 Saved definitions remain JSON files with application IDs and timestamps. Dynamic
 configuration is stored in the `definition` field; exported dynamic documents contain
 that configuration directly. Importing preserves the current editor's application ID.

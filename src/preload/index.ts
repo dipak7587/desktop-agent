@@ -13,6 +13,7 @@ const api: WorkspaceAPI = {
     stop: (id) => invoke('workflows:stop', id),
     runs: () => invoke('workflows:runs'),
     clearRuns: () => invoke('workflows:clear-runs'),
+    exportDocument: (input) => invoke('workflows:export-document', input),
   },
   settings: {
     get: () => invoke('settings:get'),
