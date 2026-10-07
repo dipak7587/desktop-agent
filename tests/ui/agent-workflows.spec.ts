@@ -34,8 +34,8 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();
     await page.getByRole('button', { name: 'New workflow' }).click();
     const modal = page.getByRole('dialog');
-    await modal.getByLabel('Workflow type').selectOption('default');
-    await modal.getByLabel('Name (required)').fill('Quality workflow');
+    await modal.getByRole('tab', { name: 'Default', exact: true }).click();
+    await modal.getByRole('tabpanel').getByLabel('Name (required)').fill('Quality workflow');
     await modal.getByLabel('Execution mode').selectOption('mixed');
     for (const name of ['Analysis', 'Review']) {
       await modal.getByLabel('Add agent', { exact: true }).selectOption({ label: name });

@@ -132,7 +132,11 @@ export const declarativeSchema = z
   .strict();
 export type DeclarativeWorkflow = z.infer<typeof declarativeSchema>;
 
-export function validateDeclarative(value: unknown, maxDepth = 20): DeclarativeWorkflow {
+export function validateDeclarative(
+  value: unknown,
+  maxDepth = 20,
+  draft = false,
+): DeclarativeWorkflow {
   // Bound raw nesting before recursive schema parsing.
   const bound = (v: unknown, depth: number) => {
     if (depth > maxDepth * 4 + 10) throw new Error('Workflow exceeds maximum depth');
@@ -144,7 +148,11 @@ export function validateDeclarative(value: unknown, maxDepth = 20): DeclarativeW
       }
   };
   bound(value, 0);
-  const definition = declarativeSchema.parse(value);
+  const definition = (
+    draft
+      ? declarativeSchema.extend({ name: z.string().max(200), steps: z.array(stepSchema).max(100) })
+      : declarativeSchema
+  ).parse(value);
   const visit = (steps: WorkflowStep[], depth: number) => {
     if (depth > maxDepth) throw new Error('Workflow exceeds maximum depth');
     const ids = new Set<string>();

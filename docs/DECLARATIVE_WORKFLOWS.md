@@ -1,8 +1,8 @@
 # Declarative workflows
 
 Open **Workflows → New workflow** to build the workflows described in
-`DYNAMIC_GOVERNANCE_AGENT_WORKFLOW.md`. Dynamic is selected by default, with its controls inside a bordered **Dynamic** group.
-Select **Workflow type → Default (agent graph)** for the existing graph builder.
+`DYNAMIC_GOVERNANCE_AGENT_WORKFLOW.md`. The **Default** tab is selected for new workflows and contains the agent graph builder.
+The other four tabs—**Form**, **Markdown**, **JSON**, and **YAML**—are grouped under a bordered **Dynamic** label.
 Saved workflows are grouped under **Default** and **Dynamic** border labels. Both kinds use the same persistence, run history, cancellation,
 and chat workflow command.
 
@@ -16,7 +16,7 @@ and chat workflow command.
   retained when converting formats.
 
 Import `.md`, `.json`, `.yaml`, or `.yml` files; export Markdown, JSON, or YAML.
-Malformed source stays in the editor for correction. Formats preserve workflow limits.
+Incomplete source does not block tab switching. Unreadable drafts are preserved in their source tab while other tabs show the last readable values. Save and export still require a valid workflow. Formats preserve workflow limits.
 Saved definitions remain JSON files with application IDs and timestamps. Dynamic
 configuration is stored in the `definition` field; exported dynamic documents contain
 that configuration directly. Importing preserves the current editor's application ID.

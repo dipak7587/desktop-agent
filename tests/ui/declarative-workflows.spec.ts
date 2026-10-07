@@ -26,7 +26,11 @@ test('dynamic workflows import, switch all formats, edit nested forms, validate 
     await expect(
       page.getByRole('button', { name: 'New dynamic workflow', exact: true }),
     ).toHaveCount(0);
-    await expect(modal.getByLabel('Workflow type')).toHaveValue('dynamic');
+    await expect(modal.getByRole('tab', { name: 'Default', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await modal.getByRole('tab', { name: 'Form', exact: true }).click();
     await expect(modal.getByRole('group', { name: 'Dynamic', exact: true })).toBeVisible();
     await modal.getByLabel('Import workflow file').setInputFiles({
       name: 'test.yaml',
@@ -35,15 +39,17 @@ test('dynamic workflows import, switch all formats, edit nested forms, validate 
         'name: Dynamic example\ninputs:\n  target:\n    type: string\nsteps:\n  - id: each\n    type: loop\n    over: []\n    as: item\n    steps:\n      - id: review\n        type: agent\n        agent: reviewer\n        input: "{{item}}"\n',
       ),
     });
-    await expect(modal.getByLabel('Name (required)')).toHaveValue('Dynamic example');
+    await expect(modal.getByRole('tabpanel').getByLabel('Name (required)')).toHaveValue(
+      'Dynamic example',
+    );
     await expect(modal.getByLabel('Item variable')).toHaveValue('item');
     for (const format of ['JSON', 'YAML', 'Markdown']) {
-      await modal.getByRole('button', { name: format, exact: true }).click();
+      await modal.getByRole('tab', { name: format, exact: true }).click();
       await expect(modal.locator('[name="workflow-source"]')).toContainText('Dynamic example');
     }
-    await modal.getByRole('button', { name: 'Form', exact: true }).click();
+    await modal.getByRole('tab', { name: 'Form', exact: true }).click();
     await modal.getByLabel('Item variable').fill('file');
-    await modal.getByRole('button', { name: 'JSON', exact: true }).click();
+    await modal.getByRole('tab', { name: 'JSON', exact: true }).click();
     await expect(modal.locator('[name="workflow-source"]')).toContainText('"as": "file"');
     const source = await modal.locator('[name="workflow-source"]').inputValue();
     await modal.locator('[name="workflow-source"]').fill('{ bad json');

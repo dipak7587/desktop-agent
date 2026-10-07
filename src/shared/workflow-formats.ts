@@ -6,6 +6,7 @@ export function parseWorkflow(
   source: string,
   format: Exclude<WorkflowFormat, 'form'>,
   base: AgentWorkflow,
+  options: { draft?: boolean } = {},
 ): AgentWorkflow {
   if (source.length > 1000000) throw new Error('Workflow document exceeds 1 MB');
   source = source.replaceAll('\r\n', '\n');
@@ -26,8 +27,9 @@ export function parseWorkflow(
     const definition = validateDeclarative(
       value,
       typeof value.maxDepth === 'number' ? Math.min(100, value.maxDepth) : base.maxDepth,
+      options.draft,
     );
-    return validateWorkflow({
+    const workflow: AgentWorkflow = {
       ...base,
       name: definition.name,
       maxDepth: definition.maxDepth ?? base.maxDepth,
@@ -36,7 +38,8 @@ export function parseWorkflow(
       agents: [],
       connections: [],
       definition,
-    });
+    };
+    return options.draft ? workflow : validateWorkflow(workflow);
   }
   return validateWorkflow({
     ...value,

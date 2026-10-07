@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { WorkflowEditorTabs } from './workflow-editor-tabs';
+import { useRef, useState, type ReactNode } from 'react';
 import type { AgentWorkflow } from '../../shared/workflows';
 import { validateWorkflow } from '../../shared/workflows';
 import {
@@ -433,16 +434,35 @@ function Steps({
 export function DeclarativeWorkflowEditor({
   initial,
   onClose,
-  onChangeType,
+  defaultContent,
 }: {
   initial: AgentWorkflow;
   onClose(): void;
-  onChangeType?: () => void;
+  defaultContent: ReactNode;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [workflow, setWorkflow] = useState(initial);
+  const [showDefault, setShowDefault] = useState(!initial.definition);
+  const [workflow, setWorkflow] = useState<AgentWorkflow>(() =>
+    initial.definition
+      ? initial
+      : {
+          ...initial,
+          agents: [],
+          connections: [],
+          definition: {
+            name: initial.name,
+            description: initial.description,
+            steps: [],
+            config: { defaultAgent: '' },
+          },
+        },
+  );
   const [format, setFormat] = useState<WorkflowFormat>('form');
   const [source, setSource] = useState('');
+  const [drafts, setDrafts] = useState<Partial<Record<Exclude<WorkflowFormat, 'form'>, string>>>(
+    {},
+  );
+  const [draftNotice, setDraftNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const definition = workflow.definition!;
@@ -457,72 +477,71 @@ export function DeclarativeWorkflowEditor({
         })
       : parseWorkflow(source, format, workflow);
   const changeFormat = (next: WorkflowFormat) => {
-    if (
-      format === 'form' &&
-      Array.from(formRef.current?.querySelectorAll('textarea') ?? []).some(
-        (field) => !field.reportValidity(),
-      )
-    )
+    if (next === format) {
+      setShowDefault(false);
       return;
-    try {
-      const value =
-        format === 'form'
-          ? { ...workflow, name: definition.name, description: definition.description ?? '' }
-          : parseWorkflow(source, format, workflow);
-      if (!value.definition)
-        throw new Error('Use a declarative document with steps in this editor.');
-      setWorkflow(value);
-      setSource(next === 'form' ? '' : serializeWorkflow(value, next));
-      setFormat(next);
-      setError('');
-    } catch (e) {
-      setError((e as Error).message);
     }
+    const nextDrafts = { ...drafts };
+    let value = { ...workflow, name: definition.name, description: definition.description ?? '' };
+    let notice = '';
+    if (format !== 'form') {
+      try {
+        const parsed = parseWorkflow(source, format, workflow, { draft: true });
+        if (!parsed.definition) throw new Error('Use a declarative document with steps.');
+        value = parsed;
+        delete nextDrafts[format];
+      } catch {
+        nextDrafts[format] = source;
+        notice = `${format.toUpperCase()} draft preserved. Other tabs show the last readable values until that draft is corrected.`;
+      }
+    }
+    setWorkflow(value);
+    setDrafts(nextDrafts);
+    setSource(next === 'form' ? '' : (nextDrafts[next] ?? serializeWorkflow(value, next)));
+    setFormat(next);
+    setShowDefault(false);
+    setError('');
+    setDraftNotice(notice);
   };
   return (
     <Modal title={initial.name ? 'Edit workflow' : 'New workflow'} wide onClose={onClose}>
-      <form
-        ref={formRef}
-        onSubmit={(e) => {
-          e.preventDefault();
-          setBusy(true);
-          setError('');
-          void (async () => {
-            try {
-              await window.workspace.workflows.save(current());
-              await useWorkflows.getState().load();
-              onClose();
-            } catch (error) {
-              setError((error as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          })();
-        }}
+      <WorkflowEditorTabs
+        selected={showDefault ? 'default' : format}
+        onSelect={(tab) => (tab === 'default' ? setShowDefault(true) : changeFormat(tab))}
+      />
+      <div
+        id="workflow-panel-default"
+        role="tabpanel"
+        aria-labelledby="workflow-tab-default"
+        hidden={!showDefault}
       >
-        {onChangeType && (
-          <label>
-            Workflow type
-            <select name="workflowType" value="dynamic" onChange={onChangeType}>
-              <option value="dynamic">Dynamic</option>
-              <option value="default">Default (agent graph)</option>
-            </select>
-          </label>
-        )}
-        <fieldset className="workflow-type-group">
-          <legend>Dynamic</legend>
-          <div className="actions" role="group" aria-label="Workflow format">
-            {(['form', 'md', 'json', 'yaml'] as const).map((key) => (
-              <button
-                type="button"
-                aria-pressed={format === key}
-                key={key}
-                onClick={() => changeFormat(key)}
-              >
-                {key === 'form' ? 'Form' : key === 'md' ? 'Markdown' : key.toUpperCase()}
-              </button>
-            ))}
-          </div>
+        {defaultContent}
+      </div>
+      <div
+        id="workflow-panel-dynamic"
+        role="tabpanel"
+        aria-labelledby={`workflow-tab-${format}`}
+        hidden={showDefault}
+      >
+        <form
+          ref={formRef}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError('');
+            void (async () => {
+              try {
+                await window.workspace.workflows.save(current());
+                await useWorkflows.getState().load();
+                onClose();
+              } catch (error) {
+                setError((error as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+        >
           <label>
             Import workflow file
             <input
@@ -545,6 +564,8 @@ export function DeclarativeWorkflowEditor({
                     setWorkflow(value);
                     setFormat('form');
                     setSource('');
+                    setDrafts({});
+                    setDraftNotice('');
                     setError('');
                   } catch (error) {
                     setError((error as Error).message);
@@ -553,7 +574,7 @@ export function DeclarativeWorkflowEditor({
               }}
             />
           </label>
-          {format !== 'form' ? (
+          {format !== 'form' && (
             <label>
               Workflow source ({format})
               <textarea
@@ -567,123 +588,131 @@ export function DeclarativeWorkflowEditor({
                 }}
               />
             </label>
-          ) : (
-            <div key={JSON.stringify([workflow.id, source])}>
-              <label>
-                Name (required)
-                <input
-                  name="name"
-                  required
-                  maxLength={200}
-                  value={definition.name}
-                  onChange={(e) => patch({ name: e.target.value })}
-                />
-              </label>
-              <label>
-                Description
-                <textarea
-                  name="description"
-                  value={definition.description ?? ''}
-                  onChange={(e) => patch({ description: e.target.value })}
-                />
-              </label>
-              <JsonField
-                label="Input definitions"
-                value={definition.inputs}
-                onChange={(inputs) => patch({ inputs: inputs as DeclarativeWorkflow['inputs'] })}
-              />
-              <JsonField
-                label="Agent aliases"
-                value={definition.agents}
-                onChange={(agents) => patch({ agents: agents as DeclarativeWorkflow['agents'] })}
-              />
-              <JsonField
-                label="Tool aliases"
-                value={definition.tools}
-                onChange={(tools) => patch({ tools: tools as DeclarativeWorkflow['tools'] })}
-              />
-              <JsonField
-                label="Workflow config (including defaultAgent)"
-                value={definition.config}
-                onChange={(config) => patch({ config: config as DeclarativeWorkflow['config'] })}
-              />
-              <label>
-                Maximum total step executions
-                <input
-                  name="maxIterations"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={workflow.maxIterations}
-                  onChange={(e) =>
-                    setWorkflow({ ...workflow, maxIterations: Number(e.target.value) })
-                  }
-                />
-              </label>
-              <label>
-                Maximum nesting depth
-                <input
-                  name="maxDepth"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={workflow.maxDepth}
-                  onChange={(e) => setWorkflow({ ...workflow, maxDepth: Number(e.target.value) })}
-                />
-              </label>
-              <Hooks value={definition.hooks} onChange={(hooks) => patch({ hooks })} depth={0} />
-              <Steps value={definition.steps} onChange={(steps) => patch({ steps })} />
-            </div>
           )}
-        </fieldset>
-        {error && (
-          <p role="alert" className="error-text">
-            {error}
-          </p>
-        )}
-        <div className="actions">
-          <button className="primary" type="submit" disabled={busy}>
-            {busy ? 'Saving…' : 'Save workflow'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              try {
-                current();
-                setError('');
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
+          <fieldset
+            className="workflow-form-fields"
+            hidden={format !== 'form'}
+            disabled={format !== 'form'}
           >
-            Validate
-          </button>
-          {(['md', 'json', 'yaml'] as const).map((kind) => (
+            <label>
+              Name (required)
+              <input
+                name="name"
+                required
+                maxLength={200}
+                value={definition.name}
+                onChange={(e) => patch({ name: e.target.value })}
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                name="description"
+                value={definition.description ?? ''}
+                onChange={(e) => patch({ description: e.target.value })}
+              />
+            </label>
+            <JsonField
+              label="Input definitions"
+              value={definition.inputs}
+              onChange={(inputs) => patch({ inputs: inputs as DeclarativeWorkflow['inputs'] })}
+            />
+            <JsonField
+              label="Agent aliases"
+              value={definition.agents}
+              onChange={(agents) => patch({ agents: agents as DeclarativeWorkflow['agents'] })}
+            />
+            <JsonField
+              label="Tool aliases"
+              value={definition.tools}
+              onChange={(tools) => patch({ tools: tools as DeclarativeWorkflow['tools'] })}
+            />
+            <JsonField
+              label="Workflow config (including defaultAgent)"
+              value={definition.config}
+              onChange={(config) => patch({ config: config as DeclarativeWorkflow['config'] })}
+            />
+            <label>
+              Maximum total step executions
+              <input
+                name="maxIterations"
+                type="number"
+                min={1}
+                max={100}
+                value={workflow.maxIterations}
+                onChange={(e) =>
+                  setWorkflow({ ...workflow, maxIterations: Number(e.target.value) })
+                }
+              />
+            </label>
+            <label>
+              Maximum nesting depth
+              <input
+                name="maxDepth"
+                type="number"
+                min={1}
+                max={100}
+                value={workflow.maxDepth}
+                onChange={(e) => setWorkflow({ ...workflow, maxDepth: Number(e.target.value) })}
+              />
+            </label>
+            <Hooks value={definition.hooks} onChange={(hooks) => patch({ hooks })} depth={0} />
+            <Steps value={definition.steps} onChange={(steps) => patch({ steps })} />
+          </fieldset>
+          {draftNotice && (
+            <p role="status" className="muted">
+              {draftNotice}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="error-text">
+              {error}
+            </p>
+          )}
+          <div className="actions">
+            <button className="primary" type="submit" disabled={busy}>
+              {busy ? 'Saving…' : 'Save workflow'}
+            </button>
             <button
               type="button"
-              key={kind}
               onClick={() => {
                 try {
-                  if (!formRef.current?.reportValidity()) return;
-                  const value = current();
-                  const url = URL.createObjectURL(
-                    new Blob([serializeWorkflow(value, kind)], { type: 'text/plain' }),
-                  );
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = `${value.id}.${kind}`;
-                  link.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  current();
+                  setError('');
                 } catch (e) {
                   setError((e as Error).message);
                 }
               }}
             >
-              Export {kind.toUpperCase()}
+              Validate
             </button>
-          ))}
-        </div>
-      </form>
+            {(['md', 'json', 'yaml'] as const).map((kind) => (
+              <button
+                type="button"
+                key={kind}
+                onClick={() => {
+                  try {
+                    if (!formRef.current?.reportValidity()) return;
+                    const value = current();
+                    const url = URL.createObjectURL(
+                      new Blob([serializeWorkflow(value, kind)], { type: 'text/plain' }),
+                    );
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `${value.id}.${kind}`;
+                    link.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  } catch (e) {
+                    setError((e as Error).message);
+                  }
+                }}
+              >
+                Export {kind.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </form>
+      </div>
     </Modal>
   );
 }

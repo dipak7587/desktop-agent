@@ -1895,9 +1895,9 @@ legend {
   margin-top: 18px;
 }
 .separator {
-     width: 100%;
-    height: 1px;
-    background: rgb(2 2 2 / 15%);
+  width: 100%;
+  height: 1px;
+  background: rgb(2 2 2 / 15%);
 }
 .settings-save {
   padding: 20px 0;
@@ -2519,4 +2519,33 @@ legend {
 .tool-code-editor > textarea::selection {
   background: var(--soft);
   color: var(--text);
+}
+
+.workflow-editor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-block-end: 18px;
+}
+.workflow-dynamic-tabs {
+  margin: 0;
+  padding: 8px 12px 12px;
+  min-inline-size: 0;
+}
+.workflow-dynamic-tabs .actions {
+  margin: 0;
+  flex-wrap: wrap;
+}
+.workflow-editor-tabs [aria-selected='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.workflow-form-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
 }

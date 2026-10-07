@@ -36,15 +36,7 @@ export function Workflows() {
           <h1>Agent Workflows</h1>
           <p className="muted">Connect agents, combine results, and follow every execution.</p>
         </div>
-        <button
-          className="primary"
-          onClick={() =>
-            setEditing({
-              ...fresh(),
-              definition: { name: '', steps: [], config: { defaultAgent: '' } },
-            })
-          }
-        >
+        <button className="primary" onClick={() => setEditing(fresh())}>
           <Plus size={16} />
           New workflow
         </button>
@@ -174,28 +166,22 @@ export function Workflows() {
           </details>
         ))}
       </section>
-      {editing &&
-        (editing.definition ? (
-          <DeclarativeWorkflowEditor
-            initial={editing}
-            onClose={() => setEditing(null)}
-            onChangeType={!editing.name ? () => setEditing(fresh()) : undefined}
-          />
-        ) : (
-          <WorkflowEditor
-            initial={editing}
-            onClose={() => setEditing(null)}
-            onChangeType={
-              !editing.name
-                ? () =>
-                    setEditing({
-                      ...fresh(),
-                      definition: { name: '', steps: [], config: { defaultAgent: '' } },
-                    })
-                : undefined
-            }
-          />
-        ))}
+      {editing && (
+        <DeclarativeWorkflowEditor
+          initial={editing}
+          onClose={() => setEditing(null)}
+          defaultContent={
+            <WorkflowEditor
+              initial={
+                editing.definition
+                  ? { ...editing, definition: undefined, agents: [], connections: [] }
+                  : editing
+              }
+              onClose={() => setEditing(null)}
+            />
+          }
+        />
+      )}
       {running && <WorkflowRunner workflow={running} onClose={() => setRunning(null)} />}
       {clearingHistory && (
         <Confirm
@@ -298,15 +284,7 @@ function WorkflowGraph({ workflow }: { workflow: AgentWorkflow }) {
   );
 }
 
-function WorkflowEditor({
-  initial,
-  onClose,
-  onChangeType,
-}: {
-  initial: AgentWorkflow;
-  onClose(): void;
-  onChangeType?: () => void;
-}) {
+function WorkflowEditor({ initial, onClose }: { initial: AgentWorkflow; onClose(): void }) {
   const [workflow, setWorkflow] = useState(initial);
   const agents = useAgents((s) => s.items);
   const [agentId, setAgentId] = useState(agents.find((a) => a.enabled)?.id ?? '');
@@ -319,274 +297,261 @@ function WorkflowEditor({
     patch({ agents: nodes });
   };
   return (
-    <Modal title={initial.name ? 'Edit workflow' : 'New workflow'} wide onClose={onClose}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError('');
-          setBusy(true);
-          void (async () => {
-            try {
-              await window.workspace.workflows.save(validateWorkflow(workflow));
-              await useWorkflows.getState().load();
-              onClose();
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          })();
-        }}
-      >
-        {onChangeType && (
-          <label>
-            Workflow type
-            <select name="workflowType" value="default" onChange={onChangeType}>
-              <option value="dynamic">Dynamic</option>
-              <option value="default">Default (agent graph)</option>
-            </select>
-          </label>
-        )}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError('');
+        setBusy(true);
+        void (async () => {
+          try {
+            await window.workspace.workflows.save(validateWorkflow(workflow));
+            await useWorkflows.getState().load();
+            onClose();
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        })();
+      }}
+    >
+      <label>
+        Name (required)
+        <input
+          name="name"
+          required
+          maxLength={200}
+          value={workflow.name}
+          onChange={(e) => patch({ name: e.target.value })}
+        />
+      </label>
+      <label>
+        Description
+        <textarea
+          name="description"
+          maxLength={2000}
+          value={workflow.description}
+          onChange={(e) => patch({ description: e.target.value })}
+        />
+      </label>
+      <label>
+        Execution mode
+        <select
+          name="executionMode"
+          value={workflow.executionMode}
+          onChange={(e) =>
+            patch({
+              executionMode: e.target.value as AgentWorkflow['executionMode'],
+              connections: [],
+            })
+          }
+        >
+          <option value="sequential">Sequential — listed order</option>
+          <option value="parallel">Parallel — independent agents</option>
+          <option value="mixed">Mixed — connect dependencies</option>
+        </select>
+      </label>
+      <p className="small muted">
+        Changing mode clears connections. Mixed mode runs each agent after all its connected
+        predecessors succeed. Ready agents share three execution slots.
+      </p>
+      <div className="form-grid">
         <label>
-          Name (required)
+          Maximum depth
           <input
-            name="name"
+            name="maxDepth"
+            type="number"
+            min={1}
+            max={100}
             required
-            maxLength={200}
-            value={workflow.name}
-            onChange={(e) => patch({ name: e.target.value })}
+            value={workflow.maxDepth}
+            onChange={(e) => patch({ maxDepth: Number(e.target.value) })}
           />
         </label>
         <label>
-          Description
-          <textarea
-            name="description"
-            maxLength={2000}
-            value={workflow.description}
-            onChange={(e) => patch({ description: e.target.value })}
+          Maximum agent executions
+          <input
+            name="maxIterations"
+            type="number"
+            min={1}
+            max={100}
+            required
+            value={workflow.maxIterations}
+            onChange={(e) => patch({ maxIterations: Number(e.target.value) })}
           />
         </label>
-        <label>
-          Execution mode
+      </div>
+      <WorkflowGraph workflow={workflow} />
+      <div className="actions workflow-add-agent">
+        <div>
+          <label htmlFor="workflow-add-agent">Add agent</label>
           <select
-            name="executionMode"
-            value={workflow.executionMode}
-            onChange={(e) =>
-              patch({
-                executionMode: e.target.value as AgentWorkflow['executionMode'],
-                connections: [],
-              })
-            }
+            id="workflow-add-agent"
+            name="agent"
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
           >
-            <option value="sequential">Sequential — listed order</option>
-            <option value="parallel">Parallel — independent agents</option>
-            <option value="mixed">Mixed — connect dependencies</option>
+            <option value="">Select an agent</option>
+            {agents
+              .filter((a) => a.enabled)
+              .map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
           </select>
-        </label>
-        <p className="small muted">
-          Changing mode clears connections. Mixed mode runs each agent after all its connected
-          predecessors succeed. Ready agents share three execution slots.
-        </p>
-        <div className="form-grid">
-          <label>
-            Maximum depth
-            <input
-              name="maxDepth"
-              type="number"
-              min={1}
-              max={100}
-              required
-              value={workflow.maxDepth}
-              onChange={(e) => patch({ maxDepth: Number(e.target.value) })}
-            />
-          </label>
-          <label>
-            Maximum agent executions
-            <input
-              name="maxIterations"
-              type="number"
-              min={1}
-              max={100}
-              required
-              value={workflow.maxIterations}
-              onChange={(e) => patch({ maxIterations: Number(e.target.value) })}
-            />
-          </label>
         </div>
-        <WorkflowGraph workflow={workflow} />
-        <div className="actions workflow-add-agent">
-          <div>
-            <label htmlFor="workflow-add-agent">Add agent</label>
-            <select
-              id="workflow-add-agent"
-              name="agent"
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-            >
-              <option value="">Select an agent</option>
-              {agents
-                .filter((a) => a.enabled)
-                .map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <button
-            type="button"
-            disabled={!agentId || workflow.agents.length >= 100}
-            onClick={() => {
-              const agent = agents.find((a) => a.id === agentId)!;
-              patch({
-                agents: [
-                  ...workflow.agents,
-                  { id: crypto.randomUUID(), agentId, name: agent.name, prompt: '' },
-                ],
-              });
-            }}
-          >
-            Add Agent
-          </button>
-        </div>
-        {!agents.length && <p>Create an agent in the Agents menu first.</p>}
-        {workflow.agents.map((node, i) => (
-          <fieldset className="workflow-node-editor" key={node.id}>
-            <legend>
-              {i + 1}. {node.name}
-            </legend>
-            <div className="actions">
-              <button type="button" disabled={i === 0} onClick={() => reorder(i, -1)}>
-                Move up
-              </button>
-              <button
-                type="button"
-                disabled={i === workflow.agents.length - 1}
-                onClick={() => reorder(i, 1)}
-              >
-                Move down
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  patch({
-                    agents: workflow.agents.filter((n) => n.id !== node.id),
-                    connections: workflow.connections.filter(
-                      (e) => e.from !== node.id && e.to !== node.id,
-                    ),
-                  })
-                }
-              >
-                Remove Agent
-              </button>
-            </div>
-            <label>
-              Task for {node.name}
-              <textarea
-                name={`prompt-${node.id}`}
-                maxLength={20000}
-                value={node.prompt}
-                onChange={(e) =>
-                  patch({
-                    agents: workflow.agents.map((n) =>
-                      n.id === node.id ? { ...n, prompt: e.target.value } : n,
-                    ),
-                  })
-                }
-              />
-            </label>
-            {workflow.executionMode === 'mixed' && (
-              <fieldset>
-                <legend>Wait for output from</legend>
-                {workflow.agents
-                  .filter((n) => n.id !== node.id)
-                  .map((source) => (
-                    <label className="check" key={source.id}>
-                      <input
-                        type="checkbox"
-                        name={`edge-${source.id}-${node.id}`}
-                        checked={workflow.connections.some(
-                          (e) => e.from === source.id && e.to === node.id,
-                        )}
-                        onChange={(e) =>
-                          patch({
-                            connections: e.target.checked
-                              ? [
-                                  ...workflow.connections,
-                                  { from: source.id, to: node.id, mode: 'parallel' },
-                                ]
-                              : workflow.connections.filter(
-                                  (c) => c.from !== source.id || c.to !== node.id,
-                                ),
-                          })
-                        }
-                      />
-                      {source.name}
-                    </label>
-                  ))}
-              </fieldset>
-            )}
-            {workflowEdges(workflow)
-              .filter((e) => e.to === node.id)
-              .map((edge) => {
-                const mapping = edge.inputMapping ?? {
-                  sourceOutput: 'result',
-                  targetInput: 'previousAgentOutput' as const,
-                };
-                const update = (next: typeof mapping) =>
-                  patch({
-                    connections: [
-                      ...workflow.connections.filter(
-                        (c) => c.from !== edge.from || c.to !== edge.to,
-                      ),
-                      { ...edge, inputMapping: next },
-                    ],
-                  });
-                return (
-                  <div className="form-grid" key={edge.from}>
-                    <label>
-                      Output from {workflow.agents.find((n) => n.id === edge.from)?.name}
-                      <input
-                        name={`source-${edge.from}-${node.id}`}
-                        value={mapping.sourceOutput}
-                        onChange={(e) => update({ ...mapping, sourceOutput: e.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Target input
-                      <select
-                        name={`target-${edge.from}-${node.id}`}
-                        value={mapping.targetInput}
-                        onChange={(e) =>
-                          update({
-                            ...mapping,
-                            targetInput: e.target.value as typeof mapping.targetInput,
-                          })
-                        }
-                      >
-                        <option value="previousAgentOutput">Previous agent output</option>
-                        <option value="prompt">Prompt</option>
-                      </select>
-                    </label>
-                  </div>
-                );
-              })}
-          </fieldset>
-        ))}
-        <p className="small muted">
-          Use result for the full output or result.issues for a JSON field. Each agent keeps its own
-          model, permissions, and iteration limit.
-        </p>
-        {error && (
-          <p role="alert" className="error-text">
-            {error}
-          </p>
-        )}
-        <button className="primary" type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Save workflow'}
+        <button
+          type="button"
+          disabled={!agentId || workflow.agents.length >= 100}
+          onClick={() => {
+            const agent = agents.find((a) => a.id === agentId)!;
+            patch({
+              agents: [
+                ...workflow.agents,
+                { id: crypto.randomUUID(), agentId, name: agent.name, prompt: '' },
+              ],
+            });
+          }}
+        >
+          Add Agent
         </button>
-      </form>
-    </Modal>
+      </div>
+      {!agents.length && <p>Create an agent in the Agents menu first.</p>}
+      {workflow.agents.map((node, i) => (
+        <fieldset className="workflow-node-editor" key={node.id}>
+          <legend>
+            {i + 1}. {node.name}
+          </legend>
+          <div className="actions">
+            <button type="button" disabled={i === 0} onClick={() => reorder(i, -1)}>
+              Move up
+            </button>
+            <button
+              type="button"
+              disabled={i === workflow.agents.length - 1}
+              onClick={() => reorder(i, 1)}
+            >
+              Move down
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                patch({
+                  agents: workflow.agents.filter((n) => n.id !== node.id),
+                  connections: workflow.connections.filter(
+                    (e) => e.from !== node.id && e.to !== node.id,
+                  ),
+                })
+              }
+            >
+              Remove Agent
+            </button>
+          </div>
+          <label>
+            Task for {node.name}
+            <textarea
+              name={`prompt-${node.id}`}
+              maxLength={20000}
+              value={node.prompt}
+              onChange={(e) =>
+                patch({
+                  agents: workflow.agents.map((n) =>
+                    n.id === node.id ? { ...n, prompt: e.target.value } : n,
+                  ),
+                })
+              }
+            />
+          </label>
+          {workflow.executionMode === 'mixed' && (
+            <fieldset>
+              <legend>Wait for output from</legend>
+              {workflow.agents
+                .filter((n) => n.id !== node.id)
+                .map((source) => (
+                  <label className="check" key={source.id}>
+                    <input
+                      type="checkbox"
+                      name={`edge-${source.id}-${node.id}`}
+                      checked={workflow.connections.some(
+                        (e) => e.from === source.id && e.to === node.id,
+                      )}
+                      onChange={(e) =>
+                        patch({
+                          connections: e.target.checked
+                            ? [
+                                ...workflow.connections,
+                                { from: source.id, to: node.id, mode: 'parallel' },
+                              ]
+                            : workflow.connections.filter(
+                                (c) => c.from !== source.id || c.to !== node.id,
+                              ),
+                        })
+                      }
+                    />
+                    {source.name}
+                  </label>
+                ))}
+            </fieldset>
+          )}
+          {workflowEdges(workflow)
+            .filter((e) => e.to === node.id)
+            .map((edge) => {
+              const mapping = edge.inputMapping ?? {
+                sourceOutput: 'result',
+                targetInput: 'previousAgentOutput' as const,
+              };
+              const update = (next: typeof mapping) =>
+                patch({
+                  connections: [
+                    ...workflow.connections.filter((c) => c.from !== edge.from || c.to !== edge.to),
+                    { ...edge, inputMapping: next },
+                  ],
+                });
+              return (
+                <div className="form-grid" key={edge.from}>
+                  <label>
+                    Output from {workflow.agents.find((n) => n.id === edge.from)?.name}
+                    <input
+                      name={`source-${edge.from}-${node.id}`}
+                      value={mapping.sourceOutput}
+                      onChange={(e) => update({ ...mapping, sourceOutput: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Target input
+                    <select
+                      name={`target-${edge.from}-${node.id}`}
+                      value={mapping.targetInput}
+                      onChange={(e) =>
+                        update({
+                          ...mapping,
+                          targetInput: e.target.value as typeof mapping.targetInput,
+                        })
+                      }
+                    >
+                      <option value="previousAgentOutput">Previous agent output</option>
+                      <option value="prompt">Prompt</option>
+                    </select>
+                  </label>
+                </div>
+              );
+            })}
+        </fieldset>
+      ))}
+      <p className="small muted">
+        Use result for the full output or result.issues for a JSON field. Each agent keeps its own
+        model, permissions, and iteration limit.
+      </p>
+      {error && (
+        <p role="alert" className="error-text">
+          {error}
+        </p>
+      )}
+      <button className="primary" type="submit" disabled={busy}>
+        {busy ? 'Saving…' : 'Save workflow'}
+      </button>
+    </form>
   );
 }
 function WorkflowRunner({ workflow, onClose }: { workflow: AgentWorkflow; onClose(): void }) {
