@@ -217,7 +217,7 @@ export function CodeWorkspace() {
                   </span>
                   <span className="code-workspace-status small muted">
                     {workspace.available ? 'Folder available' : 'Folder missing or inaccessible'}
-                    {workspace.available && ' · Project operations require approval'}
+                    {workspace.available && ' · Reads run automatically; changes require approval'}
                   </span>
                   <span className="code-workspace-status small muted">
                     Folder permissions · {workspace.allowedAgentIds?.length ?? allAgents.length + 1}{' '}
