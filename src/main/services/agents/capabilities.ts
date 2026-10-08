@@ -1,3 +1,4 @@
+import { localTools } from './tools';
 import { StructuredOutputParser } from '@langchain/core/output_parsers';
 import { z } from 'zod';
 import type {
@@ -64,13 +65,33 @@ export function restrictCapabilities(request: string, config: AgentCapabilityCon
 }
 
 /**
- * Capability relevance decisions are a LangChain call: an createChatModel invoke
- * with a JSON output format over the same prompt as before, so behavior is
- * unchanged while all model traffic flows through the LangChain layer.
+ * Code's native model already selects its workspace tools. Re-checking that
+ * selection with a second JSON-only model call is redundant and can block valid
+ * work when a local model emits empty text. Hard policy remains in the router.
+ * Other capabilities retain their independent relevance check.
  */
-export function modelEvaluator(provider: LLMProvider, model: string): Evaluate {
-  const decisionModel = createChatModel({ provider, model, format: 'json' });
+export function modelEvaluator(
+  provider: LLMProvider,
+  model: string,
+  options: { nativeWorkspaceTools?: boolean } = {},
+): Evaluate {
   return async (request, capability, context) => {
+    context.signal?.throwIfAborted();
+    if (
+      options.nativeWorkspaceTools &&
+      context.project &&
+      capability.type === 'tool' &&
+      capability.requiresProject &&
+      localTools.includes(capability.id)
+    ) {
+      return { relevant: true, necessary: true, canAnswerDirectly: false, userForbids: false };
+    }
+    const decisionModel = createChatModel({
+      provider,
+      model,
+      format: 'json',
+      disableStreaming: true,
+    });
     const reply = await decisionModel.invoke(
       [
         new SystemMessage(
@@ -91,7 +112,8 @@ export function modelEvaluator(provider: LLMProvider, model: string): Evaluate {
       ],
       { signal: context.signal },
     );
-    const content = reply.text;
+    const content = reply.text.trim();
+    if (!content) throw new Error('The model returned an empty capability decision');
     if (content.length > 8000) throw new Error('Capability decision exceeded limit');
     return await StructuredOutputParser.fromZodSchema(verdictSchema).parse(content);
   };

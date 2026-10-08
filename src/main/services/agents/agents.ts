@@ -316,6 +316,7 @@ export class AgentService {
     approve: Approve;
     configuredOnly: boolean;
     declaredTool?: string;
+    nativeWorkspaceTools?: boolean;
     access?: Pick<
       CodeWorkspace,
       | 'allowedAgentIds'
@@ -429,7 +430,9 @@ export class AgentService {
               canAnswerDirectly: false,
               userForbids: false,
             })
-          : modelEvaluator(llm, agent.model || this.settings().chatModel),
+          : modelEvaluator(llm, agent.model || this.settings().chatModel, {
+              nativeWorkspaceTools: options.nativeWorkspaceTools,
+            }),
       ),
       task,
       config,
@@ -674,6 +677,7 @@ export class AgentService {
         approve,
         configuredOnly: !!codeSession || !!directTool,
         declaredTool: directTool?.id,
+        nativeWorkspaceTools: !!codeSession,
         access:
           codeSession?.access ??
           (directTool && project ? this.workspaceAccess?.(project) : undefined),
@@ -795,6 +799,7 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
                         run,
                         approve,
                         configuredOnly: true,
+                        nativeWorkspaceTools: true,
                         access: codeSession.access,
                       });
                 const profileModel = this.providers?.capture(

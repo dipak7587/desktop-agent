@@ -77,6 +77,13 @@ ACP session IDs themselves and full DeepAgent checkpoints are **not persisted ac
 
 **Permissions and tools.** All actual workspace operations retain the existing capability
 router and `AgentTools`; an empty workspace policy asks for project operations and deny wins.
+For native Code workspace tool calls, the coding model's tool selection supplies relevance;
+there is no second JSON-only model request for `project.detect`, filesystem, Git, or shell tools.
+This also applies to configured agent profiles inside ACP. Mode, selection, enabled state,
+workspace restrictions, permission denials, tool-argument validation, and approvals still run.
+Skills, custom tools, MCP, knowledge, and non-Code agent runs keep the relevance check.
+General programming questions can be answered without a tool call; stack and test-command
+questions use project inspection instead of guessed commands.
 The exact validated operation and optional diff travel through ACP `requestPermission` to the
 existing application approval UI. Upstream's generic tool announcement only permits dispatch
 to a registered guarded tool, never grants filesystem/command access. Writes recheck hashes
