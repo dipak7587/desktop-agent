@@ -1,7 +1,10 @@
+import type { ToolAnalysis, ToolImportFormat } from './tool-definition';
 import type { AgentWorkflow, WorkflowRun, WorkflowRunInput } from './workflows';
+import type { WorkspaceBackupFormat } from './workspace-backup';
 import type {
   Settings,
   Model,
+  CodeWorkspace,
   Conversation,
   Message,
   LibraryKind,
@@ -12,8 +15,12 @@ import type {
   MCPState,
   RunState,
   ChatInput,
+  MemoryEntry,
 } from './types';
 export interface WorkspaceAPI {
+  clipboard: {
+    writeText(text: string): Promise<void>;
+  };
   workflows: {
     list(): Promise<AgentWorkflow[]>;
     save(workflow: AgentWorkflow): Promise<AgentWorkflow>;
@@ -22,10 +29,17 @@ export interface WorkspaceAPI {
     run(input: WorkflowRunInput): Promise<string>;
     stop(id: string): Promise<void>;
     runs(): Promise<WorkflowRun[]>;
+    clearRuns(): Promise<void>;
+    exportDocument(input: {
+      name: string;
+      format: 'md' | 'json' | 'yaml';
+      content: string;
+    }): Promise<boolean>;
   };
   settings: {
     get(): Promise<Settings>;
     save(value: Settings): Promise<Settings>;
+    rememberChatSelection(providerId: string, model: string): Promise<Settings>;
     dataPath(): Promise<string>;
   };
   models: {
@@ -41,13 +55,36 @@ export interface WorkspaceAPI {
     create(model: string, providerId?: string, agentId?: string): Promise<Conversation>;
     selection(id: string, providerId: string, model: string, agentId?: string): Promise<void>;
     rename(id: string, title: string): Promise<void>;
+    exportMarkdown(id: string): Promise<void>;
     remove(id: string): Promise<void>;
     clear(): Promise<void>;
     messages(id: string): Promise<Message[]>;
     send(input: ChatInput): Promise<void>;
     stop(id: string): Promise<void>;
   };
+  code: {
+    list(): Promise<CodeWorkspace[]>;
+    chooseAndConnect(conversationId: string): Promise<CodeWorkspace | null>;
+    chooseAndRelink(workspaceId: string, conversationId: string): Promise<CodeWorkspace | null>;
+    reconnect(workspaceId: string, conversationId: string): Promise<CodeWorkspace>;
+    setAccess(
+      workspaceId: string,
+      policy: {
+        agentIds: string[];
+        skills: string[];
+        tools: string[];
+        mcpServers: string[];
+        knowledgeBases: string[];
+      },
+    ): Promise<CodeWorkspace>;
+    disconnect(conversationId: string): Promise<void>;
+    remove(workspaceId: string): Promise<void>;
+  };
   library: {
+    groups(kind: LibraryKind): Promise<string[]>;
+    setGroup(kind: LibraryKind, ids: string[], group: string): Promise<void>;
+    renameGroup(kind: LibraryKind, from: string, to: string): Promise<void>;
+    deleteGroup(kind: LibraryKind, group: string): Promise<void>;
     list(kind: LibraryKind): Promise<LibraryItem[]>;
     save(kind: LibraryKind, item: LibraryItem): Promise<LibraryItem>;
     remove(kind: LibraryKind, id: string): Promise<void>;
@@ -59,8 +96,11 @@ export interface WorkspaceAPI {
     add(input: {
       type: 'file' | 'folder' | 'url';
       url?: string;
+      description: string;
       collection?: string;
+      group?: string;
     }): Promise<void>;
+    setGroup(ids: string[], group: string): Promise<void>;
     sync(id: string): Promise<void>;
     stop(id: string): Promise<void>;
     remove(id: string): Promise<void>;
@@ -71,7 +111,14 @@ export interface WorkspaceAPI {
     states(): Promise<MCPState[]>;
     action(id: string, action: 'start' | 'stop' | 'restart' | 'test'): Promise<void>;
   };
-  tools: { run(id: string, input: Record<string, unknown>): Promise<string> };
+  tools: {
+    run(id: string, input: Record<string, unknown>): Promise<string>;
+    runSource(source: string, input: Record<string, unknown>): Promise<string>;
+    analyze(source: string): Promise<ToolAnalysis>;
+    format(source: string): Promise<string>;
+    convert(source: string, format: ToolImportFormat): Promise<ToolAnalysis>;
+    importSource(): Promise<ToolAnalysis | null>;
+  };
   agents: {
     project(): Promise<string | null>;
     run(input: { agentId: string; task: string; project?: string }): Promise<string>;
@@ -80,6 +127,16 @@ export interface WorkspaceAPI {
     runs(): Promise<RunState[]>;
     removeRun(id: string): Promise<void>;
     clearRuns(): Promise<void>;
+  };
+  memory: {
+    list(): Promise<MemoryEntry[]>;
+    save(entry: {
+      scope: MemoryEntry['scope'];
+      scopeId?: string;
+      content: string;
+    }): Promise<MemoryEntry>;
+    remove(id: string): Promise<void>;
+    clear(scope?: MemoryEntry['scope'], scopeId?: string): Promise<void>;
   };
   secrets: {
     importEnv(): Promise<string[]>;
@@ -92,6 +149,12 @@ export interface WorkspaceAPI {
     openOllamaDocs(): Promise<void>;
     exportSettings(): Promise<void>;
     importSettings(): Promise<void>;
+    exportWorkspace(format: WorkspaceBackupFormat): Promise<void>;
+    importWorkspace(): Promise<{
+      conversations: number;
+      workflows: number;
+      libraries: Record<LibraryKind, number>;
+    } | null>;
   };
   onEvent(callback: (event: AppEvent) => void): () => void;
 }

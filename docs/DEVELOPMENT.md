@@ -74,3 +74,16 @@ Agent and Chat capability execution goes through `services/agents/capabilities.t
 new model-initiated actions with `CapabilityRouter`; do not execute them directly from the
 model loop. Keep deterministic restrictions/permissions separate from model relevance judgments.
 See [Capability decisions](CAPABILITIES.md) and `tests/capabilities.test.ts`.
+
+AI orchestration uses `langchain`, `@langchain/core`, `@langchain/langgraph`,
+`@langchain/langgraph-checkpoint` and `deepagents`. Add model inference integrations in
+`services/ai/native-models.ts` using official provider packages; do not implement another
+HTTP chat protocol or model/tool loop. `LLMProvider.createChatModel` is the typed provider
+entry point. The scripted model in `tests/fixtures` is test-only. Keep model discovery,
+settings, credentials and guarded transport in main services; no framework imports belong
+in the renderer.
+
+Register agent capabilities with real JSON argument schemas via `CapabilityRouter`.
+`services/ai/agent-graph.ts` turns them into LangChain tools for both engines. Keep workspace
+validation and approval logic in privileged executors. Use `CheckpointDatabase` for graph
+state and `MemoryService` for scoped long-term memory. See [LangChain migration](LANGCHAIN_MIGRATION.md).

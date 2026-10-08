@@ -66,11 +66,13 @@ export function Modal({
 export function Confirm({
   title,
   detail,
+  confirmLabel = 'Delete',
   onConfirm,
   onClose,
 }: {
   title: string;
   detail: string;
+  confirmLabel?: string;
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -100,7 +102,7 @@ export function Confirm({
             })()
           }
         >
-          {busy ? 'Deleting…' : 'Delete'}
+          {busy ? 'Please wait…' : confirmLabel}
         </button>
       </div>
     </Modal>
@@ -129,12 +131,14 @@ export function Empty({
 export function PageHeader({
   eyebrow,
   title,
+  right,
   description,
   actions,
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  right?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
@@ -145,6 +149,7 @@ export function PageHeader({
         <p>{description}</p>
       </div>
       <div className="actions">{actions}</div>
+      {right}
     </header>
   );
 }
@@ -154,7 +159,7 @@ export function CopyButton({ text }: { text: string }) {
       className="text-button"
       onClick={() =>
         void attempt(async () => {
-          await navigator.clipboard.writeText(text);
+          await window.workspace.clipboard.writeText(text);
           useUI.setState({ notice: 'Copied to clipboard' });
         })
       }

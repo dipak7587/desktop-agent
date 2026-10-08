@@ -2,6 +2,7 @@ import { it, expect } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { ChatDatabase } from '../src/main/database/chat';
 import { settingsSchema } from '../src/shared/schemas';
 it('persists, searches, continues and cascade-deletes a conversation across restart', async () => {
@@ -36,6 +37,79 @@ it('clears every stored conversation and message', async () => {
   db.clear();
 
   expect(db.list()).toHaveLength(0);
+  db.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+it('persists workspace identity and reconnects conversations without deleting project files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'chat-workspace-test-'));
+  const file = join(root, 'app.sqlite');
+  let db = new ChatDatabase(file);
+  const firstConversation = db.create('local-model');
+  const workspace = db.connectCodeWorkspace(firstConversation.id, join(root, 'project'));
+  expect(workspace.permissions).toEqual({ rules: {} });
+  expect(workspace.allowedAgentIds).toBeUndefined();
+  expect(db.get(firstConversation.id).workspaceId).toBe(workspace.id);
+  expect(
+    db.setCodeWorkspaceAccess(workspace.id, {
+      allowedAgentIds: ['coder', 'reviewer', 'coder'],
+      allowedSkills: ['coding'],
+      allowedTools: ['filesystem.read'],
+      allowedMCPServers: ['filesystem'],
+      allowedKnowledgeBases: ['project-docs'],
+    }),
+  ).toMatchObject({
+    allowedAgentIds: ['coder', 'reviewer'],
+    allowedSkills: ['coding'],
+    allowedTools: ['filesystem.read'],
+    allowedMCPServers: ['filesystem'],
+    allowedKnowledgeBases: ['project-docs'],
+  });
+
+  db.close();
+  db = new ChatDatabase(file);
+  const secondConversation = db.create('local-model');
+  const reconnected = db.reconnectCodeWorkspace(workspace.id, secondConversation.id);
+  expect(reconnected.id).toBe(workspace.id);
+  expect(reconnected.allowedAgentIds).toEqual(['coder', 'reviewer']);
+  expect(db.get(secondConversation.id).workspaceId).toBe(workspace.id);
+
+  const relinked = db.relinkCodeWorkspace(
+    workspace.id,
+    firstConversation.id,
+    join(root, 'replacement-project'),
+  );
+  expect(relinked.id).toBe(workspace.id);
+  expect(relinked.canonicalPath).toBe(join(root, 'replacement-project'));
+  expect(relinked.permissions).toEqual({ rules: {} });
+  expect(relinked.allowedAgentIds).toBeUndefined();
+  expect(relinked.allowedSkills).toBeUndefined();
+  expect(relinked.allowedTools).toBeUndefined();
+  expect(relinked.allowedMCPServers).toBeUndefined();
+  expect(relinked.allowedKnowledgeBases).toBeUndefined();
+
+  db.removeCodeWorkspace(workspace.id);
+  expect(db.get(firstConversation.id).workspaceId).toBeNull();
+  expect(db.get(secondConversation.id).workspaceId).toBeNull();
+  expect(db.listCodeWorkspaces()).toHaveLength(0);
+  db.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+it('migrates conversations created before Code workspace support', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'chat-workspace-migration-'));
+  const file = join(root, 'app.sqlite');
+  const legacy = new DatabaseSync(file);
+  legacy.exec(`
+    CREATE TABLE conversations(id TEXT PRIMARY KEY,title TEXT NOT NULL,model TEXT NOT NULL,createdAt INTEGER NOT NULL,updatedAt INTEGER NOT NULL);
+    CREATE TABLE messages(id TEXT PRIMARY KEY,conversationId TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,role TEXT NOT NULL,content TEXT NOT NULL,createdAt INTEGER NOT NULL,metadata TEXT);
+    INSERT INTO conversations VALUES('legacy','Old chat','model',1,2);
+  `);
+  legacy.close();
+
+  const db = new ChatDatabase(file);
+  expect(db.get('legacy').workspaceId).toBeNull();
+  expect(db.listCodeWorkspaces()).toEqual([]);
   db.close();
   await rm(root, { recursive: true, force: true });
 });

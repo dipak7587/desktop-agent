@@ -1,0 +1,43 @@
+{
+  "id": "release-review",
+  "name": "Release review",
+  "description": "Inspect a project and summarize whether it is ready to release.",
+  "executionMode": "sequential",
+  "agents": [
+    {
+      "id": "review-stage",
+      "agentId": "release-reviewer",
+      "name": "Inspect project",
+      "prompt": "Review the project for release readiness. Task: {{task}}",
+      "position": {
+        "x": 120,
+        "y": 120
+      }
+    },
+    {
+      "id": "summary-stage",
+      "agentId": "release-review-summarizer",
+      "name": "Summarize review",
+      "prompt": "Summarize the previous review and make a release recommendation.",
+      "position": {
+        "x": 520,
+        "y": 120
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "review-stage",
+      "to": "summary-stage",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    }
+  ],
+  "maxDepth": 20,
+  "maxIterations": 20,
+  "createdAt": "2026-09-27T00:00:00.000Z",
+  "updatedAt": "2026-09-27T00:00:00.000Z"
+}

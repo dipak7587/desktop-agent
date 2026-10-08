@@ -22,9 +22,7 @@ test('provider selection, historical badges, agent overrides, and restart persis
       const chunks = [];
       for await (const c of req) chunks.push(c);
       const body = JSON.parse(Buffer.concat(chunks).toString());
-      const answer = body.messages.some((m: { content: string }) => m.content.includes('JSON'))
-        ? '{"final":"Agent answer"}'
-        : `Answer from ${body.model}`;
+      const answer = body.stream === false ? 'Agent answer' : `Answer from ${body.model}`;
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.end(
         JSON.stringify({ message: { role: 'assistant', content: answer }, done: true }) + '\n',
@@ -64,18 +62,38 @@ test('provider selection, historical badges, agent overrides, and restart persis
     await page
       .getByRole('button', { name: 'Test connection / Refresh models', exact: true })
       .click();
-    await expect(page.getByLabel('Default chat model').locator('option')).toHaveCount(3);
-    await page.getByLabel('Default chat model').selectOption('second-model');
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Connected · 2 models' }).first(),
+    ).toBeVisible();
+    await expect(page.getByLabel('Manual model ID', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Default chat model', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Embedding model ID', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Save provider', exact: true }).click();
     await expect(page.locator('article').filter({ hasText: 'Second Ollama' })).toContainText(
-      'second-model',
+      'No default model',
     );
     await expect(page.locator('article').filter({ hasText: 'Local Ollama' })).toContainText(
       'Application default',
     );
+    await page.getByRole('button', { name: 'General', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Knowledge retrieval' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'KBase', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Knowledge retrieval' })).toBeVisible();
+    await page.getByRole('button', { name: 'Refresh embedding models', exact: true }).click();
+    await page.getByLabel('Embedding model', { exact: true }).selectOption('second-model');
+    await page.getByLabel('Top K', { exact: true }).fill('7');
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const settings = await window.workspace.settings.get();
+          return { model: settings.embeddingModel, topK: settings.topK };
+        }),
+      )
+      .toEqual({ model: 'second-model', topK: 7 });
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
     await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Second Ollama' });
-    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await page.getByLabel('Model', { exact: true }).selectOption('second-model');
     await page.getByLabel('Message', { exact: true }).fill('Second question');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(page.locator('.message.assistant').last()).toContainText(
@@ -88,9 +106,12 @@ test('provider selection, historical badges, agent overrides, and restart persis
     await page.getByRole('button', { name: 'New agent', exact: true }).click();
     const modal = page.getByRole('dialog');
     await modal.getByLabel('Name', { exact: true }).fill('Provider agent');
+    await modal.getByLabel('Description', { exact: true }).fill('Agent for provider selection');
     await modal.getByLabel('Provider', { exact: true }).selectOption({ label: 'Second Ollama' });
+    await modal.getByLabel('Model', { exact: true }).selectOption('second-model');
     await modal.getByRole('button', { name: 'Save', exact: true }).click();
     const card = page.locator('.library-card').filter({ hasText: 'Provider agent' });
+    await card.locator('summary').click();
     await expect(card).toContainText('Second Ollama / second-model');
     await card.getByRole('button', { name: 'Open in Chat', exact: true }).click();
     await page.getByLabel('Model', { exact: true }).selectOption('first-model');
@@ -155,6 +176,60 @@ test('provider selection, historical badges, agent overrides, and restart persis
     await app.close();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a manually chosen model is reused for new chats and after reopening the app', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'remember-model-ui-'));
+  await writeFile(
+    join(root, 'settings.json'),
+    JSON.stringify({
+      providers: [
+        {
+          id: 'local',
+          name: 'Local',
+          provider: 'ollama',
+          ollamaUrl: 'http://127.0.0.1:1',
+          chatModel: '',
+          modelIds: ['first-model', 'second-model'],
+        },
+      ],
+      activeProviderId: 'local',
+    }),
+  );
+  const env = Object.fromEntries(
+    Object.entries({ ...process.env, LOCALAI_DATA_DIR: root }).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === 'string' && entry[0] !== 'ELECTRON_RUN_AS_NODE',
+    ),
+  );
+  let app = await electron.launch({ args: ['.'], env });
+  try {
+    let page = await app.firstWindow();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('');
+    await page.getByLabel('Model', { exact: true }).selectOption('second-model');
+    await expect
+      .poll(() =>
+        page.evaluate(async () => (await window.workspace.settings.get()).lastChatSelection),
+      )
+      .toEqual({ providerId: 'local', model: 'second-model' });
+    await page.getByRole('button', { name: 'New chat', exact: true }).click();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await expect
+      .poll(() => page.evaluate(async () => (await window.workspace.chat.list()).length))
+      .toBe(2);
+    await app.close();
+    app = await electron.launch({ args: ['.'], env });
+    page = await app.firstWindow();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await page.getByRole('button', { name: 'New chat', exact: true }).click();
+    await expect(page.getByLabel('Model', { exact: true })).toHaveValue('second-model');
+    await expect
+      .poll(() => page.evaluate(async () => (await window.workspace.chat.list()).length))
+      .toBe(3);
+  } finally {
+    await app.close();
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -1,7 +1,22 @@
 import { z } from 'zod';
 import { idSchema } from './schemas';
+import { validateDeclarative } from './declarative-workflows';
 
 export const workflowSchema = z.object({
+  definition: z
+    .unknown()
+    .transform((value, ctx) => {
+      try {
+        return validateDeclarative(value, 100);
+      } catch (error) {
+        ctx.addIssue({
+          code: 'custom',
+          message: error instanceof Error ? error.message : 'Invalid workflow definition',
+        });
+        return z.NEVER;
+      }
+    })
+    .optional(),
   id: idSchema,
   name: z.string().trim().min(1).max(200),
   description: z.string().max(2000).default(''),
@@ -16,7 +31,6 @@ export const workflowSchema = z.object({
         position: z.object({ x: z.number().finite(), y: z.number().finite() }).optional(),
       }),
     )
-    .min(1)
     .max(100),
   connections: z
     .array(
@@ -61,15 +75,18 @@ export interface WorkflowRun {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  result?: unknown;
 }
 export const workflowRunInputSchema = z.object({
   workflowId: idSchema,
   task: z.string().max(20000).default(''),
   project: z.string().max(4096).optional(),
+  input: z.record(z.string(), z.unknown()).optional(),
 });
 export type WorkflowRunInput = z.infer<typeof workflowRunInputSchema>;
 
 export function workflowEdges(workflow: AgentWorkflow) {
+  if (workflow.definition) return [];
   if (workflow.executionMode === 'parallel') return [];
   if (workflow.executionMode === 'sequential')
     return workflow.agents.slice(1).map((node, i) => ({
@@ -84,6 +101,13 @@ export function workflowEdges(workflow: AgentWorkflow) {
 }
 export function validateWorkflow(input: unknown): AgentWorkflow {
   const workflow = workflowSchema.parse(input);
+  if (workflow.definition) {
+    validateDeclarative(workflow.definition, workflow.maxDepth);
+    if (workflow.agents.length || workflow.connections.length)
+      throw new Error('Declarative workflows cannot also contain graph nodes.');
+    return workflow;
+  }
+  if (!workflow.agents.length) throw new Error('Add at least one agent.');
   const nodes = new Map(workflow.agents.map((n) => [n.id, n]));
   if (nodes.size !== workflow.agents.length) throw new Error('Workflow node IDs must be unique.');
   const pairs = new Set<string>();

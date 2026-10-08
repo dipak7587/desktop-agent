@@ -1,3 +1,5 @@
+import { capabilityConfig } from '../src/shared/capabilities';
+import { useProviderBridge } from './fixtures/scripted-provider';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -146,6 +148,34 @@ it('persists file definitions, duplicates them, and keeps history after deletion
   ).toBe('completed');
   expect(await definitions.list()).toHaveLength(1);
 });
+it('clears persisted workflow history while preserving definitions and protecting active runs', async () => {
+  await definitions.save(definition());
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const agents = {
+    runWorkflowNode: async ({ agentId }: { agentId: string }) => {
+      await gate;
+      return child(agentId);
+    },
+  };
+  const service = new WorkflowService(definitions, agents, store, () => {});
+  const id = await service.run({ workflowId: 'quality', task: '' });
+  try {
+    expect(() => service.clearRuns()).toThrow(/Stop all active workflows/);
+    expect(store.list()).toHaveLength(1);
+  } finally {
+    release();
+  }
+  await finished(service, id);
+  service.clearRuns();
+  expect(service.runs()).toEqual([]);
+  expect(store.list()).toEqual([]);
+  expect(new WorkflowService(definitions, agents, store, () => {}).runs()).toEqual([]);
+  expect(await definitions.get('quality')).toMatchObject({ name: 'Code quality' });
+  expect(() => service.clearRuns()).not.toThrow();
+});
 it('runs a fork concurrently, waits for both branches, maps structured output and keeps source identities', async () => {
   const w = definition();
   w.connections[2].inputMapping = { sourceOutput: 'result.from', targetInput: 'prompt' };
@@ -244,9 +274,10 @@ it('uses the actual bounded agent runtime, preserves individual history, and run
   await definitions.save(definition('sequential'));
   const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 3 });
   const llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
   vi.spyOn(llm, 'complete').mockResolvedValue({
     role: 'assistant',
-    content: JSON.stringify({ final: 'Reviewed' }),
+    content: 'Reviewed',
   });
   const mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
   const kb = new KnowledgeService(
@@ -344,6 +375,7 @@ it('queues a fourth child behind the real three-agent limit and cancels queued c
   await definitions.save(definition('parallel'));
   const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 3 });
   const llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
   let calls = 0;
   vi.spyOn(llm, 'complete').mockImplementation(async (request) => {
     calls++;
@@ -352,7 +384,7 @@ it('queues a fourth child behind the real three-agent limit and cancels queued c
         once: true,
       }),
     );
-    return { role: 'assistant', content: '{"final":"done"}' };
+    return { role: 'assistant', content: 'done' };
   });
   const mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
   const kb = new KnowledgeService(
@@ -374,6 +406,131 @@ it('queues a fourth child behind the real three-agent limit and cancels queued c
     expect(agents.runs().every((r) => r.status === 'Cancelled')).toBe(true);
   } finally {
     await service.stopAll();
+    await agents.stopAll();
+  }
+});
+
+it('persists and executes declarative tool/agent workflows with dynamic history and chat output', async () => {
+  await definitions.save({
+    ...definition(),
+    agents: [],
+    connections: [],
+    definition: {
+      name: 'Code quality',
+      inputs: { target: { type: 'string', default: 'repo' } },
+      config: { defaultAgent: 'a' },
+      steps: [
+        { id: 'fetch', type: 'tool', tool: 'filesystem.read', input: { path: '{{input.target}}' } },
+        { id: 'review', type: 'agent', agent: 'b', input: '{{steps.fetch.output}}' },
+      ],
+    },
+  });
+  const calls: unknown[] = [];
+  const service = new WorkflowService(
+    definitions,
+    {
+      runWorkflowNode: async (input) => {
+        calls.push(input);
+        return child(input.agentId);
+      },
+    },
+    store,
+    () => {},
+  );
+  const result = await service.runInChat(
+    { workflowId: 'quality', task: 'Review' },
+    new AbortController().signal,
+    () => {},
+  );
+  expect(result).toContain('"from": "b"');
+  expect(calls[0]).toMatchObject({
+    agentId: 'a',
+    tool: { id: 'filesystem.read', input: { path: 'repo' } },
+  });
+  expect(calls[1]).toMatchObject({ agentId: 'b', task: expect.stringContaining('"from":"a"') });
+  expect(store.list()[0].nodes.map((node) => node.nodeId)).toEqual(['steps.fetch', 'steps.review']);
+  expect(store.list()[0].nodes.every((node) => node.status === 'completed' && node.runId)).toBe(
+    true,
+  );
+  await expect(
+    service.run({ workflowId: 'quality', task: '', input: { target: 12 } }),
+  ).rejects.toThrow(/must be string/);
+});
+
+it('executes declared tools through actual capability permissions and records rejected calls', async () => {
+  const agent = await library.get('agents', 'a');
+  await library.save('agents', { ...agent, tools: ['filesystem.exists'] });
+  const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 3 });
+  const llm = new OllamaLLMProvider(settings);
+  useProviderBridge(llm);
+  vi.spyOn(llm, 'complete').mockResolvedValue({
+    role: 'assistant',
+    content: JSON.stringify({
+      relevant: true,
+      necessary: true,
+      canAnswerDirectly: false,
+      userForbids: false,
+    }),
+  });
+  const mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
+  const kb = new KnowledgeService(
+    root,
+    settings,
+    { embed: async () => [], embedBatch: async () => [] },
+    () => {},
+  );
+  const agents = new AgentService(library, llm, kb, mcp, settings, () => {});
+  try {
+    const run = await agents.runWorkflowNode(
+      {
+        agentId: 'a',
+        task: 'Check whether the file exists',
+        project: root,
+        tool: { id: 'filesystem.exists', input: { path: 'missing.txt' } },
+      },
+      new AbortController().signal,
+      () => {},
+    );
+    expect(run.error).toBeUndefined();
+    expect(run.status).toBe('Completed');
+    expect(run.tools[0]).toMatchObject({ toolId: 'filesystem.exists', status: 'completed' });
+    const rejected = await agents.runWorkflowNode(
+      {
+        agentId: 'a',
+        task: 'Write file',
+        project: root,
+        tool: { id: 'filesystem.write', input: { path: 'unsafe.txt', content: 'test' } },
+      },
+      new AbortController().signal,
+      () => {},
+    );
+    expect(rejected.status).toBe('Failed');
+    expect(rejected.error).toContain('not permitted');
+    expect(rejected.tools).toHaveLength(0);
+    const configured = await library.get('agents', 'a');
+    await library.save('agents', {
+      ...configured,
+      capabilityConfig: {
+        ...capabilityConfig(configured),
+        permissions: { 'filesystem.exists': 'ask' },
+      },
+    });
+    const denied = await agents.runWorkflowNode(
+      {
+        agentId: 'a',
+        task: 'Check existence',
+        project: root,
+        tool: { id: 'filesystem.exists', input: { path: 'missing.txt' } },
+      },
+      new AbortController().signal,
+      (event) => {
+        if (event.approval) agents.approve(event.approval.id, false);
+      },
+    );
+    expect(denied.status).toBe('Failed');
+    expect(denied.tools[0].error).toContain('rejected');
+    expect(llm.complete).not.toHaveBeenCalled();
+  } finally {
     await agents.stopAll();
   }
 });

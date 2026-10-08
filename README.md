@@ -45,6 +45,7 @@ Each sidebar menu has a dedicated guide:
 | Agents         | [AGENTS.md](docs/AGENTS.md)                 |
 | Knowledge Base | [KNOWLEDGE_BASE.md](docs/KNOWLEDGE_BASE.md) |
 | Settings       | [SETTINGS.md](docs/SETTINGS.md)             |
+| Memory         | [MEMORY.md](docs/MEMORY.md)                 |
 
 Saved Text is automatically indexed into RAG. To answer questions using it, choose
 **Collection: Saved Text** or **All knowledge** in Chat. The default **No knowledge context**
@@ -71,7 +72,8 @@ does not retrieve saved notes.
   tool output and verification. Persistent accordion history shows timing, iteration usage,
   tools, results and status. Agents support confirmed bulk deletion. Model capability determines task quality.
 - **Settings:** add/edit provider configurations, discover or register models, chunking, ignore patterns, theme, execution bounds,
-  OS-encrypted credentials, and an explicitly selected `.env` file.
+  OS-encrypted credentials, an explicitly selected `.env` file, long-term memory switches, and the agent engine
+  (LangChain `createAgent` or Deep Agents mode). See [Memory](docs/MEMORY.md).
 
 Cmd/Ctrl+K opens global search. Cmd/Ctrl+N creates a chat. Escape cancels active chat/agent
 work. The main sidebar collapses; the conversation sidebar can be resized from its corner.
@@ -97,7 +99,9 @@ If an IDE exports `ELECTRON_RUN_AS_NODE=1`, clear that variable when launching E
 
 ## Data and privacy
 
-The exact data directory is shown at the bottom of Settings. It is Electron's `userData`
+The exact data directory is shown at the bottom of Settings. By default it is
+`~/.local-ai-workspace` (for example, `/Users/your-name/.local-ai-workspace` on macOS).
+It is Electron's `userData`
 directory, never the project repository. Definitions are portable Markdown/JSON files.
 Chat and agent run history use SQLite; vectors use local LanceDB. Provider metadata lives in
 `config/providers.json`, separate from encrypted credentials. Hosted inference sends conversation
@@ -112,8 +116,7 @@ page; there is no automatic crawler or JavaScript browser execution.
 
 This is a functional initial desktop implementation, not a signed public release. macOS is
 the verified platform; Windows/Linux packaging targets are configured but need native QA.
-English is the current UI language. MCP supports stdio transports. Agents use a bounded
-JSON-action loop, approve changes individually, and do literal content search rather than
+English is the current UI language. MCP supports stdio transports. Agents use LangChain native tool calling with a bounded model-turn limit, approve changes individually, and do literal content search rather than
 AST/symbol indexing. Built-in tools restrict commands; user-authored Tools and MCP servers
 are trusted code with the current user’s privileges, not an OS sandbox. Custom code runs as
 JavaScript, without TypeScript transpilation. There is no separate agent-generation workflow.
@@ -126,8 +129,25 @@ uses a bounded recent-history window, not automatic conversation summarization.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEVELOPMENT.md](docs/DEVELOPMENT.md),
 [RAG.md](docs/RAG.md), [TOOLS.md](docs/TOOLS.md), [AGENTS.md](docs/AGENTS.md), [MCP.md](docs/MCP.md), [SKILLS.md](docs/SKILLS.md),
-[SECURITY.md](docs/SECURITY.md), and [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
+[SECURITY.md](docs/SECURITY.md), [MEMORY.md](docs/MEMORY.md), and [IMPLEMENTATION.md](docs/IMPLEMENTATION.md).
 
 Agents support Auto, Selected and None capability modes, per-type switches and per-capability
 permissions. Skills, MCP tools, custom/built-in tools and knowledge searches pass through a
 central relevance and permission check. See [Capability decisions](docs/CAPABILITIES.md).
+
+See [LangChain migration](docs/LANGCHAIN_MIGRATION.md) for the current AI architecture and validation scope.
+
+Environment references are resolved at execution time from stored credentials, the environment
+file selected in Settings, then the app process environment (in that order). Use `${NAME}`
+in MCP URLs, headers, commands, arguments, working directories, and explicit `env` entries;
+API tool URLs and headers; and agent or skill instruction text. Embedded references such as
+`Bearer ${API_TOKEN}` are supported. Missing variables produce an error; saved and exported
+definitions retain their placeholders. Resolved MCP/API URLs must still be HTTP(S) URLs
+without embedded credentials.
+
+JavaScript/TypeScript tools read the selected environment file through `process.env.NAME`.
+A tool's `env` metadata can also map a variable explicitly, for example
+`"env": { "API_TOKEN": "${MY_API_TOKEN}" }`; these entries override the selected file.
+Source code is not interpolated. Environment references in agent and skill instructions
+become part of the prompt sent to the selected model, so use those for configuration text;
+keep authentication values in tool environments or MCP headers.

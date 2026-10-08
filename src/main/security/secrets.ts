@@ -7,6 +7,7 @@ export class SecretStore {
   private values: Record<string, string> = {};
   private environment: Record<string, string | undefined> = {};
   private environmentError = '';
+  private resolvedValues = new Set<string>();
   constructor(private root: string) {}
   async init() {
     this.values = await readJSON(join(this.root, 'credentials.json'), {});
@@ -64,12 +65,18 @@ export class SecretStore {
       return safeStorage.decryptString(Buffer.from(this.values[name], 'base64'));
     }
     const value = this.environment[name] ?? process.env[name];
-    if (!value)
+    if (value === undefined)
       throw new Error(
         this.environmentError ||
           `Environment variable or stored credential ${name} is not configured`,
       );
+    this.resolvedValues.add(value);
     return value;
+  }
+  executionEnvironment(): Record<string, string> {
+    return Object.fromEntries(
+      Object.keys(this.environment).map((name) => [name, this.resolve(name)]),
+    );
   }
   redact(text: string) {
     let result = text;
@@ -81,6 +88,8 @@ export class SecretStore {
         result = '[Output unavailable: credential store locked]';
       }
     }
+    for (const value of this.resolvedValues)
+      if (value) result = result.split(value).join('[REDACTED]');
     return result;
   }
 }

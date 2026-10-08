@@ -1,4 +1,4 @@
-import type { AgentCapabilityConfig, LibraryItem } from './types';
+import type { AgentCapabilityConfig, AgentConfig, LibraryItem } from './types';
 
 // Old definitions retain their exact tool selections, including individual MCP tools.
 export function capabilityConfig(agent: LibraryItem): AgentCapabilityConfig {
@@ -17,4 +17,21 @@ export function capabilityConfig(agent: LibraryItem): AgentCapabilityConfig {
       trace: false,
     }
   );
+}
+
+export function agentConfig(agent: LibraryItem): AgentConfig {
+  const capabilities = capabilityConfig(agent);
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    model: agent.model,
+    enabled: agent.enabled,
+    skills: [...capabilities.skills],
+    tools: [...capabilities.tools],
+    mcpServers: [...capabilities.mcpServers],
+    knowledgeBases: [...capabilities.knowledgeBases],
+    memory: [...(agent.memory ?? [])],
+    hooks: [...(agent.hooks ?? [])],
+  };
 }

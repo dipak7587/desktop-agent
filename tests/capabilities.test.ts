@@ -1,3 +1,4 @@
+import { useProviderBridge, toolReply } from './fixtures/scripted-provider';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -147,7 +148,9 @@ it('fails closed on malformed decisions and respects semantic user restrictions'
   const engine = new CapabilityDecisionEngine(async () => {
     throw new Error('offline');
   });
-  expect((await engine.decide('Request', skill, config)).shouldCall).toBe(false);
+  const decision = await engine.decide('Request', skill, config);
+  expect(decision.shouldCall).toBe(false);
+  expect(decision.reason).toContain('offline');
 });
 it('rejects denied permissions even when a specific permission says allow', async () => {
   const engine = new CapabilityDecisionEngine(async () => yes);
@@ -214,7 +217,7 @@ it('model evaluator sends the policy, request and bounded context and validates 
   const chat = vi.fn(async function* () {
     yield { message: { content: JSON.stringify(no) } };
   });
-  const evaluate = modelEvaluator({ chat, listModels: async () => [] }, 'test');
+  const evaluate = modelEvaluator(useProviderBridge({ chat, listModels: async () => [] }), 'test');
   expect(await evaluate('What is React?', kb, {})).toEqual(no);
   expect(chat.mock.calls[0]).toBeDefined();
 });
@@ -226,6 +229,7 @@ it.each(['none', 'selected'] as const)(
     const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 5 });
     const library = new LibraryService(root);
     const llm = new OllamaLLMProvider(settings);
+    useProviderBridge(llm);
     const knowledge = new KnowledgeService(
       root,
       settings,
@@ -254,10 +258,10 @@ it.each(['none', 'selected'] as const)(
       yield { message: { content: JSON.stringify(yes) } };
     });
     vi.spyOn(llm, 'complete')
-      .mockResolvedValueOnce({ role: 'assistant', content: '{"tool":"skill:code-review"}' })
-      .mockResolvedValueOnce({ role: 'assistant', content: '{"tool":"knowledge:carbon"}' })
-      .mockResolvedValueOnce({ role: 'assistant', content: '{"tool":"filesystem.list"}' })
-      .mockResolvedValue({ role: 'assistant', content: '{"final":"Done"}' });
+      .mockResolvedValueOnce(toolReply('skill:code-review'))
+      .mockResolvedValueOnce(toolReply('knowledge:carbon'))
+      .mockResolvedValueOnce(toolReply('filesystem.list'))
+      .mockResolvedValue({ role: 'assistant', content: 'Done' });
     const service = new AgentService(library, llm, knowledge, mcp, settings, () => {}, tools);
     try {
       await library.save(
@@ -289,7 +293,8 @@ it.each(['none', 'selected'] as const)(
       });
       await expect.poll(() => service.runs().find((r) => r.id === id)?.status).toBe('Completed');
       const run = service.runs()[0];
-      expect(search).toHaveBeenCalledTimes(mode === 'none' ? 0 : 1);
+      // Initial RAG attachment, then the model-requested follow-up KB tool call.
+      expect(search).toHaveBeenCalledTimes(mode === 'none' ? 0 : 2);
       expect(execute).toHaveBeenCalledTimes(mode === 'none' ? 0 : 1);
       expect(classify).toHaveBeenCalledTimes(mode === 'none' ? 0 : 3);
       expect(JSON.stringify(run)).toContain('Capability Decision');

@@ -24,10 +24,12 @@ it('saved text is indexed, replaced on edit and removed on deletion without embe
   );
   await kb.init();
   const library = new LibraryService(root, () => kb.syncSavedText());
+  await kb.syncSavedText();
   const settle = async () => {
     await expect.poll(() => kb.list().find((s) => s.id === 'saved-text')?.status).toBe('ready');
   };
   try {
+    expect(kb.list().find((source) => source.id === 'saved-text')?.group).toBe('Built-in');
     const item = librarySchema.parse({
       id: 'note',
       name: 'Release handbook',
@@ -71,14 +73,16 @@ it('folder sources index only Markdown and TXT files, recursively', async () => 
     await writeFile(join(docs, 'nested', 'NOTES.TXT'), 'textword');
     for (const ext of ['json', 'yaml', 'yml', 'csv', 'js', 'pdf'])
       await writeFile(join(docs, `ignored.${ext}`), 'excludedword');
-    await kb.add('folder', docs);
+    await kb.add('folder', docs, 'Documentation used by the indexing test');
     const id = kb.list()[0].id;
     await kb.sync(id);
     await expect.poll(() => kb.list()[0].status).toBe('ready');
     expect(kb.list()[0].documentCount).toBe(2);
     expect(await kb.search('excludedword', 'keyword')).toEqual([]);
     expect(await kb.search('textword', 'keyword')).toHaveLength(1);
-    await expect(kb.add('file', join(docs, 'ignored.json'))).rejects.toThrow('supported text');
+    await expect(
+      kb.add('file', join(docs, 'ignored.json'), 'Unsupported document fixture'),
+    ).rejects.toThrow('supported text');
   } finally {
     await kb.stopAll();
     await rm(root, { recursive: true, force: true });
@@ -104,6 +108,41 @@ it('retains saved text when no embedding model is configured', async () => {
     await expect.poll(() => kb.list()[0]?.status).toBe('error');
     expect((await library.get('saved-text', 'offline-note')).content).toBe('Keep this note');
     expect(kb.list()[0].error).toContain('embedding model');
+  } finally {
+    await kb.stopAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('requires reindexing after changing the shared embedding model and searches after reindexing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'embedding-change-'));
+  const docs = join(root, 'docs');
+  await mkdir(docs);
+  await writeFile(join(docs, 'note.md'), 'sharedembeddingword');
+  let model = 'old-embedding';
+  const kb = new KnowledgeService(
+    root,
+    () => settingsSchema.parse({ embeddingModel: model }),
+    {
+      embed: async () => [1, 2, 3],
+      embedBatch: async (texts) => texts.map(() => [1, 2, 3]),
+    },
+    () => {},
+  );
+  await kb.init();
+  try {
+    await kb.add('folder', docs, 'Documentation used by the embedding test');
+    const id = kb.list()[0].id;
+    await kb.sync(id);
+    await expect.poll(() => kb.list()[0].status).toBe('ready');
+    model = 'new-embedding';
+    await expect(kb.search('sharedembeddingword', 'semantic', id)).rejects.toThrow(
+      'Settings > KBase',
+    );
+    await kb.sync(id);
+    await expect.poll(() => kb.list()[0].status).toBe('ready');
+    expect(kb.list()[0].embeddingModel).toBe('new-embedding');
+    expect(await kb.search('sharedembeddingword', 'semantic', id)).toHaveLength(1);
   } finally {
     await kb.stopAll();
     await rm(root, { recursive: true, force: true });

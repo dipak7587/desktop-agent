@@ -4,11 +4,70 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { librarySchema, settingsSchema } from '../src/shared/schemas';
+import { validateHookSource } from '../src/main/services/tools/typescript';
+it.each(['agents', 'mcp', 'skills', 'tools', 'saved-text'] as const)(
+  'persists portable groups for %s without changing definitions',
+  async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), 'library-groups-'));
+    const library = new LibraryService(root);
+    try {
+      const builtInGroups = kind === 'saved-text' ? [] : ['Built-in'];
+      const original = await library.save(
+        kind,
+        librarySchema.parse({
+          id: 'one',
+          name: 'One',
+          description: 'Group fixture',
+          content: kind === 'mcp' ? '' : 'return input;',
+          env: { TOKEN: '${TOKEN}' },
+          tools: ['filesystem.read'],
+          toolConfig: kind === 'tools' ? { type: 'javascript', parameters: [] } : undefined,
+        }),
+      );
+      await library.save(kind, { ...original, id: 'two', name: 'Two' });
+      await expect(library.setGroup(kind, ['one', 'missing'], 'Video')).rejects.toThrow();
+      expect((await library.get(kind, 'one')).group).toBe('');
+      await library.setGroup(kind, ['one', 'two'], '  Video Studio  ');
+      const reloaded = new LibraryService(root);
+      expect((await reloaded.list(kind)).map((item) => item.group)).toEqual([
+        'Video Studio',
+        'Video Studio',
+      ]);
+      const updated = await reloaded.get(kind, 'one');
+      expect(updated).toEqual({ ...original, group: 'Video Studio', updatedAt: updated.updatedAt });
+      expect(reloaded.parse(kind, reloaded.serialize(kind, updated), 'imported').group).toBe(
+        'Video Studio',
+      );
+      await reloaded.setGroup(kind, ['one'], 'Research');
+      expect((await reloaded.get(kind, 'one')).group).toBe('Research');
+      expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
+      await reloaded.setGroup(kind, ['two'], 'Research');
+      expect(await reloaded.groups(kind)).toEqual([...builtInGroups, 'Research', 'Video Studio']);
+      await reloaded.setGroup(kind, ['two'], 'Video Studio');
+      await reloaded.setGroup(kind, ['one'], '');
+      expect((await reloaded.get(kind, 'one')).group).toBe('');
+      expect((await reloaded.get(kind, 'two')).group).toBe('Video Studio');
+      expect(await reloaded.groups(kind)).toEqual([...builtInGroups, 'Research', 'Video Studio']);
+      await reloaded.deleteGroup(kind, 'Research');
+      expect(await reloaded.groups(kind)).toEqual([...builtInGroups, 'Video Studio']);
+      await expect(reloaded.deleteGroup(kind, 'Built-in')).rejects.toThrow(
+        'The Built-in group cannot be deleted.',
+      );
+      await expect(reloaded.renameGroup(kind, 'Built-in', 'System')).rejects.toThrow(
+        'The Built-in group cannot be renamed.',
+      );
+      await expect(reloaded.setGroup(kind, ['../outside'], 'Video')).rejects.toThrow();
+      await expect(reloaded.setGroup(kind, ['one'], 'x'.repeat(101))).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 it('round trips saved text and skills as portable markdown, with edits and delete', async () => {
   const root = await mkdtemp(join(tmpdir(), 'library-'));
   const lib = new LibraryService(root);
   for (const kind of ['saved-text', 'skills', 'agents', 'mcp'] as const) {
-    await mkdir(join(root, kind));
+    await mkdir(join(root, kind), { recursive: true });
     const item = librarySchema.parse({
       id: 'example',
       name: 'Example',
@@ -27,6 +86,59 @@ it('round trips saved text and skills as portable markdown, with edits and delet
     expect(await lib.list(kind)).toEqual([]);
   }
   await rm(root, { recursive: true, force: true });
+});
+it('stores Hooks as valid TypeScript with only Hook metadata', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'library-hooks-'));
+  try {
+    const library = new LibraryService(root);
+    const hook = librarySchema.parse({
+      id: 'review-hook',
+      name: 'Review hook',
+      description: 'A hook for reviews',
+      group: 'Reviews',
+      hookType: 'success',
+      providerId: 'ollama-local',
+      model: 'unused',
+      hooks: ['another-hook'],
+      content: 'export default async function hook() {}',
+    });
+
+    await library.save('hooks', hook);
+    const source = await readFile(library.path('hooks', hook.id), 'utf8');
+    expect(source).toMatch(/^\/\/ @localai-hook /);
+    expect(source).not.toContain('providerId');
+    expect(source).not.toContain('"hooks"');
+    expect(source).not.toContain('\n---\n');
+    expect(() => validateHookSource(source)).not.toThrow();
+    expect(await library.get('hooks', hook.id)).toMatchObject({
+      id: hook.id,
+      name: hook.name,
+      description: hook.description,
+      group: hook.group,
+      hookType: hook.hookType,
+      content: hook.content,
+    });
+    expect(library.parse('hooks', source, 'imported-hook')).toMatchObject({
+      id: 'imported-hook',
+      name: hook.name,
+      hookType: hook.hookType,
+      content: hook.content,
+    });
+
+    const legacy = library.parse(
+      'hooks',
+      '---\nname: Legacy hook\nhookType: error\n---\nexport default async function hook() {}',
+      'legacy-hook',
+    );
+    expect(legacy).toMatchObject({
+      id: 'legacy-hook',
+      name: 'Legacy hook',
+      hookType: 'error',
+      content: 'export default async function hook() {}',
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 it('rejects path traversal, invalid environment names and invalid chunking', () => {
   expect(() => librarySchema.parse({ id: '../outside', name: 'Bad' })).toThrow();
@@ -52,5 +164,36 @@ it('accepts execution iteration limits through 500 for settings and agents', () 
   for (const maxIterations of [0, 501, 1.5]) {
     expect(() => settingsSchema.parse({ maxIterations })).toThrow();
     expect(() => librarySchema.parse({ id: 'agent', name: 'Agent', maxIterations })).toThrow();
+  }
+});
+it('persists Chat selection and per-agent resource and memory configuration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'library-agent-config-'));
+  try {
+    const library = new LibraryService(root);
+    const agent = librarySchema.parse({
+      id: 'configured-agent',
+      name: 'Configured agent',
+      selectedForChat: false,
+      memory: ['Use concise answers.'],
+      capabilityConfig: {
+        mode: 'selected',
+        skills: ['coding'],
+        tools: ['filesystem.read'],
+        mcpServers: ['filesystem'],
+        knowledgeBases: ['project-docs'],
+      },
+    });
+    await library.save('agents', agent);
+    const loaded = await new LibraryService(root).get('agents', agent.id);
+    expect(loaded.selectedForChat).toBe(false);
+    expect(loaded.memory).toEqual(['Use concise answers.']);
+    expect(loaded.capabilityConfig).toMatchObject({
+      skills: ['coding'],
+      tools: ['filesystem.read'],
+      mcpServers: ['filesystem'],
+      knowledgeBases: ['project-docs'],
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

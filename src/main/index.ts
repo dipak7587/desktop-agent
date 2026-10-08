@@ -5,9 +5,14 @@ import { ProviderRouter } from './services/providers/router';
 import { CustomToolService } from './services/tools/custom';
 import { AgentRunDatabase } from './database/agent-runs';
 import { app, BrowserWindow, session, dialog } from 'electron';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, appendFile, readdir } from 'node:fs/promises';
+import { readBuiltInDefaults } from './services/filesystem/built-in';
 import { SettingsService } from './services/settings/settings';
+import { MemoryService } from './services/ai/memory';
+import { DeepAgentEngine } from './services/ai/deep-agents';
+import { CheckpointDatabase } from './database/checkpoints';
 import {
   createEmbeddingProvider,
   createLLMProvider,
@@ -26,8 +31,11 @@ import type { AppEvent } from '../shared/types';
 let window: BrowserWindow | null = null;
 let services: Services | undefined;
 let quitting = false;
-if (process.env.LOCALAI_DATA_DIR && !app.isPackaged)
-  app.setPath('userData', process.env.LOCALAI_DATA_DIR);
+// Keep workspace data in a predictable user-owned directory. Tests and local
+// development can still override it with LOCALAI_DATA_DIR.
+const configuredDataRoot = process.env.LOCALAI_DATA_DIR;
+if (configuredDataRoot && !app.isPackaged) app.setPath('userData', configuredDataRoot);
+else app.setPath('userData', join(homedir(), '.local-ai-workspace'));
 const root = app.getPath('userData');
 async function log(error: unknown) {
   await mkdir(join(root, 'logs'), { recursive: true });
@@ -80,8 +88,18 @@ app
     session.defaultSession.setPermissionCheckHandler(() => false);
     const secrets = new SecretStore(root);
     await secrets.init();
-    const settings = new SettingsService(root, secrets, () =>
-      new LibraryService(root).list('agents'),
+    const builtInRoot = join(app.getAppPath(), 'built-in');
+    const library: LibraryService = new LibraryService(
+      root,
+      () => knowledge.syncSavedText(),
+      secrets,
+    );
+    await library.loadBuiltIns(builtInRoot);
+    const settings = new SettingsService(
+      root,
+      secrets,
+      () => library.list('agents'),
+      await readBuiltInDefaults(builtInRoot),
     );
     await settings.init();
     app.setName(settings.get().appName);
@@ -97,9 +115,8 @@ app
     };
     const db = new ChatDatabase(join(root, 'database', 'app.sqlite'));
     db.migrateProviders(settings.get().activeProviderId);
-    const library = new LibraryService(root, () => knowledge.syncSavedText());
     for (const agent of await library.list('agents')) {
-      if (!agent.providerId && settings.get().activeProviderId)
+      if (!agent.builtIn && !agent.providerId && settings.get().activeProviderId)
         await library.save('agents', {
           ...agent,
           providerId: settings.get().activeProviderId,
@@ -116,6 +133,7 @@ app
     };
     const knowledge = new KnowledgeService(root, getSettings, embeddings, emit);
     await knowledge.init();
+    await knowledge.loadBuiltIns(join(builtInRoot, 'kb'));
     if (
       (await readdir(join(root, 'saved-text'))).some((name) => name.endsWith('.md')) ||
       knowledge.list().some((source) => source.id === 'saved-text')
@@ -124,6 +142,14 @@ app
     const mcp = new MCPService(library, secrets, emit);
     const customTools = new CustomToolService(library, secrets, () => getSettings().commandTimeout);
     const runDb = new AgentRunDatabase(join(root, 'database', 'agent-runs.sqlite'));
+    const checkpoints = new CheckpointDatabase(join(root, 'database', 'checkpoints.sqlite'));
+    const memory = new MemoryService(
+      join(root, 'database'),
+      getSettings,
+      llm,
+      () => getSettings().chatModel,
+      () => knowledge.list(),
+    );
     const agents = new AgentService(
       library,
       llm,
@@ -136,6 +162,10 @@ app
       runDb,
       (text) => secrets.redact(text),
       providers,
+      new DeepAgentEngine(),
+      checkpoints,
+      memory,
+      (project) => db.listCodeWorkspaces().find((workspace) => workspace.canonicalPath === project),
     );
     const workflowDb = new WorkflowRunDatabase(join(root, 'database', 'workflow-runs.sqlite'));
     const workflows = new WorkflowService(
@@ -155,6 +185,8 @@ app
       (text) => secrets.redact(text),
       () => knowledge.list(),
       providers,
+      memory,
+      { checkpointer: checkpoints },
     );
     services = {
       workflows,
@@ -172,6 +204,8 @@ app
       secrets,
       customTools,
       runDb,
+      memory,
+      checkpoints,
     };
     registerIPC(services, () => window);
     createWindow();
@@ -202,6 +236,7 @@ app.on('before-quit', (event) => {
         services.mcp.stopAll(),
       ]);
       services.customTools.stopAll();
+      services.checkpoints?.close();
       services.workflowDb.close();
       services.runDb.close();
       services.db.close();

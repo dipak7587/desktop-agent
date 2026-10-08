@@ -31,9 +31,12 @@ export class SettingsService {
     readonly root: string,
     private secrets?: ProviderSecrets,
     private listAgents: () => Promise<Pick<LibraryItem, 'name' | 'providerId'>[]> = async () => [],
+    private bundledDefaults: Partial<Settings> = {},
   ) {}
   async init() {
-    const loaded = settingsSchema.parse(await readJSON(join(this.root, 'settings.json'), {}));
+    const loaded = settingsSchema.parse(
+      await readJSON(join(this.root, 'settings.json'), this.bundledDefaults),
+    );
     const registry = await readJSON<unknown>(join(this.root, 'config', 'providers.json'), null);
     if (registry) {
       const saved = registrySchema.parse(registry);
@@ -103,6 +106,9 @@ export class SettingsService {
   save(input: Settings): Promise<Settings> {
     return this.exclusive(async () => {
       const value = settingsSchema.parse(input);
+      // General settings forms may have opened before the latest Chat selection.
+      // This preference is changed through its dedicated operation.
+      value.lastChatSelection = this.value.lastChatSelection;
       const removed = this.value.providers.filter(
         (p) => !value.providers.some((next) => next.id === p.id),
       );
@@ -142,6 +148,16 @@ export class SettingsService {
       await this.persist(value);
       this.value = value;
       this.revision++;
+      return this.get();
+    });
+  }
+  rememberChatSelection(providerId: string, model: string): Promise<Settings> {
+    return this.exclusive(async () => {
+      this.validateSelection(providerId, model);
+      const value = this.get();
+      value.lastChatSelection = { providerId, model };
+      await this.persist(value);
+      this.value = value;
       return this.get();
     });
   }

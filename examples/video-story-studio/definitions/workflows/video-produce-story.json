@@ -1,0 +1,154 @@
+{
+  "id": "video-produce-story",
+  "name": "Video 2 · Produce selected story",
+  "description": "Paste your chosen story section with its source URL → story, characters, narration, Flow prompts and saved production pack.",
+  "executionMode": "mixed",
+  "agents": [
+    {
+      "id": "story",
+      "agentId": "video-story-writer",
+      "name": "Detailed story",
+      "prompt": "Perform your assigned role for the current task using all required upstream results. Respect BLOCKED prerequisites.",
+      "position": {
+        "x": 80,
+        "y": 160
+      }
+    },
+    {
+      "id": "characters",
+      "agentId": "video-character-designer",
+      "name": "Characters",
+      "prompt": "Perform your assigned role for the current task using all required upstream results. Respect BLOCKED prerequisites.",
+      "position": {
+        "x": 400,
+        "y": 160
+      }
+    },
+    {
+      "id": "style",
+      "agentId": "video-visual-director",
+      "name": "Style and nature",
+      "prompt": "Perform your assigned role for the current task using all required upstream results. Respect BLOCKED prerequisites.",
+      "position": {
+        "x": 720,
+        "y": 160
+      }
+    },
+    {
+      "id": "narration",
+      "agentId": "video-narrator",
+      "name": "Narration",
+      "prompt": "Perform your assigned role for the current task using all required upstream results. Respect BLOCKED prerequisites.",
+      "position": {
+        "x": 1040,
+        "y": 160
+      }
+    },
+    {
+      "id": "scenes",
+      "agentId": "video-scene-planner",
+      "name": "Timed Flow prompts + export",
+      "prompt": "Perform your assigned role for the current task using all required upstream results. Respect BLOCKED prerequisites.",
+      "position": {
+        "x": 1360,
+        "y": 160
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "story",
+      "to": "characters",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "story",
+      "to": "style",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "characters",
+      "to": "style",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "story",
+      "to": "narration",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "characters",
+      "to": "narration",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "style",
+      "to": "narration",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "story",
+      "to": "scenes",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "characters",
+      "to": "scenes",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "style",
+      "to": "scenes",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    },
+    {
+      "from": "narration",
+      "to": "scenes",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    }
+  ],
+  "maxDepth": 5,
+  "maxIterations": 5,
+  "createdAt": "2026-09-29T07:45:11.016Z",
+  "updatedAt": "2026-09-29T07:45:11.016Z"
+}

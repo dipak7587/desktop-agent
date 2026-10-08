@@ -1,6 +1,8 @@
+import { mcpServerConfigSchema } from './mcp-schema';
 import { z } from 'zod';
+import { landingSchema } from './landing';
 export const idSchema = z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/);
-export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools']);
+export const kindSchema = z.enum(['skills', 'saved-text', 'agents', 'mcp', 'tools', 'hooks']);
 export const providerURLSchema = z
   .string()
   .max(2048)
@@ -67,6 +69,16 @@ export const providerProfileSchema = z.object({
 export const settingsSchema = z
   .object({
     appName: z.string().trim().min(1).max(80).default('LocalAI Workspace'),
+    appLogo: z
+      .string()
+      .max(1_400_000)
+      .refine(
+        (value) =>
+          value === '' || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value),
+        'Choose a PNG, JPEG, or WebP logo up to 1 MB.',
+      )
+      .default(''),
+    landing: landingSchema.default(() => landingSchema.parse({})),
     theme: z.enum(['system', 'dark', 'light']).default('system'),
     provider: z
       .enum(['ollama', 'openai', 'anthropic', 'google', 'openrouter', 'groq', 'custom'])
@@ -90,6 +102,9 @@ export const settingsSchema = z
     embeddingModel: z.string().max(200).default(''),
     providers: z.array(providerProfileSchema).default([]),
     activeProviderId: z.string().max(200).default(''),
+    lastChatSelection: z
+      .object({ providerId: idSchema, model: z.string().min(1).max(200) })
+      .optional(),
     temperature: z.number().min(0).max(2).default(0.7),
     contextSize: z.number().int().min(1024).max(131072).default(8192),
     topK: z.number().int().min(1).max(30).default(5),
@@ -99,11 +114,19 @@ export const settingsSchema = z
     approvalMode: z.enum(['ask', 'safe', 'auto']).default('ask'),
     commandTimeout: z.number().int().min(1000).max(300000).default(60000),
     maxIterations: z.number().int().min(1).max(500).default(15),
+    memoryEnabled: z.boolean().default(true),
+    memoryAutomatic: z.boolean().default(false),
+    deepAgentMode: z.enum(['classic', 'deep']).default('classic'),
     language: z.literal('en').default('en'),
     startAtLogin: z.boolean().default(false),
     defaultAgent: z.string().default(''),
   })
   .refine((v) => v.chunkOverlap < v.chunkSize, 'Chunk overlap must be smaller than chunk size');
+export const memoryInputSchema = z.object({
+  scope: z.enum(['global', 'conversation', 'agent']),
+  scopeId: z.string().max(200).optional(),
+  content: z.string().trim().min(1).max(2000),
+});
 export const capabilityConfigSchema = z.object({
   mode: z.enum(['auto', 'selected', 'none']).default('selected'),
   skills: z.array(idSchema).max(100).default([]),
@@ -120,6 +143,7 @@ export const capabilityConfigSchema = z.object({
 export const librarySchema = z.object({
   id: idSchema,
   name: z.string().trim().min(1).max(200),
+  group: z.string().trim().max(100).default(''),
   description: z.string().max(2000).default(''),
   content: text.default(''),
   version: z.string().max(80).default('1.0.0'),
@@ -127,16 +151,24 @@ export const librarySchema = z.object({
   createdAt: z.number().default(0),
   updatedAt: z.number().default(0),
   providerId: idSchema.optional(),
+  agentRuntime: z.literal('deepagents-acp').optional(),
+  hookType: z.enum(['pre', 'post', 'success', 'error']).optional(),
+  hooks: z.array(idSchema).max(100).default([]),
   model: z.string().max(200).default(''),
   skills: z.array(idSchema).max(100).default([]),
   tools: z.array(z.string().max(300)).max(200).default([]),
   knowledgeSources: z.array(z.string().max(200)).max(100).default([]),
+  memory: z.array(text.max(2000)).max(100).optional(),
+  selectedForChat: z.boolean().optional(),
   autoStart: z.boolean().default(false),
   maxIterations: z.number().int().min(1).max(500).optional(),
   capabilityConfig: capabilityConfigSchema.optional(),
+  toolSource: z.string().max(2_000_000).optional(),
   toolConfig: z
     .object({
-      type: z.enum(['javascript', 'api']),
+      type: z.enum(['javascript', 'api', 'langchain']),
+      inputSchema: z.record(z.string(), z.unknown()).optional(),
+      exportName: z.string().optional(),
       parameters: z
         .array(
           z.object({
@@ -155,6 +187,13 @@ export const librarySchema = z.object({
       headers: z.record(z.string().max(200), z.string().max(2000)).default({}),
     })
     .optional(),
+  transport: mcpServerConfigSchema.shape.transport.optional(),
+  connection: mcpServerConfigSchema.shape.connection.optional(),
+  capabilities: mcpServerConfigSchema.shape.capabilities,
+  permissions: mcpServerConfigSchema.shape.permissions,
+  metadata: mcpServerConfigSchema.shape.metadata,
+  runtime: mcpServerConfigSchema.shape.runtime,
+  discovered: mcpServerConfigSchema.shape.discovered,
   command: z.string().max(500).default(''),
   args: z.array(z.string().max(2000)).max(100).default([]),
   env: z
@@ -173,10 +212,13 @@ export const sendSchema = z
     text: text,
     model: z.string().max(200),
     knowledge: z.string().max(200),
+    modes: z
+      .array(z.enum(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow']))
+      .optional(),
     regenerate: z.boolean().optional(),
     command: z
       .object({
-        kind: z.enum(['skills', 'agent', 'mcp', 'workflow']),
+        kind: z.enum(['skills', 'agent', 'mcp', 'workflow', 'tools']),
         id: idSchema,
         project: z.string().max(4096).optional(),
       })
@@ -189,7 +231,9 @@ export const sendSchema = z
 export const sourceInputSchema = z.object({
   type: z.enum(['file', 'folder', 'url']),
   url: z.url().optional(),
+  description: z.string().trim().min(1).max(2000),
   collection: z.string().max(100).optional(),
+  group: librarySchema.shape.group.optional(),
 });
 export const runInputSchema = z.object({
   agentId: idSchema,

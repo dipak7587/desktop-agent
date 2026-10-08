@@ -6,12 +6,10 @@ Enter a required name and description. The executable command is optional when s
 add it before starting or testing the server. Existing definitions without a description
 remain readable, but require a description when saved again.
 
-Check **Import from JSON** beside the server notice to hide executable, arguments, and environment fields and paste a JSON
-configuration instead. Uncheck it to return to manual entry. Each mode keeps its own draft;
-only the selected mode is used on save. JSON can contain a single server object or a
-`mcpServers` object containing exactly one server. The name, description, and enabled state
-from the form are used for the saved definition. Invalid JSON, unsupported fields/transports,
-and non-string environment values are rejected.
+Choose **Form**, **Markdown**, **JSON**, or **YAML** above the editor. Markdown uses YAML
+frontmatter; JSON/YAML edit the full server definition and can also contain an `mcpServers` object
+with exactly one stdio server. The same schema and stdio restrictions apply in every mode.
+Invalid definitions and non-string environment values are rejected.
 
 Start or test the server, inspect discovered tools and logs, and stop or restart it as needed.
 Definitions can be edited, imported, exported, or deleted. To use a discovered tool, select

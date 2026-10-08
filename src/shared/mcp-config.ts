@@ -1,3 +1,4 @@
+import { mcpServerConfigSchema } from './mcp-schema';
 import { z } from 'zod';
 import { librarySchema } from './schemas';
 
@@ -27,6 +28,8 @@ export function parseMCPConfig(raw: string) {
     if (servers.length !== 1) throw new Error('Paste exactly one server inside mcpServers.');
     value = servers[0];
   }
+  if (value && typeof value === 'object' && ('connection' in value || 'transport' in value))
+    return mcpServerConfigSchema.parse(value);
   const result = configSchema.safeParse(value);
   if (!result.success)
     throw new Error(

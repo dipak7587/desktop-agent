@@ -1,3 +1,4 @@
+import { defaultChatSelection } from '../src/shared/chat-selection';
 import { LibraryService } from '../src/main/services/filesystem/library';
 import { librarySchema } from '../src/shared/schemas';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -9,7 +10,7 @@ import { ProviderRouter } from '../src/main/services/providers/router';
 import { ChatDatabase } from '../src/main/database/chat';
 import { ChatService } from '../src/main/services/ollama/chat';
 import { providerProfileSchema, providerURLSchema, settingsSchema } from '../src/shared/schemas';
-import { createLLMProvider, parseSSE } from '../src/main/services/ollama/provider';
+import { createLLMProvider } from '../src/main/services/ollama/provider';
 import type { AppEvent } from '../src/shared/types';
 const roots: string[] = [];
 afterEach(async () => {
@@ -205,9 +206,11 @@ it('captures routing, credential, and historical attribution at send time while 
   expect((fetcher.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe(
     'https://a.example/v1/chat/completions',
   );
-  expect((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].headers).toMatchObject({
-    Authorization: 'Bearer a-secret',
-  });
+  expect(
+    new Headers((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].headers).get(
+      'authorization',
+    ),
+  ).toBe('Bearer a-secret');
   expect(result.message?.metadata).toMatchObject({
     providerId: 'a',
     providerNameSnapshot: 'a',
@@ -221,30 +224,26 @@ it('captures routing, credential, and historical attribution at send time while 
   expect(reopened.messages(c.id).at(-1)?.metadata?.providerNameSnapshot).toBe('a');
   reopened.close();
 });
-it('parses SSE split at every UTF-8 byte including CRLF, comments and a final unterminated event', async () => {
-  const bytes = new TextEncoder().encode(
-    ': ping\r\ndata: {"delta":{"text":"héllo"}}\r\n\r\ndata: {"done":true}',
-  );
-  const stream = new ReadableStream<Uint8Array>({
-    start(c) {
-      for (const byte of bytes) c.enqueue(Uint8Array.of(byte));
-      c.close();
-    },
-  });
-  const events = [];
-  for await (const e of parseSSE(stream)) events.push(e);
-  expect(events).toEqual([{ delta: { text: 'héllo' } }, { done: true }]);
-});
 it.each(['anthropic', 'google'] as const)(
   'uses native %s endpoints and separates system instructions',
   async (provider) => {
-    const fetcher = vi.fn(
-      async (_url: unknown, _init: RequestInit) =>
-        new Response(
-          provider === 'anthropic'
-            ? 'data: {"delta":{"text":"Hello"}}\n\n'
-            : 'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}\n\n',
-        ),
+    const fetcher = vi.fn(async (_url: unknown, _init: RequestInit) =>
+      Response.json(
+        provider === 'anthropic'
+          ? {
+              id: 'msg-test',
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'text', text: 'Hello' }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }
+          : {
+              candidates: [
+                { content: { role: 'model', parts: [{ text: 'Hello' }] }, finishReason: 'STOP' },
+              ],
+            },
+      ),
     );
     vi.stubGlobal('fetch', fetcher);
     const llm = createLLMProvider(() => settingsSchema.parse({ provider, apiKey: 'hidden' }));
@@ -264,7 +263,7 @@ it.each(['anthropic', 'google'] as const)(
       expect(body.system).toBe('Instructions');
       expect(body.messages).toHaveLength(1);
     } else {
-      expect(String(url)).toContain('/models/test-model:streamGenerateContent?alt=sse');
+      expect(String(url)).toContain('/models/test-model:generateContent');
       expect(body.systemInstruction.parts[0].text).toBe('Instructions');
       expect(body.contents).toHaveLength(1);
     }
@@ -413,4 +412,47 @@ it('blocks provider deletion for all dependent agents, including disabled agents
   await library.save('agents', { ...writer, providerId: 'b' });
   await remove();
   expect(settings.get().providers.map((p) => p.id)).toEqual(['b']);
+});
+
+it('remembers the chat selection across restart without changing provider defaults or losing it to stale settings', async () => {
+  const { root, settings, secrets } = await setup();
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b')],
+    activeProviderId: 'a',
+  });
+  const staleForm = settings.get();
+  await settings.rememberChatSelection('b', 'model-b');
+  await settings.save({ ...staleForm, theme: 'dark' });
+  const reopened = new SettingsService(root, secrets);
+  await reopened.init();
+  expect(defaultChatSelection(reopened.get())).toEqual({ providerId: 'b', model: 'model-b' });
+  expect(reopened.get()).toMatchObject({ activeProviderId: 'a', theme: 'dark' });
+  expect(reopened.get().providers.map((p) => p.chatModel)).toEqual(['model-a', 'model-a']);
+  await expect(reopened.rememberChatSelection('b', 'unknown')).rejects.toThrow('available model');
+  await expect(reopened.rememberChatSelection('missing', 'model-a')).rejects.toThrow('removed');
+  expect(defaultChatSelection(reopened.get())).toEqual({ providerId: 'b', model: 'model-b' });
+});
+
+it('uses the configured default when the remembered model or provider is unavailable', async () => {
+  const { settings } = await setup();
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b')],
+    activeProviderId: 'a',
+  });
+  await settings.rememberChatSelection('b', 'model-b');
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b', { enabled: false })],
+  });
+  expect(defaultChatSelection(settings.get())).toEqual({ providerId: 'a', model: 'model-a' });
+  await expect(settings.rememberChatSelection('b', 'model-b')).rejects.toThrow('disabled');
+  await settings.save({
+    ...settings.get(),
+    providers: [profile('a'), profile('b', { modelIds: ['model-a'] })],
+  });
+  expect(defaultChatSelection(settings.get())).toEqual({ providerId: 'a', model: 'model-a' });
+  await settings.save({ ...settings.get(), providers: [] });
+  expect(defaultChatSelection(settings.get())).toEqual({ providerId: '', model: '' });
 });

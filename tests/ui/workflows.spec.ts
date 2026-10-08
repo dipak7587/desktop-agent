@@ -48,13 +48,299 @@ test.afterEach(async () => {
   await app.close();
   await rm(root, { recursive: true, force: true });
 });
+test('Landing settings customize the welcome screen and Credentials has its own tab', async () => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByLabel('Reference name', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Credentials', exact: true }).click();
+  await expect(page.getByLabel('Reference name', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'password');
+  await expect(page.getByRole('button', { name: 'Use .env file', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Landing', exact: true }).click();
+  await expect(page.getByLabel('Reference name', { exact: true })).toHaveCount(0);
+  await page.getByLabel('Welcome label', { exact: true }).fill('YOUR VIDEO STUDIO');
+  await page.getByLabel('Welcome heading', { exact: true }).fill('Every story starts here.');
+  await page
+    .getByLabel('Welcome description', { exact: true })
+    .fill('Choose a story.\nCreate something memorable.');
+  await page.getByLabel('Card 1 title', { exact: true }).fill('Plan a video');
+  await page
+    .getByLabel('Card 1 prompt', { exact: true })
+    .fill('Help me plan a short nature video.');
+  await page.getByLabel('Landing logo', { exact: true }).setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ioAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  });
+  await expect(page.getByRole('button', { name: 'Remove logo', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: 'Landing preview' });
+  await expect(preview.getByRole('img', { name: 'Landing logo' })).toBeVisible();
+  await expect(preview.getByRole('heading', { name: 'Every story starts here.' })).toBeVisible();
+  await preview.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Save landing', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Landing page saved');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Every story starts here.' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Landing logo' })).toBeVisible();
+  await page.getByRole('button', { name: /Plan a video/ }).click();
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue(
+    'Help me plan a short nature video.',
+  );
+  await page.screenshot({ path: 'test-results/custom-landing.png' });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Landing', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset landing to defaults', exact: true }).click();
+  await page.getByRole('button', { name: 'Save landing', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Good ideas start here.' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Landing logo' })).toHaveCount(0);
+});
+for (const [kind, section] of [
+  ['agents', 'Agents'],
+  ['mcp', 'MCP'],
+  ['skills', 'Skills'],
+  ['tools', 'Tools'],
+  ['saved-text', 'Saved Text'],
+] as const) {
+  test(`${section} groups support bulk assignment, filtering, editing and persistence`, async () => {
+    await page.evaluate(async (kind) => {
+      const settings = await window.workspace.settings.get();
+      const provider = settings.providers[0];
+      for (const name of ['Writer', 'Narrator', 'Unrelated']) {
+        await window.workspace.library.save(kind, {
+          id: name.toLowerCase(),
+          name,
+          description: 'Grouping fixture',
+          content: 'return input;',
+          providerId: provider.id,
+          model: provider.chatModel,
+          skills: [],
+          tools: [],
+          knowledgeSources: [],
+          enabled: true,
+          autoStart: false,
+          version: '1.0.0',
+          createdAt: 0,
+          updatedAt: 0,
+          command: kind === 'mcp' ? 'node' : '',
+          args:
+            kind === 'mcp'
+              ? ['/a/very/long/project/path/to/the/mcp/server.mjs', '--read-only']
+              : [],
+          env: {},
+          ...(kind === 'tools'
+            ? {
+                toolConfig: {
+                  type: 'javascript' as const,
+                  parameters: [],
+                  url: '',
+                  method: 'GET' as const,
+                  headers: {},
+                },
+              }
+            : {}),
+        });
+      }
+    }, kind);
+    await page.reload();
+    await page.getByRole('button', { name: section, exact: true }).click();
+    const cards = page.locator(kind === 'skills' ? '.skill-card' : '.library-card');
+    const neighbor = cards.nth(1);
+    const closedHeight = await neighbor.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    await cards.first().locator(':scope > summary').click();
+    await expect(cards.first()).toHaveJSProperty('open', true);
+    await expect(neighbor).toHaveJSProperty('open', false);
+    await expect(neighbor.getByRole('button', { name: 'Edit', exact: true })).not.toBeVisible();
+    expect(
+      await neighbor.evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeCloseTo(closedHeight, 0);
+    await expect(cards.first().locator(':scope > summary')).toHaveCSS(
+      'display',
+      kind === 'skills' ? 'flex' : 'grid',
+    );
+    await page.screenshot({ path: `test-results/accordion-${kind}.png` });
+    await cards.first().locator(':scope > summary').click();
+    if (kind === 'mcp') {
+      const expanded = page.locator('.library-card').filter({ hasText: 'Writer' });
+      await expanded.locator(':scope > summary').click();
+      const command = expanded.locator('.command-line');
+      const tooltip = page.getByRole('tooltip');
+      await command.hover();
+      await expect(tooltip).toHaveText(
+        'node /a/very/long/project/path/to/the/mcp/server.mjs --read-only',
+      );
+      await tooltip.hover();
+      await expect(tooltip).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(tooltip).toHaveCount(0);
+      await command.focus();
+      await expect(tooltip).toBeVisible();
+      await page.screenshot({ path: 'test-results/mcp-command-tooltip.png' });
+      await page.keyboard.press('Escape');
+      await expect(tooltip).toHaveCount(0);
+    }
+    await page.getByRole('checkbox', { name: 'Select Writer', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Select Narrator', exact: true }).check();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Move to group', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Move selected items to group' });
+    await dialog.getByLabel('Group', { exact: true }).selectOption('__new_group__');
+    await dialog.getByLabel('New group name', { exact: true }).fill('Video Studio');
+    await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    if (kind === 'mcp') {
+      const bulkActions = page.locator('.library-selection-toolbar .mcp-group-actions');
+      await expect(bulkActions.getByRole('button', { name: 'Move to group' })).toBeVisible();
+      await expect(bulkActions.getByRole('button', { name: 'Remove from group' })).toBeVisible();
+      expect(
+        await bulkActions.evaluate((element) => {
+          const [move, remove] = Array.from(element.querySelectorAll('button')).map((button) =>
+            button.getBoundingClientRect(),
+          );
+          return remove.left - move.right;
+        }),
+      ).toBeLessThanOrEqual(8);
+    }
+    const groups = page.getByRole('navigation', { name: `${section} groups` });
+    if (kind !== 'saved-text')
+      await expect(groups.getByRole('button', { name: 'Built-in 0', exact: true })).toBeVisible();
+    await expect(
+      groups.getByRole('button', { name: 'Video Studio 2', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Edit Video Studio group', exact: true })
+      .click();
+    const renameGroupDialog = page.getByRole('dialog', { name: 'Rename group' });
+    await expect(renameGroupDialog.getByLabel('Group', { exact: true })).toHaveValue(
+      'Video Studio',
+    );
+    await renameGroupDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: 'Select Writer', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('checkbox', { name: 'Select Narrator', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: 'Select Unrelated', exact: true })).toHaveCount(
+      0,
+    );
+    await page.screenshot({ path: `test-results/library-groups-${kind}.png` });
+    await page.reload();
+    await page.getByRole('button', { name: section, exact: true }).click();
+    const groupsAfterReload = page.getByRole('navigation', { name: `${section} groups` });
+    await groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'Select Writer', exact: true }).check();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Move to group', exact: true })
+      .click();
+    await dialog.getByLabel('Group', { exact: true }).selectOption('');
+    await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Ungrouped 2', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    const card = page
+      .locator(kind === 'skills' ? '.skill-card' : '.library-card')
+      .filter({ hasText: 'Writer' });
+    await card.locator(':scope > summary').click();
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page
+      .getByRole('dialog')
+      .getByLabel('Group', { exact: true })
+      .selectOption('Video Studio');
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: kind === 'tools' ? 'Save Tool' : 'Save', exact: true })
+      .click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }),
+    ).toBeVisible();
+    await expect(groupsAfterReload.getByRole('button', { name: 'Delete All group' })).toHaveCount(
+      0,
+    );
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Delete Ungrouped group' }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+    ).toHaveCount(0);
+    await groupsAfterReload.getByRole('button', { name: 'Video Studio 2', exact: true }).click();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', {
+        name: 'Edit Video Studio group',
+      })
+      .click();
+    const renameDialog = page.getByRole('dialog', { name: 'Rename group' });
+    await renameDialog.getByLabel('Group', { exact: true }).fill('Project Review');
+    await renameDialog.getByRole('button', { name: 'Rename group', exact: true }).click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Project Review 2', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+    ).toBeVisible();
+    await page
+      .locator('.library-selection-toolbar')
+      .getByRole('button', { name: 'Delete group' })
+      .click();
+    const deleteGroupDialog = page.getByRole('dialog', { name: 'Delete Project Review group?' });
+    await deleteGroupDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(
+      groupsAfterReload.getByRole('button', { name: 'Project Review 2', exact: true }),
+    ).toHaveCount(0);
+    await expect(groupsAfterReload.getByRole('button', { name: /Ungrouped 3/ })).toBeVisible();
+  });
+}
+test('Hooks can be moved to a group from the Hook card', async () => {
+  await page.getByRole('button', { name: 'Hooks', exact: true }).click();
+  await page.getByRole('button', { name: 'New hook', exact: true }).click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveAttribute('required', '');
+  await page.getByLabel('Name', { exact: true }).fill('Review hook');
+  await page.getByLabel('Description', { exact: true }).fill('Runs after successful reviews');
+  await page
+    .getByLabel(/JavaScript \/ TypeScript hook source/)
+    .fill('export default async function hook() {}');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  const hook = page.locator('.library-card').filter({ hasText: 'Review hook' });
+  await hook.locator(':scope > summary').click();
+  await hook.getByRole('button', { name: 'Move to group', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Move selected items to group' });
+  await dialog.getByLabel('Group', { exact: true }).selectOption('__new_group__');
+  await dialog.getByLabel('New group name', { exact: true }).fill('Review');
+  await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+
+  await expect(
+    page.getByRole('navigation', { name: 'Hooks groups' }).getByRole('button', {
+      name: 'Review 1',
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('checkbox', { name: 'Select Review hook', exact: true }),
+  ).toBeVisible();
+});
 test('saved text and skills create, edit, export-ready files, delete; settings persist', async () => {
   await page.getByRole('button', { name: 'Saved Text', exact: true }).click();
   await page.getByRole('button', { name: 'New text' }).click();
   await page.getByLabel('Title', { exact: true }).fill('Architecture notes');
+  await page.getByLabel('Description', { exact: true }).fill('Private local architecture notes');
   await page.getByLabel('Text', { exact: true }).fill('# Design\nPrivate local notes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Architecture notes' })).toBeVisible();
+  await page.locator('.library-card').filter({ hasText: 'Architecture notes' }).click();
+  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Copied to clipboard');
+  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+    '# Design\nPrivate local notes.',
+  );
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Title', { exact: true }).fill('Updated notes');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -65,18 +351,56 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   );
   await page.getByRole('button', { name: 'Skills', exact: true }).click();
   await page.getByRole('button', { name: 'New skill' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Citation guide');
+  await page.getByLabel('Description', { exact: true }).fill('Guidance for reliable citations');
+  await page.getByLabel('Instructions', { exact: true }).fill('Cite reliable sources.');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'New skill' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Review code');
   await page.getByLabel('Description', { exact: true }).fill('Check code quality');
+  const skillCapabilities = page.getByRole('group', { name: 'Skill Capabilities' });
+  await skillCapabilities.locator('details[aria-label="Skills capabilities"] > summary').click();
+  await skillCapabilities.getByLabel('Citation guide', { exact: true }).check();
   await page.getByLabel('Instructions', { exact: true }).fill('Read before making changes.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await page.locator('summary').filter({ hasText: 'Review code' }).click();
+  await page
+    .locator('details.skill-card')
+    .filter({ hasText: 'Review code' })
+    .evaluate((element) => {
+      (element as HTMLDetailsElement).open = true;
+    });
   await expect(page.getByText('Read before making changes.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(
+    page.getByRole('group', { name: 'Skill Capabilities' }).getByLabel('Citation guide', {
+      exact: true,
+    }),
+  ).toBeChecked();
+  await page
+    .getByRole('group', { name: 'Skill Capabilities' })
+    .locator('details[aria-label="Skills capabilities"] > summary')
+    .click();
+  await page
+    .getByRole('group', { name: 'Skill Capabilities' })
+    .getByLabel('Citation guide', { exact: true })
+    .uncheck();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page
+    .locator('details.skill-card')
+    .filter({ hasText: 'Review code' })
+    .evaluate((element) => {
+      (element as HTMLDetailsElement).open = true;
+    });
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('Careful reviewer');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(page.getByText('Your skills start here')).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'Citation guide' }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.locator('.skill-card').filter({ hasText: 'Careful reviewer' })).toHaveCount(0);
+  await expect(page.locator('.skill-card').filter({ hasText: 'Citation guide' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Theme', { exact: true }).selectOption('dark');
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
@@ -87,9 +411,423 @@ test('saved text and skills create, edit, export-ready files, delete; settings p
   page = await app.firstWindow();
   await page.getByRole('button', { name: 'Saved Text', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Updated notes' })).toBeVisible();
+  await page.locator('.library-card').filter({ hasText: 'Updated notes' }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByText('Your saved text start here')).toBeVisible();
+});
+test('agent, MCP, skill, and tool editors create definitions from JSON and YAML', async () => {
+  const entries = [
+    { section: 'Skills', create: 'New skill', mode: 'YAML', name: 'YAML skill', format: 'yaml' },
+    {
+      section: 'Agents',
+      create: 'New agent',
+      mode: 'Markdown',
+      name: 'Markdown agent',
+      format: 'md',
+    },
+    { section: 'MCP', create: 'New server', mode: 'YAML', name: 'YAML server', format: 'yaml' },
+    { section: 'Tools', create: 'New tool', mode: 'JSON', name: 'json_tool', format: 'json' },
+  ] as const;
+  for (const entry of entries) {
+    await page.getByRole('button', { name: entry.section, exact: true }).click();
+    await page.getByRole('button', { name: entry.create, exact: true }).click();
+    const modal = page.getByRole('dialog');
+    if (entry.section === 'Tools') {
+      await modal.getByRole('button', { name: 'Paste definition' }).click();
+      await modal.getByLabel('Input format').selectOption('json');
+      await modal.getByLabel('Definition to import').fill(
+        JSON.stringify({
+          name: entry.name,
+          description: 'Created from a definition',
+          input: { input: { type: 'string', required: true } },
+          function: 'return input;',
+        }),
+      );
+      await modal.getByRole('button', { name: 'Convert and preview' }).click();
+      await modal.getByRole('button', { name: 'Builder', exact: true }).click();
+      await expect(modal.getByLabel('Name', { exact: true })).toHaveValue(entry.name);
+      await modal.getByRole('button', { name: 'Save Tool', exact: true }).click();
+      await expect(modal).not.toBeVisible();
+      await expect(page.getByText(entry.name, { exact: true })).toBeVisible();
+      continue;
+    }
+    await expect(modal.getByRole('button', { name: 'Form', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(modal.getByRole('button', { name: 'Form', exact: true })).toHaveCSS(
+      'font-weight',
+      '600',
+    );
+    await modal.getByRole('button', { name: entry.mode, exact: true }).click();
+    const definition =
+      entry.format === 'md'
+        ? `---\nname: ${entry.name}\ndescription: Created from a definition\n---\nAgent instructions.\n`
+        : `name: ${entry.name}\ndescription: Created from a definition\n`;
+    await modal
+      .getByRole('textbox', { name: `Definition · ${entry.mode}`, exact: true })
+      .fill(definition);
+    await modal.getByRole('button', { name: 'Form', exact: true }).click();
+    await expect(
+      modal.getByLabel(entry.section === 'MCP' ? 'Name (required)' : 'Name', { exact: true }),
+    ).toHaveValue(entry.name);
+    await modal.getByRole('button', { name: entry.mode, exact: true }).click();
+    await modal.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(modal).not.toBeVisible();
+    await expect(page.getByText(entry.name, { exact: true })).toBeVisible();
+  }
+});
+test('Code workspace offers local and remote agents and prepares a test-fix run', async () => {
+  await app.evaluate(({ dialog }, project) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+  }, root);
+  await page.evaluate(async () => {
+    const settings = await window.workspace.settings.get();
+    const local = settings.providers.find((provider) => provider.provider === 'ollama')!;
+    settings.providers.push({
+      id: 'remote-provider',
+      name: 'Remote provider',
+      provider: 'ollama',
+      enabled: true,
+      apiKey: '',
+      apiBaseUrl: '',
+      ollamaUrl: 'http://192.168.1.50:11434',
+      chatModel: 'remote-model',
+      embeddingModel: '',
+      modelIds: ['remote-model'],
+      manualModelIds: ['remote-model'],
+      authMethod: 'none',
+      authHeader: 'x-api-key',
+      timeout: 1000,
+    });
+    await window.workspace.settings.save(settings);
+    const base = {
+      description: 'Local test agent',
+      agentRuntime: 'deepagents-acp' as const,
+      content: 'Inspect and fix project code and tests.',
+      version: '1.0.0',
+      enabled: true,
+      createdAt: 0,
+      updatedAt: 0,
+      skills: [],
+      tools: [
+        'project.detect',
+        'filesystem.read',
+        'filesystem.write',
+        'filesystem.edit',
+        'filesystem.search',
+        'filesystem.list',
+        'shell.execute',
+      ],
+      knowledgeSources: [],
+      autoStart: false,
+      maxIterations: 5,
+      command: '',
+      args: [],
+      env: {},
+    };
+    await window.workspace.library.save('agents', {
+      ...base,
+      id: 'local-coder',
+      name: 'Local coder',
+      providerId: local.id,
+      model: local.chatModel,
+    });
+    await window.workspace.library.save('agents', {
+      ...base,
+      id: 'remote-coder',
+      name: 'Remote coder',
+      providerId: 'remote-provider',
+      model: 'remote-model',
+    });
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Good ideas start here.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  const agentSelect = page.getByLabel('Coding agent', { exact: true });
+  await expect(agentSelect.locator('option')).toHaveCount(2);
+  await expect(agentSelect).toContainText('Local coder');
+  await expect(agentSelect).toContainText('Remote coder');
+
+  await page.getByRole('button', { name: 'Fix failing tests', exact: true }).click();
+  const task = page.getByLabel('Coding task', { exact: true });
+  await expect(task).toHaveValue(/Do not weaken or delete the test/);
+  const runButton = page.getByRole('button', { name: 'Run coding task', exact: true });
+  await expect(runButton).toBeDisabled();
+  await page.getByRole('button', { name: 'Select Folder', exact: true }).click();
+  await expect(page.locator('.folder-selection .folder-path')).toContainText('localai-workflows-');
+  await expect(runButton).toBeEnabled();
+  await page.screenshot({ path: 'test-results/code-workspace.png' });
+});
+test('Code adds, edits, and persists multiple specialist agents without unrelated agents', async () => {
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add your first coding agent' })).toBeVisible();
+  await expect(page.getByLabel('Agent template', { exact: true })).toContainText('Commit and Push');
+  await page.getByLabel('Agent template', { exact: true }).selectOption('commit-push');
+  await page.getByLabel('Agent template', { exact: true }).selectOption('tests');
+  await page.getByRole('button', { name: 'Add agent', exact: true }).click();
+  let editor = page.getByRole('dialog', { name: 'Create agent', exact: true });
+  await expect(editor.getByLabel('Instructions', { exact: true })).toHaveValue(/regression/);
+  await editor.getByLabel('Name', { exact: true }).fill('Unit test specialist');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  const selector = page.getByLabel('Coding agent', { exact: true });
+  await expect(selector.locator('option:checked')).toContainText('Unit test specialist');
+
+  await page.getByLabel('Agent template', { exact: true }).selectOption('mr');
+  await page.getByRole('button', { name: 'Add agent', exact: true }).click();
+  editor = page.getByRole('dialog', { name: 'Create agent', exact: true });
+  await editor.getByLabel('Name', { exact: true }).fill('MR specialist');
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor).not.toBeVisible();
+  await expect(selector.locator('option')).toHaveCount(2);
+  await expect(selector.locator('option:checked')).toContainText('MR specialist');
+  await page.getByRole('button', { name: 'Edit agent', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit agent', exact: true });
+  await edit.getByLabel('Name', { exact: true }).fill('Release MR specialist');
+  await edit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(edit).not.toBeVisible();
+
+  const profiles = await page.evaluate(async () => {
+    const agents = await window.workspace.library.list('agents');
+    await window.workspace.library.save('agents', {
+      ...agents[0],
+      id: 'visual-director',
+      name: 'Visual director',
+      agentRuntime: undefined,
+    });
+    return agents;
+  });
+  expect(profiles.every((agent) => agent.agentRuntime === 'deepagents-acp')).toBe(true);
+  expect(profiles.find((agent) => agent.name === 'Release MR specialist')?.tools).not.toContain(
+    'shell.execute',
+  );
+  await page.reload();
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(selector.locator('option')).toHaveCount(2);
+  await expect(selector).toContainText('Unit test specialist');
+  await expect(selector).toContainText('Release MR specialist');
+  await expect(selector).not.toContainText('Visual director');
+  await selector.selectOption(profiles.find((agent) => agent.name === 'Unit test specialist')!.id);
+  await expect(selector.locator('option:checked')).toContainText('Unit test specialist');
+  await page.screenshot({ path: 'test-results/code-specialist-agents.png' });
+});
+
+test('/code saves folders to Code and reconnects them from Chat', async () => {
+  await page.getByRole('checkbox', { name: 'Code', exact: true }).check();
+  const input = page.getByLabel('Message', { exact: true });
+  const connect = page.getByRole('button', { name: 'Connect project', exact: true });
+  await expect(connect).toHaveCount(0);
+  await input.fill('/code');
+  const folders = page.getByRole('listbox', { name: 'Saved folders' });
+  await expect(folders).toBeVisible();
+  await expect(page.getByText('No saved folders yet.', { exact: false })).toBeVisible();
+  await app.evaluate(({ dialog }, project) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+  }, root);
+  await folders.getByRole('option', { name: /Open another folder/ }).click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await expect(input).toHaveValue('');
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Project workspaces' })).toContainText(
+    'localai-workflows-',
+  );
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await input.fill('/code old-project');
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.locator('.workspace-indicator')).toHaveCount(0);
+  await expect(connect).toHaveCount(0);
+  await expect(input).toHaveValue('');
+  await input.fill('/');
+  const codeFolder = page.getByRole('option').filter({ hasText: '/code-localai-workflows-' });
+  await expect(codeFolder).toBeVisible();
+  await expect(page.getByRole('option', { name: /Select a saved folder in Chat/ })).toHaveCount(0);
+  await codeFolder.click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await input.fill('/code nonexistent-project');
+  await expect(page.getByText('No matching saved folders.')).toBeVisible();
+  await input.fill('/code localai-workflows-');
+  await input.press('Enter');
+  await expect(input).toHaveValue('');
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await expect(page.getByRole('region', { name: 'Project workspaces' })).toHaveCount(0);
+  await expect(page.getByText('Restricted', { exact: true })).toBeVisible();
+  await input.fill('/code');
+  await expect(folders).toBeVisible();
+  await input.press('Escape');
+  await expect(folders).toHaveCount(0);
+  await input.press('Enter');
+  await expect(folders).toBeVisible();
+  await expect(page.locator('.message.user')).toHaveCount(0);
+});
+test('Code workspaces persist and reconnect to conversations with guarded project access', async () => {
+  await app.evaluate(({ dialog }, project) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+  }, root);
+
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Folder', exact: true }).click();
+  const workspace = page.getByRole('region', { name: 'Project workspaces' });
+  await expect(workspace.getByText('Project operations require approval')).toBeVisible();
+  await expect(workspace.getByText(/^localai-workflows-/)).toBeVisible();
+  await workspace.getByRole('button', { name: /^Folder options for localai-workflows-/ }).click();
+  await workspace.getByRole('button', { name: 'Configure Agent' }).click();
+  const agentPermissions = page.getByRole('dialog', {
+    name: /^Configure Agent · localai-workflows-/,
+  });
+  await expect(
+    agentPermissions.getByRole('checkbox', { name: 'Coding assistant (Built-in)' }),
+  ).toBeChecked();
+  await agentPermissions.getByRole('button', { name: 'Save folder permissions' }).click();
+  await expect(agentPermissions).toHaveCount(0);
+  await app.evaluate(({ dialog }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  });
+  await workspace.getByRole('button', { name: /^Folder options for localai-workflows-/ }).click();
+  await workspace
+    .getByRole('group', { name: /^Folder actions for localai-workflows-/ })
+    .getByRole('button', { name: 'Relink folder', exact: true })
+    .click();
+  await expect(workspace).toBeVisible();
+  await expect(workspace.getByText(/^localai-workflows-/)).toBeVisible();
+  await app.evaluate(({ dialog }, project) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+  }, root);
+  const folderOptions = workspace.getByRole('button', {
+    name: /^Folder options for localai-workflows-/,
+  });
+  await folderOptions.click();
+  await expect(workspace.getByRole('button', { name: 'Remove folder' })).toBeVisible();
+  await workspace.getByRole('button', { name: 'Remove folder' }).click();
+  const removeDialog = page.getByRole('dialog', { name: 'Remove folder from Code?' });
+  await removeDialog.getByRole('button', { name: 'Cancel' }).click();
+  await workspace.getByRole('button', { name: 'Open in Chat' }).click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await expect(page.getByRole('checkbox', { name: 'Code', exact: true })).toBeChecked();
+
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.locator('.workspace-indicator')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Code', exact: true }).uncheck();
+  await workspace.getByRole('button', { name: 'Open in Chat' }).click();
+  await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
+  await expect(page.getByRole('checkbox', { name: 'Code', exact: true })).toBeChecked();
+  await expect(page.getByText('Restricted', { exact: true })).toBeVisible();
+});
+test('chat title double-click renames and exports the conversation as Markdown', async () => {
+  const exportPath = join(root, 'chat-export.md');
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
+  }, exportPath);
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  const title = page.getByRole('heading', { name: 'New conversation', exact: true });
+  await title.dblclick();
+  const renameDialog = page.getByRole('dialog', { name: 'Rename conversation' });
+  await renameDialog.getByLabel('Title', { exact: true }).fill('Planning session');
+  await renameDialog.getByRole('button', { name: 'Save title', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Planning session', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Export .md', exact: true }).click();
+  const markdown = await readFile(exportPath, 'utf8');
+  expect(markdown).toContain('# Planning session');
+  expect(markdown).toContain('- Model: ui-test-model');
+});
+test('Settings imports and exports complete workspace backups', async () => {
+  const exportPath = join(root, 'workspace-backup.yaml');
+  const importPath = join(root, 'restore.json');
+  await writeFile(
+    importPath,
+    JSON.stringify({
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      settings: {
+        ...(await page.evaluate(() => window.workspace.settings.get())),
+        providers: (await page.evaluate(() => window.workspace.settings.get())).providers.map(
+          (provider) => ({
+            ...provider,
+            apiKey: '',
+            credentialRef: undefined,
+            hasCredential: false,
+          }),
+        ),
+        apiKey: '',
+      },
+      libraries: {
+        skills: [
+          {
+            id: 'restored-skill',
+            name: 'Restored skill',
+            description: 'Imported from backup',
+            content: 'Backup instructions',
+          },
+        ],
+        'saved-text': [],
+        agents: [],
+        mcp: [],
+        tools: [],
+      },
+      workflows: [],
+      conversations: [
+        {
+          conversation: {
+            id: 'restored-chat',
+            title: 'Restored conversation',
+            model: 'ui-test-model',
+            providerId: 'ollama-local',
+            createdAt: 100,
+            updatedAt: 200,
+          },
+          messages: [
+            {
+              id: 'restored-message',
+              conversationId: 'restored-chat',
+              role: 'user',
+              content: 'Backup question',
+              createdAt: 101,
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  await app.evaluate(
+    ({ dialog }, paths) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: paths.exportPath });
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [paths.importPath] });
+    },
+    { exportPath, importPath },
+  );
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await page.getByLabel('Export format', { exact: true }).selectOption('yaml');
+  await page.getByRole('button', { name: 'Export workspace', exact: true }).click();
+  await expect
+    .poll(async () => readFile(exportPath, 'utf8').catch(() => ''))
+    .toContain('formatVersion: 1');
+  await page.getByRole('button', { name: 'Import backup', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('1 chats');
+  expect(await page.evaluate(() => window.workspace.chat.list())).toContainEqual(
+    expect.objectContaining({ id: 'restored-chat', title: 'Restored conversation' }),
+  );
+  expect(await page.evaluate(() => window.workspace.library.list('skills'))).toContainEqual(
+    expect.objectContaining({ id: 'restored-skill', name: 'Restored skill' }),
+  );
+});
+test('global errors stay above an open editor dialog', async () => {
+  await page.getByRole('button', { name: 'Skills', exact: true }).click();
+  await page.getByRole('button', { name: 'New skill', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await modal.getByRole('button', { name: 'YAML', exact: true }).click();
+  await modal.getByRole('textbox', { name: 'Definition · YAML', exact: true }).fill('not: [valid');
+  await modal.getByRole('button', { name: 'Form', exact: true }).click();
+
+  const alert = page.getByRole('alert');
+  await expect(alert).toBeVisible();
+  await expect(modal).toBeVisible();
+  await expect(alert).toHaveJSProperty('popover', 'manual');
+  expect(await alert.evaluate((element) => element.matches(':popover-open'))).toBe(true);
 });
 test('chat slash commands offer searchable selections, keyboard navigation and removable chips', async () => {
   for (const entry of [
@@ -104,7 +842,7 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
       .getByLabel(entry.command === 'mcp' ? 'Name (required)' : 'Name', { exact: true })
       .fill(entry.name);
     await modal
-      .getByLabel(entry.command === 'mcp' ? 'Description (required)' : 'Description', {
+      .getByLabel('Description', {
         exact: true,
       })
       .fill('Slash command test');
@@ -112,6 +850,12 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
     await expect(modal).not.toBeVisible();
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
     const input = page.getByLabel('Message', { exact: true });
+    await page
+      .getByRole('checkbox', {
+        name: entry.command === 'skills' ? 'Tools' : entry.command === 'mcp' ? 'MCP' : 'Agent',
+        exact: true,
+      })
+      .check();
     await input.fill(`/${entry.command} `);
     await expect(
       page.getByRole('listbox').getByRole('option').filter({ hasText: entry.name }),
@@ -127,8 +871,10 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
     await expect(input).toHaveValue('Keep this query');
   }
   const input = page.getByLabel('Message', { exact: true });
+  await page.getByRole('checkbox', { name: 'Workflow', exact: true }).check();
   await input.fill('/');
-  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(4);
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(5);
+  await input.press('ArrowDown');
   await input.press('ArrowDown');
   await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toContainText(
     '/agent',
@@ -174,6 +920,71 @@ test('real Ollama chat streams, persists across relaunch and continues', async (
     timeout: 90000,
   });
 });
+test('Knowledge sources support adding, moving, renaming and deleting groups', async () => {
+  await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
+  await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  await expect(page.getByLabel('Description', { exact: true })).toHaveAttribute('required', '');
+  await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
+  await page.getByLabel('URL', { exact: true }).fill('https://first.example/docs');
+  await page.getByLabel('Description', { exact: true }).fill('First project documentation source');
+  await page.getByLabel('Collection · optional').fill('Project docs');
+  await page.getByLabel('Group · optional').selectOption('__new_group__');
+  await page.getByLabel('New group name', { exact: true }).fill('Research');
+  await page.getByRole('button', { name: 'Add URL', exact: true }).click();
+  await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
+  await page.getByLabel('URL', { exact: true }).fill('https://second.example/docs');
+  await page.getByLabel('Description', { exact: true }).fill('Second project documentation source');
+  await page.getByLabel('Collection · optional').fill('Project docs');
+  await page.getByRole('button', { name: 'Add URL', exact: true }).click();
+
+  const groups = page.getByRole('navigation', { name: 'Knowledge Base groups' });
+  await expect(groups.getByRole('button', { name: /^Built-in \d+$/ })).toBeVisible();
+  await expect(groups.getByRole('button', { name: 'Research 1', exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Select second.example', exact: true }).check();
+  await page
+    .locator('.library-selection-toolbar')
+    .getByRole('button', { name: 'Move to group', exact: true })
+    .click();
+  const moveDialog = page.getByRole('dialog', { name: 'Move sources to group' });
+  await moveDialog.getByRole('combobox', { name: 'Group', exact: true }).selectOption('Research');
+  await moveDialog.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(groups.getByRole('button', { name: 'Research 2', exact: true })).toBeVisible();
+
+  await page
+    .locator('.library-selection-toolbar')
+    .getByRole('button', {
+      name: 'Edit Research group',
+    })
+    .click();
+  const renameDialog = page.getByRole('dialog', { name: 'Rename group' });
+  await renameDialog.getByLabel('Group', { exact: true }).fill('Reference docs');
+  await renameDialog.getByRole('button', { name: 'Rename group', exact: true }).click();
+  await expect(groups.getByRole('button', { name: 'Reference docs 2', exact: true })).toBeVisible();
+
+  await expect(
+    page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+  ).toBeVisible();
+  await page
+    .locator('.library-selection-toolbar')
+    .getByRole('button', { name: 'Delete group' })
+    .click();
+  const deleteDialog = page.getByRole('dialog', { name: 'Delete Reference docs group?' });
+  await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(groups.getByRole('button', { name: 'Reference docs 2', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(groups.getByRole('button', { name: 'Ungrouped 2', exact: true })).toBeVisible();
+  await expect(page.locator('.source-card').filter({ hasText: 'second.example' })).toContainText(
+    'Project docs',
+  );
+  await expect(groups.getByRole('button', { name: 'Delete All group' })).toHaveCount(0);
+  await expect(groups.getByRole('button', { name: 'Delete Ungrouped group' })).toHaveCount(0);
+  await expect(
+    page.locator('.library-selection-toolbar').getByRole('button', { name: 'Delete group' }),
+  ).toHaveCount(0);
+});
+
 test('knowledge URL sync, preview, semantic search and RAG chat use real local embeddings', async () => {
   test.skip(!process.env.LOCALAI_LIVE_TEST, 'Requires local embedding and chat models');
   const server = createServer((_req, res) => {
@@ -190,6 +1001,7 @@ test('knowledge URL sync, preview, semantic search and RAG chat use real local e
     await page.getByRole('button', { name: 'Add source', exact: true }).click();
     await page.getByRole('combobox', { name: 'Source type' }).selectOption('url');
     await page.getByLabel('URL', { exact: true }).fill(`http://127.0.0.1:${port}/docs`);
+    await page.getByLabel('Description', { exact: true }).fill('Local integration documentation');
     await page.getByRole('button', { name: 'Add URL' }).click();
     await page.getByRole('button', { name: 'Sync / Re-index' }).click();
     await expect(page.locator('.source-card .badge')).toHaveText('ready', { timeout: 60000 });
@@ -201,7 +1013,7 @@ test('knowledge URL sync, preview, semantic search and RAG chat use real local e
     await expect(page.locator('.search-results')).toContainText('SILVERFERN', { timeout: 30000 });
     await page.screenshot({ path: 'test-results/knowledge.png' });
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
-    await page.getByLabel('Knowledge context').selectOption('all');
+    await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
     await page
       .getByLabel('Message', { exact: true })
       .fill('What is the project codename in my knowledge? Answer briefly.');
@@ -230,6 +1042,7 @@ test('agent UI creates a worker, reviews a real diff and applies approved change
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
   await page.getByRole('button', { name: 'New agent' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Careful file editor');
+  await page.getByLabel('Description', { exact: true }).fill('Edits project files after approval');
   await page
     .getByLabel('Instructions', { exact: true })
     .fill(
@@ -273,7 +1086,10 @@ test('selected agent-desktop KB scopes give me chat details to project documenta
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
   }, folder);
   await page.evaluate(async () => {
-    await window.workspace.knowledge.add({ type: 'folder' });
+    await window.workspace.knowledge.add({
+      type: 'folder',
+      description: 'Project files used by the Code test',
+    });
     const source = (await window.workspace.knowledge.list()).find(
       (s) => s.name === 'agent-desktop',
     )!;
@@ -296,7 +1112,9 @@ test('selected agent-desktop KB scopes give me chat details to project documenta
   // Refresh the renderer's sources through its normal navigation/load path.
   await page.getByRole('button', { name: 'Knowledge Base', exact: true }).click();
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
-  await page.getByLabel('Knowledge context').selectOption(sourceId);
+  await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
+  await page.getByLabel('Message', { exact: true }).fill('/agent-desktop');
+  await page.getByRole('listbox').getByRole('option').click();
   await page.getByLabel('Message', { exact: true }).fill('give me chat details');
   await page.getByRole('button', { name: 'Send message' }).click();
   await expect(page.getByRole('button', { name: 'Regenerate' })).toBeVisible({ timeout: 90000 });

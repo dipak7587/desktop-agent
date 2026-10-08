@@ -1,15 +1,59 @@
+import { assertUniqueName } from '../filesystem/unique-name';
 import { LibraryService } from '../filesystem/library';
 import * as lancedb from '@lancedb/lancedb';
 import { join, basename, extname, relative } from 'node:path';
-import { readFile, rm, mkdir } from 'node:fs/promises';
+import { readFile, rm, mkdir, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import Turndown from 'turndown';
 import type { KnowledgeSource, SearchResult, AppEvent, Settings } from '../../../shared/types';
 import { atomicWrite, readJSON, hash, errorMessage } from '../filesystem/storage';
+import { idSchema, librarySchema } from '../../../shared/schemas';
+import { BUILT_IN_GROUP } from '../../../shared/types';
 import { walk, readText, ignored, supportedExtensions } from '../filesystem/walk';
 import { chunkText } from './chunker';
 import type { EmbeddingProvider } from '../ollama/provider';
 export class KnowledgeService {
+  private builtInIds = new Set<string>();
+  async loadBuiltIns(root: string) {
+    const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
+    const ids = new Set<string>();
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const id = idSchema.parse(`builtin-kb-${entry.name}`);
+      ids.add(id);
+      const previous = this.sources.find((source) => source.id === id);
+      const source: KnowledgeSource = {
+        id,
+        type: 'folder',
+        name: entry.name.replaceAll('-', ' '),
+        collection: '',
+        createdAt: 0,
+        updatedAt: 0,
+        status: 'idle',
+        documentCount: 0,
+        chunkCount: 0,
+        ...previous,
+        location: join(root, entry.name),
+        group: BUILT_IN_GROUP,
+        builtIn: true,
+      };
+      this.sources = [...this.sources.filter((item) => item.id !== id), source];
+    }
+    for (const source of this.sources.filter((source) => source.builtIn && !ids.has(source.id))) {
+      await this.deleteVectors(source.id);
+      await rm(join(this.root, 'cache', `${source.id}.md`), { force: true });
+      await rm(join(this.root, 'cache', `${source.id}.json`), { force: true });
+    }
+    this.builtInIds = ids;
+    this.sources = this.sources.filter((source) => !source.builtIn || ids.has(source.id));
+    await this.persist();
+  }
+  private assertWritable(id: string) {
+    if (this.builtInIds.has(id)) throw new Error('Built-in knowledge cannot be moved or deleted.');
+  }
   private pendingResync = new Set<string>();
   private indexQueue: Promise<void> = Promise.resolve();
   private sources: KnowledgeSource[] = [];
@@ -27,11 +71,13 @@ export class KnowledgeService {
     await mkdir(join(this.root, 'cache'), { recursive: true });
     this.db = await lancedb.connect(join(this.root, 'rag/lancedb'));
     this.sources = await readJSON(join(this.root, 'knowledge.json'), []);
-    for (const s of this.sources)
+    for (const s of this.sources) {
+      s.group ??= '';
       if (['syncing', 'indexing'].includes(s.status)) {
         s.status = 'error';
         s.error = 'Indexing was interrupted. Sync to retry.';
       }
+    }
     await this.persist();
   }
   private persist() {
@@ -50,7 +96,15 @@ export class KnowledgeService {
     if (!source) throw new Error('Knowledge source no longer exists');
     return source;
   }
-  async add(type: KnowledgeSource['type'], location: string, collection = '') {
+  async add(
+    type: KnowledgeSource['type'],
+    location: string,
+    description: string,
+    collection = '',
+    group = '',
+  ) {
+    const sourceDescription = description.trim();
+    if (!sourceDescription) throw new Error('A description is required for this knowledge source.');
     if (type === 'url' && !['http:', 'https:'].includes(new URL(location).protocol))
       throw new Error('Only HTTP(S) URLs are supported');
     if (
@@ -58,13 +112,17 @@ export class KnowledgeService {
       (ignored(location) || !supportedExtensions.has(extname(location).toLowerCase()))
     )
       throw new Error('Choose a supported text file. Sensitive files are excluded.');
+    const name = type === 'url' ? new URL(location).hostname : basename(location);
+    assertUniqueName(this.sources, { name }, 'A knowledge source');
     const now = Date.now();
     this.sources.push({
       id: randomUUID(),
       type,
-      name: type === 'url' ? new URL(location).hostname : basename(location),
+      name,
+      description: sourceDescription,
       location,
       collection,
+      group: librarySchema.shape.group.parse(group),
       createdAt: now,
       updatedAt: now,
       status: 'idle',
@@ -83,6 +141,7 @@ export class KnowledgeService {
         name: 'Saved Text',
         location: join(this.root, 'saved-text'),
         collection: 'Saved Text',
+        group: BUILT_IN_GROUP,
         createdAt: now,
         updatedAt: now,
         status: 'idle',
@@ -97,6 +156,16 @@ export class KnowledgeService {
       return;
     }
     await this.sync(id);
+  }
+  async setGroup(ids: string[], group: string) {
+    for (const id of ids) this.assertWritable(id);
+    const name = librarySchema.shape.group.parse(group);
+    const sources = [...new Set(ids)].map((id) => this.source(id));
+    for (const source of sources) {
+      source.group = name;
+      source.updatedAt = Date.now();
+    }
+    await this.persist();
   }
   private tableName(model: string) {
     return `chunks_${hash(model).slice(0, 16)}`;
@@ -120,6 +189,7 @@ export class KnowledgeService {
     await this.indexQueue;
   }
   async remove(id: string) {
+    this.assertWritable(id);
     if (this.jobs.has(id))
       throw new Error('Cancel indexing and wait for it to stop before removing this source');
     this.source(id);
@@ -134,6 +204,18 @@ export class KnowledgeService {
     try {
       return await readFile(join(this.root, 'cache', `${id}.md`), 'utf8');
     } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT' && this.builtInIds.has(id)) {
+        const documents: string[] = [];
+        let size = 0;
+        for await (const file of walk(this.source(id).location)) {
+          if (!supportedExtensions.has(extname(file).toLowerCase())) continue;
+          const text = await readText(file);
+          documents.push(text.slice(0, 600000 - size));
+          size += text.length;
+          if (size >= 600000) break;
+        }
+        return documents.join('\n\n---\n\n').slice(0, 600000);
+      }
       if ((e as NodeJS.ErrnoException).code === 'ENOENT')
         return 'No preview yet. Sync this source to fetch its content.';
       throw e;
@@ -198,7 +280,7 @@ export class KnowledgeService {
       chunks = 0;
     const previews: string[] = [];
     try {
-      if (!model) throw new Error('Select an embedding model in Settings before indexing');
+      if (!model) throw new Error('Select an embedding model in Settings > KBase before indexing');
       if (source.type === 'url' || source.embeddingModel !== model) {
         await this.deleteVectors(source.id);
         await rm(join(this.root, 'cache', `${source.id}.md`), { force: true });
@@ -325,6 +407,16 @@ export class KnowledgeService {
         (scope === 'all' || s.id === scope || scope === `collection:${s.collection}`),
     );
     if (!eligible.length) return [];
+    if (!settings.embeddingModel)
+      throw new Error('Select an embedding model in Settings > KBase before searching knowledge.');
+    if (
+      eligible.some(
+        (source) => source.embeddingModel && source.embeddingModel !== settings.embeddingModel,
+      )
+    )
+      throw new Error(
+        'The embedding model changed in Settings > KBase. Reindex the selected knowledge sources before searching.',
+      );
     const table = await this.table(settings.embeddingModel);
     if (!table) return [];
     const ids = eligible.map((s) => `'${s.id}'`).join(',');

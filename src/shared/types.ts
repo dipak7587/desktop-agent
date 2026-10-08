@@ -1,14 +1,21 @@
+import type { MCPServerConfig } from './mcp-schema';
+export type { MCPServerConfig, MCPTool, MCPResource, MCPPrompt } from './mcp-schema';
+import type { LandingSettings } from './landing';
 export type Section =
   | 'Chat'
   | 'Tools'
+  | 'Hooks'
   | 'MCP'
   | 'Skills'
   | 'Saved Text'
   | 'Agents'
+  | 'Code'
   | 'Workflows'
   | 'Knowledge Base'
   | 'Settings';
-export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools';
+export type LibraryKind = 'skills' | 'saved-text' | 'agents' | 'mcp' | 'tools' | 'hooks';
+export type AgentHookType = 'pre' | 'post' | 'success' | 'error';
+export const BUILT_IN_GROUP = 'Built-in';
 export type LLMProviderName =
   'ollama' | 'openai' | 'anthropic' | 'google' | 'openrouter' | 'groq' | 'custom';
 export interface ProviderProfile {
@@ -30,10 +37,13 @@ export interface ProviderProfile {
   embeddingModel: string;
 }
 export interface Settings {
+  landing?: LandingSettings;
+  lastChatSelection?: { providerId: string; model: string };
   timeout?: number;
   authMethod?: 'none' | 'bearer' | 'header';
   authHeader?: string;
   appName: string;
+  appLogo: string;
   theme: 'system' | 'dark' | 'light';
   provider: LLMProviderName;
   apiKey: string;
@@ -52,6 +62,9 @@ export interface Settings {
   approvalMode: 'ask' | 'safe' | 'auto';
   commandTimeout: number;
   maxIterations: number;
+  memoryEnabled: boolean;
+  memoryAutomatic: boolean;
+  deepAgentMode: 'classic' | 'deep';
   language: 'en';
   startAtLogin: boolean;
   defaultAgent: string;
@@ -64,11 +77,33 @@ export interface Model {
 export interface Conversation {
   providerId?: string;
   agentId?: string;
+  workspaceId?: string | null;
   id: string;
   title: string;
   model: string;
   createdAt: number;
   updatedAt: number;
+}
+export type WorkspacePermissionDecision = 'always_allow' | 'ask' | 'deny';
+export interface WorkspacePermissionPolicy {
+  rules: Record<string, { decision: WorkspacePermissionDecision; scope: 'workspace' }>;
+}
+export interface CodeWorkspace {
+  id: string;
+  name: string;
+  canonicalPath: string;
+  createdAt: string;
+  lastOpenedAt: string;
+  permissions: WorkspacePermissionPolicy;
+  selectedAgentId: string | null;
+  allowedAgentIds?: string[];
+  allowedSkills?: string[];
+  allowedTools?: string[];
+  allowedMCPServers?: string[];
+  allowedKnowledgeBases?: string[];
+  preferredProviderId?: string | null;
+  preferredModelId?: string | null;
+  available?: boolean;
 }
 export function resolveProviderSettings(settings: Settings): Settings {
   const profile = settings.providers.find((p) => p.id === settings.activeProviderId);
@@ -103,12 +138,14 @@ export interface Message {
     activity?: AppEvent[];
   };
 }
+export type ChatMode = 'kb' | 'mcp' | 'tools' | 'skills' | 'code' | 'agent' | 'workflow';
 export interface ChatCommand {
-  kind: 'skills' | 'agent' | 'mcp' | 'workflow';
+  kind: 'skills' | 'agent' | 'mcp' | 'workflow' | 'code' | 'tools';
   id: string;
   project?: string;
 }
 export interface ChatInput {
+  modes?: ChatMode[];
   providerId?: string;
   id: string;
   text: string;
@@ -117,7 +154,21 @@ export interface ChatInput {
   regenerate?: boolean;
   command?: ChatCommand;
 }
-export interface LibraryItem {
+export interface LibraryItem extends Partial<
+  Pick<
+    MCPServerConfig,
+    | 'transport'
+    | 'connection'
+    | 'capabilities'
+    | 'permissions'
+    | 'metadata'
+    | 'runtime'
+    | 'discovered'
+  >
+> {
+  builtIn?: boolean;
+  group?: string;
+  agentRuntime?: 'deepagents-acp';
   providerId?: string;
   id: string;
   name: string;
@@ -131,20 +182,41 @@ export interface LibraryItem {
   skills: string[];
   tools: string[];
   knowledgeSources: string[];
+  memory?: string[];
+  selectedForChat?: boolean;
   autoStart: boolean;
   maxIterations?: number;
   capabilityConfig?: AgentCapabilityConfig;
   toolConfig?: ToolConfig;
+  toolSource?: string;
+  hookType?: AgentHookType;
+  hooks?: string[];
   command: string;
   args: string[];
   env: Record<string, string>;
 }
+export interface AgentConfig {
+  id: string;
+  name: string;
+  description?: string;
+  model?: string;
+  enabled: boolean;
+  skills: string[];
+  tools: string[];
+  mcpServers: string[];
+  knowledgeBases: string[];
+  memory?: string[];
+  hooks: string[];
+}
 export interface KnowledgeSource {
+  builtIn?: boolean;
   id: string;
   type: 'file' | 'folder' | 'url';
   name: string;
+  description?: string;
   location: string;
   collection: string;
+  group?: string;
   createdAt: number;
   updatedAt: number;
   lastSyncedAt?: number;
@@ -161,6 +233,15 @@ export interface SearchResult {
   content: string;
   score: number;
   location: string;
+}
+export interface MemoryEntry {
+  id: string;
+  scope: 'global' | 'conversation' | 'agent';
+  scopeId: string;
+  content: string;
+  source: 'explicit' | 'automatic';
+  createdAt: string;
+  updatedAt: string;
 }
 export interface AppEvent {
   iterationsUsed?: number;
@@ -208,7 +289,9 @@ export interface RunState {
 }
 
 export interface ToolConfig {
-  type: 'javascript' | 'api';
+  type: 'javascript' | 'api' | 'langchain';
+  inputSchema?: Record<string, unknown>;
+  exportName?: string;
   parameters: {
     name: string;
     type: 'string' | 'number' | 'boolean' | 'object' | 'array';

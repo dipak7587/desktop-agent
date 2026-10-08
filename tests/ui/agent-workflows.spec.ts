@@ -28,13 +28,25 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     for (const name of ['Analysis', 'Review']) {
       await page.getByRole('button', { name: 'New agent', exact: true }).click();
       await page.getByLabel('Name', { exact: true }).fill(name);
+      await page.getByLabel('Description', { exact: true }).fill(`${name} agent`);
+      const agentCapabilities = page.getByRole('group', { name: 'Agent Capabilities' });
+      await agentCapabilities.locator('details[aria-label="Tools capabilities"] > summary').click();
+      await expect(agentCapabilities.getByLabel('filesystem.read', { exact: true })).toBeVisible();
+      const hooks = page.locator('.agent-hooks');
+      await page.locator('details.hook-group[aria-label="pre hooks"] > summary').click();
+      await expect(hooks.getByText('No pre hooks created yet.')).toBeVisible();
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();
     await page.getByRole('button', { name: 'New workflow' }).click();
     const modal = page.getByRole('dialog');
-    await modal.getByLabel('Name (required)').fill('Quality workflow');
+    await modal.getByRole('tab', { name: 'Default', exact: true }).click();
+    await modal.getByRole('tabpanel').getByLabel('Name (required)').fill('Quality workflow');
+    await modal
+      .getByRole('tabpanel')
+      .getByLabel('Description', { exact: true })
+      .fill('Review changes through analysis and verification');
     await modal.getByLabel('Execution mode').selectOption('mixed');
     for (const name of ['Analysis', 'Review']) {
       await modal.getByLabel('Add agent', { exact: true }).selectOption({ label: name });
@@ -53,6 +65,11 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     await expect(
       page.getByRole('heading', { name: 'Quality workflow', exact: true }),
     ).toBeVisible();
+    await page
+      .locator('.workflow-card summary')
+      .filter({ hasText: 'Quality workflow' })
+      .first()
+      .click();
     await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Quality workflow copy', exact: true }),
@@ -60,6 +77,9 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     const card = page
       .locator('.workflow-card')
       .filter({ has: page.getByRole('heading', { name: 'Quality workflow', exact: true }) });
+    await card.evaluate((el) => {
+      (el as HTMLDetailsElement).open = true;
+    });
     await card.getByRole('button', { name: 'Run workflow', exact: true }).click();
     await expect(modal.getByText('No folder selected', { exact: true })).toBeVisible();
     await modal.getByRole('button', { name: 'Start workflow', exact: true }).click();
@@ -87,10 +107,17 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     expect(errors).toHaveLength(2);
     expect(errors[1]).toContain('folder picker');
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
-    await page.getByLabel('Message', { exact: true }).fill('/workflow Quality workflow');
-    await page.getByRole('option').filter({ hasText: 'Quality workflow' }).first().click();
+    await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Workflow', exact: true }).check();
+    await page.getByLabel('Message', { exact: true }).fill('/');
+    await expect(page.getByRole('listbox').getByRole('option')).toContainText([
+      '/store-context',
+      '/all-kb',
+      '/workflow-Quality workflow',
+    ]);
+    await page.getByRole('option').filter({ hasText: '/workflow-Quality workflow' }).click();
     await expect(page.locator('.command-chip')).toContainText('/workflow');
-    await expect(page.getByRole('button', { name: 'Select Folder' })).toBeVisible();
+    await expect(page.locator('.composer .folder-selection')).toHaveCount(0);
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();
     await page.screenshot({ path: 'test-results/agent-workflows.png' });
     await page.reload();
@@ -101,6 +128,21 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     await expect(page.locator('.workflows-page > .runs > .run > summary .badge')).toHaveText(
       'failed',
     );
+    await page.getByRole('button', { name: 'Clear workflow history', exact: true }).click();
+    await expect(modal).toHaveAccessibleName('Clear workflow history?');
+    await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.locator('.workflows-page > .runs > .run')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Clear workflow history', exact: true }).click();
+    await modal.getByRole('button', { name: 'Clear history', exact: true }).click();
+    await expect(page.getByText('Workflow runs will appear here.')).toBeVisible();
+    await card.locator(':scope > summary').click();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(modal).toContainText('Quality workflow');
+    await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    await modal.getByRole('button', { name: 'Delete workflow', exact: true }).click();
+    await expect(card).toHaveCount(0);
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

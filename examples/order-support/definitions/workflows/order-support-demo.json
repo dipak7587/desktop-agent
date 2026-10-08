@@ -1,0 +1,43 @@
+{
+  "id": "order-support-demo",
+  "name": "Order support demo",
+  "description": "One agent reused in two stages: retrieve facts, then prepare a reply.",
+  "executionMode": "sequential",
+  "agents": [
+    {
+      "id": "lookup",
+      "agentId": "order-support-demo",
+      "name": "Look up order",
+      "prompt": "Use get_order_status to look up the order in {{task}}. Return its complete JSON result. Do not format a reply yet. If no ID was given, ask for one.",
+      "position": {
+        "x": 100,
+        "y": 120
+      }
+    },
+    {
+      "id": "reply",
+      "agentId": "order-support-demo",
+      "name": "Prepare reply",
+      "prompt": "Use Format delivery reply with the exact order JSON from previousAgentOutput. Return the reply verbatim. If the previous stage asked for an ID, repeat that request without calling a tool.",
+      "position": {
+        "x": 500,
+        "y": 120
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "lookup",
+      "to": "reply",
+      "mode": "sequential",
+      "inputMapping": {
+        "sourceOutput": "result",
+        "targetInput": "previousAgentOutput"
+      }
+    }
+  ],
+  "maxDepth": 2,
+  "maxIterations": 2,
+  "createdAt": "2026-09-28T18:47:35.278Z",
+  "updatedAt": "2026-09-28T18:47:35.278Z"
+}

@@ -1,3 +1,12 @@
+import { nativeChatModel } from '../ai/native-models';
+import {
+  AIMessage,
+  type AIMessageChunk,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage,
+} from '@langchain/core/messages';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { providerURLSchema } from '../../../shared/schemas';
 import type { Model, Settings, LLMProviderName } from '../../../shared/types';
 export interface ChatMessage {
@@ -5,8 +14,10 @@ export interface ChatMessage {
   content: string;
   tool_calls?: ToolCall[];
   tool_name?: string;
+  tool_call_id?: string;
 }
 export interface ToolCall {
+  id?: string;
   function: { name: string; arguments: Record<string, unknown> };
 }
 export interface ChatRequest {
@@ -22,8 +33,12 @@ export interface ChatChunk {
   error?: string;
 }
 export interface LLMProvider {
+  createChatModel(
+    model: string,
+    options?: { disableStreaming?: boolean; format?: unknown },
+  ): BaseChatModel;
   listModels(): Promise<Model[]>;
-  info?(name: string): Promise<unknown>;
+  info?(name: string, signal?: AbortSignal): Promise<unknown>;
   complete?(request: ChatRequest): Promise<ChatMessage>;
   chat(request: ChatRequest): AsyncIterable<ChatChunk>;
 }
@@ -31,28 +46,69 @@ export interface EmbeddingProvider {
   embed(text: string, signal?: AbortSignal): Promise<number[]>;
   embedBatch(texts: string[], signal?: AbortSignal): Promise<number[][]>;
 }
-export async function* parseNDJSON(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let index;
-      while ((index = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, index).trim();
-        buffer = buffer.slice(index + 1);
-        if (line) yield JSON.parse(line);
-      }
-      if (buffer.length > 4_000_000) throw new Error('Ollama response exceeded limit');
-    }
-    buffer += decoder.decode();
-    if (buffer.trim()) yield JSON.parse(buffer);
-  } finally {
-    reader.releaseLock();
+function nativeMessages(messages: ChatMessage[]) {
+  return messages.map((m) =>
+    m.role === 'system'
+      ? new SystemMessage(m.content)
+      : m.role === 'assistant'
+        ? new AIMessage({
+            content: m.content,
+            tool_calls: m.tool_calls?.map((t) => ({
+              name: t.function.name,
+              args: t.function.arguments,
+              id: t.id,
+            })),
+          })
+        : m.role === 'tool'
+          ? new ToolMessage({
+              content: m.content,
+              tool_call_id: m.tool_call_id ?? '',
+              name: m.tool_name,
+            })
+          : new HumanMessage(m.content),
+  );
+}
+async function* nativeChat(settings: Settings, request: ChatRequest): AsyncIterable<ChatChunk> {
+  const model = nativeChatModel(settings, request.model, { format: request.format });
+  const runnable = request.tools?.length
+    ? model.bindTools!(request.tools as Parameters<NonNullable<BaseChatModel['bindTools']>>[0])
+    : model;
+  let combined: AIMessageChunk | undefined;
+  for await (const message of await runnable.stream(nativeMessages(request.messages), {
+    signal: request.signal,
+  })) {
+    combined = combined ? combined.concat(message) : message;
+    yield { message: { content: message.text } };
   }
+  if (combined?.tool_calls?.length)
+    yield {
+      message: {
+        tool_calls: combined.tool_calls.map((t) => ({
+          id: t.id,
+          function: { name: t.name, arguments: t.args },
+        })),
+      },
+    };
+}
+async function nativeComplete(settings: Settings, request: ChatRequest): Promise<ChatMessage> {
+  const model = nativeChatModel(settings, request.model, {
+    disableStreaming: true,
+    format: request.format,
+  });
+  const runnable = request.tools?.length
+    ? model.bindTools!(request.tools as Parameters<NonNullable<BaseChatModel['bindTools']>>[0])
+    : model;
+  const message = await runnable.invoke(nativeMessages(request.messages), {
+    signal: request.signal,
+  });
+  return {
+    role: 'assistant',
+    content: message.text,
+    tool_calls: message.tool_calls?.map((t) => ({
+      id: t.id,
+      function: { name: t.name, arguments: t.args },
+    })),
+  };
 }
 export class OllamaLLMProvider implements LLMProvider {
   constructor(private settings: () => Settings) {}
@@ -72,50 +128,17 @@ export class OllamaLLMProvider implements LLMProvider {
   async listModels(): Promise<Model[]> {
     return (await (await this.request('/api/tags')).json()).models;
   }
-  async info(name: string) {
-    return (await this.request('/api/show', { model: name })).json();
+  async info(name: string, signal?: AbortSignal) {
+    return (await this.request('/api/show', { model: name }, signal)).json();
   }
-  async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
-    const settings = this.settings();
-    const response = await this.request(
-      '/api/chat',
-      {
-        model: request.model,
-        messages: request.messages,
-        stream: true,
-        tools: request.tools,
-        format: request.format,
-        options: { temperature: settings.temperature, num_ctx: settings.contextSize },
-      },
-      request.signal,
-    );
-    if (!response.body) throw new Error('Ollama returned no response body');
-    for await (const chunk of parseNDJSON(response.body)) {
-      if (chunk.error)
-        throw new Error('Ollama generation failed. Check the selected model and server.');
-      yield chunk;
-    }
+  createChatModel(model: string, options = {}) {
+    return nativeChatModel(this.settings(), model, options);
   }
-  async complete(request: ChatRequest): Promise<ChatMessage> {
-    const s = this.settings();
-    const response = await this.request(
-      '/api/chat',
-      {
-        model: request.model,
-        messages: request.messages,
-        tools: request.tools,
-        format: request.format,
-        stream: false,
-        options: { temperature: s.temperature, num_ctx: s.contextSize },
-      },
-      request.signal,
-    );
-    return (await response.json()).message;
+  chat(request: ChatRequest) {
+    return nativeChat(this.settings(), request);
   }
-  async generate(model: string, prompt: string, signal?: AbortSignal) {
-    return this.request('/api/generate', { model, prompt, stream: false }, signal).then((r) =>
-      r.json(),
-    );
+  complete(request: ChatRequest) {
+    return nativeComplete(this.settings(), request);
   }
 }
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
@@ -151,7 +174,7 @@ const defaultProviderBaseUrl: Record<LLMProviderName, string> = {
   custom: '',
 };
 
-function providerBaseUrl(settings: Settings) {
+export function providerBaseUrl(settings: Settings) {
   const provider = settings.provider;
   const explicit = settings.apiBaseUrl.trim();
   if (explicit) return providerURLSchema.parse(explicit).replace(/\/$/, '');
@@ -161,7 +184,12 @@ function providerBaseUrl(settings: Settings) {
 }
 
 /** Shared transport: bounded requests, no redirect credential forwarding or upstream error echoes. */
-async function providerFetch(settings: Settings, url: string | URL, init: RequestInit = {}) {
+export async function providerFetch(
+  settings: Settings,
+  url: string | URL,
+  init: RequestInit = {},
+  errorMode: 'throw' | 'response' = 'throw',
+) {
   const timeout = AbortSignal.timeout(settings.timeout ?? 300000);
   let response: Response;
   try {
@@ -187,56 +215,28 @@ async function providerFetch(settings: Settings, url: string | URL, init: Reques
           : response.status === 404
             ? 'Check the API base URL and model ID.'
             : 'Retry or check the provider service.';
-    throw new Error(`${settings.provider} HTTP ${response.status}. ${action}`);
+    const message = `${settings.provider} HTTP ${response.status}. ${action}`;
+    if (errorMode === 'response')
+      return Response.json(
+        { error: { message, type: 'provider_error' } },
+        { status: response.status },
+      );
+    throw new Error(message);
   }
   return response;
-}
-
-export async function* parseSSE(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let data: string[] = [];
-  function record(line: string) {
-    if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-    if (line === '' && data.length) {
-      const payload = data.join('\n');
-      data = [];
-      return payload;
-    }
-  }
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      let index: number;
-      while ((index = buffer.indexOf('\n')) >= 0) {
-        const payload = record(buffer.slice(0, index).replace(/\r$/, ''));
-        buffer = buffer.slice(index + 1);
-        if (payload === '[DONE]') return;
-        if (payload) yield JSON.parse(payload);
-      }
-      if (buffer.length + data.join('').length > 4_000_000)
-        throw new Error('Provider stream exceeded record limit');
-      if (done) break;
-    }
-    if (buffer) record(buffer.replace(/\r$/, ''));
-    const payload = record('');
-    if (payload && payload !== '[DONE]') yield JSON.parse(payload);
-  } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
 }
 
 abstract class RemoteProvider implements LLMProvider {
   constructor(protected settings: () => Settings) {}
   abstract listModels(): Promise<Model[]>;
-  abstract chat(request: ChatRequest): AsyncIterable<ChatChunk>;
-  async complete(request: ChatRequest): Promise<ChatMessage> {
-    let content = '';
-    for await (const chunk of this.chat(request)) content += chunk.message?.content ?? '';
-    return { role: 'assistant', content };
+  createChatModel(model: string, options = {}) {
+    return nativeChatModel(this.settings(), model, options);
+  }
+  chat(request: ChatRequest) {
+    return nativeChat(this.settings(), request);
+  }
+  complete(request: ChatRequest) {
+    return nativeComplete(this.settings(), request);
   }
   protected async request(path: string, body?: unknown, signal?: AbortSignal) {
     const s = this.settings();
@@ -256,15 +256,6 @@ abstract class RemoteProvider implements LLMProvider {
       signal,
     });
   }
-  protected async *events(path: string, body: unknown, signal?: AbortSignal) {
-    const response = await this.request(path, body, signal);
-    if (!response.body) throw new Error('Provider returned no response body');
-    for await (const event of parseSSE(response.body)) {
-      if (event.error || event.type === 'error')
-        throw new Error('Provider stream failed. Check account access and retry.');
-      yield event;
-    }
-  }
 }
 export class OpenAICompatibleLLMProvider extends RemoteProvider {
   async listModels(): Promise<Model[]> {
@@ -279,23 +270,6 @@ export class OpenAICompatibleLLMProvider extends RemoteProvider {
   }
   async info(name: string) {
     return (await this.request(`/models/${encodeURIComponent(name)}`)).json();
-  }
-  async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
-    if (request.tools?.length)
-      throw new Error('Native tool calls are not enabled for this adapter');
-    for await (const event of this.events(
-      '/chat/completions',
-      {
-        model: request.model,
-        messages: request.messages.map(({ role, content }) => ({ role, content })),
-        stream: true,
-        temperature: this.settings().temperature,
-      },
-      request.signal,
-    )) {
-      const content = event.choices?.[0]?.delta?.content;
-      if (content) yield { message: { content } };
-    }
   }
 }
 export class GoogleLLMProvider extends RemoteProvider {
@@ -325,36 +299,6 @@ export class GoogleLLMProvider extends RemoteProvider {
   async info(name: string) {
     return (await this.request(`/models/${encodeURIComponent(name)}`)).json();
   }
-  async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
-    if (request.tools?.length)
-      throw new Error('Native tool calls are not enabled for this adapter');
-    for await (const event of this.events(
-      `/models/${encodeURIComponent(request.model.replace(/^models\//, ''))}:streamGenerateContent?alt=sse`,
-      {
-        systemInstruction: {
-          parts: request.messages
-            .filter((m) => m.role === 'system')
-            .map((m) => ({ text: m.content })),
-        },
-        contents: request.messages
-          .filter((m) => m.role !== 'system')
-          .map((m) => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }],
-          })),
-        generationConfig: { temperature: this.settings().temperature },
-      },
-      request.signal,
-    )) {
-      if (event.promptFeedback?.blockReason)
-        throw new Error('Gemini blocked this prompt. Revise the request.');
-      const content = event.candidates?.[0]?.content?.parts
-        ?.filter((p: { thought?: boolean }) => !p.thought)
-        .map((p: { text?: string }) => p.text ?? '')
-        .join('');
-      if (content) yield { message: { content } };
-    }
-  }
 }
 export class AnthropicLLMProvider extends RemoteProvider {
   async listModels(): Promise<Model[]> {
@@ -379,31 +323,6 @@ export class AnthropicLLMProvider extends RemoteProvider {
   }
   async info(name: string) {
     return (await this.request(`/v1/models/${encodeURIComponent(name)}`)).json();
-  }
-  async *chat(request: ChatRequest): AsyncIterable<ChatChunk> {
-    if (request.tools?.length)
-      throw new Error('Native tool calls are not enabled for this adapter');
-    for await (const event of this.events(
-      '/v1/messages',
-      {
-        model: request.model,
-        max_tokens: 4096,
-        stream: true,
-        system: request.messages
-          .filter((m) => m.role === 'system')
-          .map((m) => m.content)
-          .join('\n\n'),
-        messages: request.messages
-          .filter((m) => m.role !== 'system')
-          .map((m) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-          })),
-      },
-      request.signal,
-    )) {
-      if (event.delta?.text) yield { message: { content: event.delta.text } };
-    }
   }
 }
 

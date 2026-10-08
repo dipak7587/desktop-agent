@@ -3,7 +3,7 @@ import { mkdtemp, rm, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-test('custom tools, dependency errors, temporary folders and bulk agent deletion', async () => {
+test('custom tools, dependency errors, temporary folders and agent deletion', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'workspace-features-ui-')));
   await writeFile(
     join(root, 'settings.json'),
@@ -24,11 +24,15 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     await page.getByRole('button', { name: 'Tools', exact: true }).click();
     await page.getByRole('button', { name: 'New tool', exact: true }).click();
     await page.getByLabel('Name', { exact: true }).fill('Double');
+    await page.getByLabel('Description', { exact: true }).fill('Doubles a numeric input');
+    await page.getByLabel('Parameter Name').fill('value');
     await page
-      .getByLabel('Input parameters')
-      .fill('[{"name":"value","type":"number","required":true}]');
-    await page.getByLabel('JavaScript logic').fill('return input.value * 2;');
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
+      .getByRole('group', { name: 'Parameter 1', exact: true })
+      .getByLabel('Type')
+      .selectOption('number');
+    await page.getByLabel('Function Logic', { exact: true }).fill('return value * 2;');
+    await page.getByRole('button', { name: 'Save Tool', exact: true }).click();
+    await page.locator('.library-card > summary').click();
     await page.getByRole('button', { name: 'Test / Run' }).click();
     await page.getByLabel('Input · JSON').fill('{"value":3}');
     await page.getByRole('button', { name: 'Run tool', exact: true }).click();
@@ -38,16 +42,21 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     for (const name of ['Reviewer', 'Writer']) {
       await page.getByRole('button', { name: 'New agent' }).click();
       await page.getByLabel('Name', { exact: true }).fill(name);
+      await page.getByLabel('Description', { exact: true }).fill(`${name} agent`);
       await page.getByLabel('Maximum execution iterations').fill('500');
       await page.getByRole('radio', { name: 'None', exact: true }).check();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
+      const capabilityPanel = page.getByRole('group', { name: 'Agent Capabilities' });
+      await capabilityPanel.locator('details[aria-label="Skills capabilities"] > summary').click();
       await expect(page.getByLabel('Allow Skills', { exact: true })).toBeDisabled();
+      await capabilityPanel.locator('details[aria-label="Tools capabilities"] > summary').click();
       await page.getByRole('radio', { name: 'Auto', exact: true }).check();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
       await page.getByRole('radio', { name: 'Selected', exact: true }).check();
       await page.getByLabel('Allow Tools', { exact: true }).uncheck();
       await expect(page.getByLabel('Double', { exact: true })).toBeDisabled();
       await page.getByLabel('Allow Tools', { exact: true }).check();
+      await expect(page.getByLabel('filesystem.read', { exact: true })).toBeVisible();
       await page.getByLabel('Show capability decisions in history and Chat').check();
       await page.getByText('Capability permissions', { exact: true }).click();
       await expect(page.getByLabel('Permission: shell.execute', { exact: true })).toHaveCount(0);
@@ -75,6 +84,7 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
     }
+    await page.locator('.library-card > summary').first().click();
     await page.getByRole('button', { name: 'Run', exact: true }).first().click();
     await expect(page.getByText('No folder selected', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Start agent' })).toBeEnabled();
@@ -93,36 +103,44 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
     await expect(page.locator('.folder-path')).not.toHaveText(root);
     await page.getByRole('button', { name: 'Close dialog' }).click();
     await page.getByRole('button', { name: 'Tools', exact: true }).click();
+    await page.locator('.library-card > summary').click();
     await page.getByRole('button', { name: 'Delete', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('Reviewer');
-    await expect(page.getByRole('alert')).toContainText('Writer');
+    await expect(page.getByRole('dialog')).toContainText('Reviewer');
+    await expect(page.getByRole('dialog')).toContainText('Writer');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await page.getByRole('button', { name: 'Dismiss error' }).click();
     await page.getByRole('button', { name: 'Chat', exact: true }).click();
-    await page.getByLabel('Message', { exact: true }).fill('/agent Reviewer');
-    await expect(page.getByText('No folder selected', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Select Folder', exact: true }).click();
-    await page.getByRole('button', { name: 'Remove Folder' }).click();
-    await expect(page.getByText('No folder selected', { exact: true })).toBeVisible();
+    await page.getByRole('checkbox', { name: 'Agent', exact: true }).check();
+    await page.getByLabel('Message', { exact: true }).fill('/');
+    const options = page.getByRole('listbox').getByRole('option');
+    await expect(options).toHaveCount(2);
+    await expect(options.filter({ hasText: '/agent-Reviewer' })).toHaveCount(1);
+    await expect(options.filter({ hasText: '/agent-Writer' })).toHaveCount(1);
+    await options.filter({ hasText: '/agent-Reviewer' }).click();
+    await expect(page.locator('.composer .folder-selection')).toHaveCount(0);
     await page.getByRole('button', { name: 'Agents', exact: true }).click();
-    await page.getByLabel('Select all Agents').check();
-    await page.getByRole('button', { name: 'Delete Selected' }).click();
-    await expect(page.getByRole('dialog')).toContainText('Delete 2 agents?');
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page.locator('.library-card')).toHaveCount(2);
-    await page.getByRole('button', { name: 'Delete Selected' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    for (const name of ['Reviewer', 'Writer']) {
+      const card = page.locator('.library-card').filter({ hasText: name });
+      if (!(await card.evaluate((element) => (element as HTMLDetailsElement).open)))
+        await card.locator(':scope > summary').click();
+      await card.getByRole('button', { name: 'Delete', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(card).toBeVisible();
+      await card.getByRole('button', { name: 'Delete', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+      await expect(card).toHaveCount(0);
+    }
     await expect(page.getByText('Your agents start here')).toBeVisible();
     await page.getByRole('button', { name: 'MCP', exact: true }).click();
     await page.getByRole('button', { name: 'New server' }).click();
     await page.getByLabel('Name (required)').fill('Manual server');
-    await page.getByLabel('Description (required)').fill('Startup configuration test');
+    await page.getByLabel('Description', { exact: true }).fill('Startup configuration test');
     await page
       .getByLabel('Environment variables · JSON')
       .fill(JSON.stringify({ MODE: 'production', TOKEN: '${TOKEN}', EMPTY: '' }));
-    await page.getByLabel('Start automatically when application starts').check();
+    await page.getByLabel('Optional settings · JSON').fill('{"runtime":{"autoConnect":true}}');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await page.locator('.library-card > summary').click();
     await expect(page.getByText('Auto start: On')).toBeVisible();
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
     expect(JSON.parse(await page.getByLabel('Environment variables · JSON').inputValue())).toEqual({
@@ -130,10 +148,19 @@ test('custom tools, dependency errors, temporary folders and bulk agent deletion
       TOKEN: '${TOKEN}',
       EMPTY: '',
     });
-    await page.getByLabel('Import from JSON').check();
-    await page
-      .getByLabel('MCP configuration JSON')
-      .fill(JSON.stringify({ env: { MODE: 'development', TOKEN: 'literal-token' } }));
+    await page.getByRole('dialog').getByRole('button', { name: 'JSON', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Definition · JSON', exact: true }).fill(
+      JSON.stringify({
+        ...JSON.parse(
+          await page.getByRole('textbox', { name: 'Definition · JSON', exact: true }).inputValue(),
+        ),
+        connection: {
+          type: 'stdio',
+          command: '',
+          env: { MODE: 'development', TOKEN: 'literal-token' },
+        },
+      }),
+    );
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await page.getByRole('button', { name: 'Edit', exact: true }).click();

@@ -1,10 +1,11 @@
 import { Workflows } from './features/workflows';
 import { useWorkflows } from './stores/workflows';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   MessageSquare,
   Plug,
   Wrench,
+  Code2,
   Zap,
   FileText,
   Bot,
@@ -32,23 +33,31 @@ import { Chat } from './features/chat';
 import { Library } from './features/libraries';
 import { Knowledge } from './features/knowledge';
 import { Settings } from './features/settings';
+import { CodeWorkspace } from './features/code';
 import { Modal } from './components/common';
 const nav = [
   { name: 'Chat', icon: MessageSquare },
   { name: 'MCP', icon: Plug },
   { name: 'Tools', icon: Wrench },
+  { name: 'Hooks', icon: Code2 },
   { name: 'Skills', icon: Zap },
   { name: 'Saved Text', icon: FileText },
   { name: 'Agents', icon: Bot },
   { name: 'Workflows', icon: Orbit },
+  { name: 'Code', icon: Code2 },
   { name: 'Knowledge Base', icon: BookOpen },
 ] as const;
 export function App() {
   const { section, setSection, error, notice } = useUI();
+  const errorToastRef = useRef<HTMLDivElement>(null);
   const { settings, status } = useSettings();
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState(false);
   const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const toast = errorToastRef.current;
+    if (error && toast && !toast.matches(':popover-open')) toast.showPopover();
+  }, [error]);
   useEffect(() => {
     void attempt(async () => {
       await useSettings.getState().load();
@@ -117,7 +126,7 @@ export function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
-            <Orbit size={23} />
+            {settings?.appLogo ? <img src={settings.appLogo} alt="" /> : <Orbit size={23} />}
           </div>
           {!collapsed && (
             <div>
@@ -217,6 +226,8 @@ export function App() {
           <Chat />
         ) : section === 'Workflows' ? (
           <Workflows />
+        ) : section === 'Code' ? (
+          <CodeWorkspace />
         ) : section === 'Knowledge Base' ? (
           <Knowledge />
         ) : section === 'Settings' ? (
@@ -233,13 +244,15 @@ export function App() {
                     ? 'mcp'
                     : section === 'Tools'
                       ? 'tools'
-                      : 'agents'
+                      : section === 'Hooks'
+                        ? 'hooks'
+                        : 'agents'
             }
           />
         )}
       </main>
       {error && (
-        <div className="toast error" role="alert">
+        <div ref={errorToastRef} className="toast error" role="alert" popover="manual">
           <span>{error}</span>
           <button
             className="icon"
@@ -293,6 +306,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       agents: 'Agents',
                       mcp: 'MCP',
                       tools: 'Tools',
+                      hooks: 'Hooks',
                       'saved-text': 'Saved Text',
                     } as Record<string, Section>
                   )[kind],
@@ -318,7 +332,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         <input
           autoFocus
           aria-label="Global search"
-          placeholder="Chats, skills, agents, notes, knowledge…"
+          placeholder="Chats, agents, notes, knowledge…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

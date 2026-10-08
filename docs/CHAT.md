@@ -2,6 +2,129 @@
 
 Chat with Ollama or a configured hosted provider and optionally use your indexed knowledge as reference material.
 
+## Direct model chat (no checkboxes selected)
+
+Leave **KB, MCP, Tools, Skills, Code, Agent, and Workflow** unchecked to talk directly
+to the selected provider/model. This is the default for testing an LLM. A provider
+and model are still required. The request contains bounded conversation history,
+including the current user message, with no application system prompt, agent
+instructions, tool definitions, knowledge retrieval, or long-term memory retrieval
+or capture. A previously linked Code folder or remembered KB scope does not activate
+capabilities. Earlier conversation messages remain in context; start a fresh chat
+for an isolated test. Slash commands require their matching checkbox.
+
+```mermaid
+flowchart TD
+    UI[Chat: select provider/model and send] --> Service[ChatService.send: validate selections]
+    Service --> Empty{modes array empty?}
+    Empty -->|Yes| Direct[ChatTurnGraph: START → generate]
+    Direct --> History[Bounded conversation history only]
+    History --> Model[createChatModel → selected LLM provider]
+    Empty -->|No| Prepare[Prepare selected command or Code workspace]
+    Prepare --> Context[prepare → retrieve → remember → generate]
+    Context --> Execute{Executable command?}
+    Execute -->|Yes| Command[Selected agent/tool/MCP/workflow/Code executor]
+    Execute -->|No| Prompt[Application prompt plus selected context]
+    Prompt --> Model
+    Model --> Stream[Stream answer and persist conversation]
+    Command --> Stream
+    Stream --> Memory{Modes enabled?}
+    Memory -->|Yes| Capture[Optional long-term memory capture]
+    Memory -->|No| Done[Done]
+    Capture --> Done
+```
+
+Code references for future changes:
+
+| Responsibility                                                              | Code                                                                         |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Default empty checkboxes                                                    | [`useUI.chatModes`](../src/renderer/stores/index.ts)                         |
+| Build send payload and gate remembered agent by checkbox                    | [`Chat.send`](../src/renderer/features/chat.tsx)                             |
+| Command selection and slash resolution                                      | [`useChatCommands`](../src/renderer/features/chat-commands.tsx)              |
+| Reject unchecked commands; disable KB and linked Code folder                | [`ChatService.send`](../src/main/services/ollama/chat.ts)                    |
+| Set `pureModel` and skip memory capture                                     | [`ChatService.generate`](../src/main/services/ollama/chat.ts)                |
+| Direct graph branch and prompt-free history                                 | [`ChatTurnGraph.build` / `modelNode`](../src/main/services/ai/chat-graph.ts) |
+| Selected provider's LangChain model                                         | [`createChatModel`](../src/main/services/ai/langchain-model.ts)              |
+| Regression: no commands, tools, KB, memory, system prompt; history retained | [`tests/chat-commands.test.ts`](../tests/chat-commands.test.ts)              |
+
+Keep the direct branch and `pureModel` prompt guard together when changing routing.
+The graph coordinates streaming and persistence; it does not run an agent in this branch.
+Legacy callers that omit `modes` retain their existing context behavior; the Chat UI
+always sends an explicit array.
+
+## MCP checkbox: automatic or selected server
+
+Check **MCP** and enter a normal query without choosing a server to make tools from
+all enabled, connected MCP servers available. The model chooses relevant tools by
+their descriptions and answers using their real results. This does not call every
+server for every query. Disabled, stopped, and tool-less servers are excluded. If
+none are usable, Chat asks you to start a server in the MCP menu before sending.
+
+Choose an MCP server from `/mcp ` to limit the request to that server's tools.
+Other servers are excluded. An enabled selected server starts automatically when
+you send if it is stopped; Chat waits for tool discovery before execution. Startup
+failures are shown before saving the message. MCP calls retain the existing relevance checks,
+permissions, approval prompts, cancellation, and execution limits. Only MCP tools
+are granted by either path; built-in project tools and custom Tools are not added.
+KB context can also be supplied when its checkbox is checked.
+
+```mermaid
+flowchart TD
+    Send[Chat query with MCP checkbox enabled] --> Explicit{Explicit command or active Code workspace?}
+    Explicit -->|Yes| Selected{Selected MCP server?}
+    Selected -->|Yes| One[Validate enabled server → start if needed → discover tools]
+    One --> Scoped[Expose only that server's tools]
+    Selected -->|No| Other[Keep the explicit command or Code execution path]
+    Explicit -->|No| All[List enabled connected MCP servers with tools]
+    All --> Available{Any usable servers?}
+    Available -->|No| Error[Explain how to start an MCP server before saving messages]
+    Available -->|Yes| Catalog[Expose tools from all usable MCP servers]
+    Catalog --> Run[AgentService.runInChat with selected provider/model]
+    Scoped --> Run
+    Run --> Model[Model chooses relevant tools for the query]
+    Model --> Guard[Capability relevance and permission checks]
+    Guard --> Approval[Existing approval flow when required]
+    Approval --> Call[MCPService.call → MCPAdapter LangChain tool.invoke]
+    Call --> Adapter[MCPAdapter handles MCP protocol and result conversion]
+    Adapter --> Result[Redacted real tool result returned to model]
+    Result --> Answer[Model answers and Chat streams/persists result]
+```
+
+| Responsibility                                                                             | Code                                                                          |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Trigger all-server fallback only with MCP checked and no prepared execution                | [`ChatService.send`](../src/main/services/ollama/chat.ts)                     |
+| Filter usable servers and construct MCP-only tool selection                                | [`ChatCommands.prepareAllMCP`](../src/main/services/ollama/commands.ts)       |
+| Restrict an explicit MCP selection to one server                                           | [`ChatCommands.prepare`, MCP branch](../src/main/services/ollama/commands.ts) |
+| Register tools, check capability permissions, handle approvals                             | [`AgentService.loop`](../src/main/services/agents/agents.ts)                  |
+| Connected server state and actual MCP calls                                                | [`MCPService.states` / `call`](../src/main/services/mcp/mcp.ts)               |
+| Tests for all-server routing, excluded servers, real results, approvals and selected scope | [`tests/chat-commands.test.ts`](../tests/chat-commands.test.ts)               |
+
+MCP uses `MCPAdapter` from `@langchain/mcp-adapters` in
+[`MCPService`](../src/main/services/mcp/mcp.ts). `start` constructs an adapter for
+one saved server and calls `listTools`; `call` invokes the adapter's executable
+LangChain tool; `stop` closes the adapter. Server-specific adapters preserve the
+MCP menu's independent Start/Stop/Restart controls. Raw tool names remain stable
+in saved capability IDs; provider-safe names are applied by `createCapabilityTools`.
+Both all-server and selected-server Chat paths use this same integration.
+The capability wrapper retains relevance, approvals, ordered execution and history;
+MCP protocol handling and tool conversion belong to the official adapter.
+Results are redacted and bounded before entering Chat and run history. Raw process
+stderr is suppressed because it can contain resolved credentials; connection and
+protocol errors are recorded as redacted application logs.
+
+Explicit commands and an active Code workspace take precedence over this fallback.
+Changing the MCP checkbox never expands an explicitly selected server's scope.
+Opening a linked workspace from the Code page attaches it to the conversation and enables the
+**Code** checkbox for that chat.
+The folder's **Configure Agent** permissions include the app-managed **Coding assistant**
+(`builtin-coding-agent`), selected by default alongside saved agents for folders without custom
+agent permissions. In Chat, the folder's **Configure Agent** selections control which enabled
+DeepAgents ACP agents are registered, including the built-in Coding assistant. Folder resource
+selections also limit each agent's tools, skills, MCP servers, and knowledge sources.
+MCP, Skills, Agents, Knowledge Base, and Tools libraries include a protected **Built-in** group
+for organizing application-provided resources; the Saved Text knowledge source is assigned to it
+automatically.
+
 ## Provider and model selection
 
 Choose the provider and model in the **chat header**. With one enabled provider, only the
@@ -55,13 +178,13 @@ and send with Enter or the arrow. Shift+Enter inserts a new line; Cmd/Ctrl+Enter
 
 - **Skills:** applies the selected skill's instructions only when the capability decision finds
   its workflow relevant and necessary for the request.
-  Uses conversation history and the selected knowledge context. It does not grant tools.
+  Instruction-only skills use conversation history and selected Chat knowledge context. Skills with saved capabilities run through the configured agent engine; see the skill capability graph below.
 - **Agent:** initializes the saved provider/model and uses the conversation’s effective selection, skills, selected tools,
   knowledge sources and execution limit. The Chat knowledge selector does not override the
   agent's configured sources. A task and project folder are optional; `/agent <name>` alone
   runs the configured instructions.
 - **MCP:** uses the current chat model to choose tools from the selected connected server only.
-  Start the server in MCP first. The selected Chat knowledge context is available to this run.
+  The selected enabled server starts automatically when you send. The selected Chat knowledge context is available to this run.
   No built-in filesystem or shell tools are granted by this command.
 
 ### Agent folders and progress
@@ -89,7 +212,27 @@ hash checks. Stop generation cancels the associated run, including pending appro
 
 Results, command names, and the latest 100 activity events persist with the conversation.
 Historical approval controls cannot execute again. Commands cannot use Regenerate; send a
-new command to repeat a task deliberately. Ordinary messages use normal chat unless an agent context is active.
+new command to repeat a task deliberately. Ordinary messages use normal chat unless an agent or linked workspace is active.
+
+### Linked Code workspaces
+
+Type `/code` to list saved folders directly in Chat. Type a folder name or path after `/code `
+to filter the list, then click a folder or select it with the arrow keys and Enter. Chat stays open
+and the selected workspace connects to the current conversation. **Open another folder…** opens
+the native folder picker; **Connect project** in the Chat header also opens it.
+Recent linked workspaces can also be reconnected from Code in another
+conversation, and missing folders can be relinked through the native picker. Reopening a
+conversation restores its workspace indicator. Disconnecting removes only that conversation's
+link. Send a task to use the built-in coding assistant with the current provider/model; no saved
+agent is needed. It can inspect, search, edit, create and delete individual project files, inspect
+Git, and run approved development commands. Project operations require approval by default;
+file changes show diffs. Progress, approvals, results and failures use the existing Chat activity
+and execution history. Recent conversation text is provided as bounded context, and files are
+read only through tools. Reopening a linked conversation retains its project context.
+
+A selected saved agent inherits the linked folder unless a one-run folder is explicitly selected,
+and keeps its capability restrictions. Code's optional task form offers all enabled providers.
+Disconnect the workspace to return to ordinary Chat. See [Code Workspaces](CODE.md) for status.
 
 ## Conversation history
 
@@ -123,3 +266,66 @@ The selected KB also supplies the subject for ambiguous topical requests. For ex
 **agent-desktop** and asking **give me chat details** means the project's Chat feature, not
 personal chat history. Both the relevance check and answer prompt receive this scope. Explicitly
 unrelated general questions and instructions disabling knowledge still take precedence.
+
+## Long-term memory in chat
+
+With **Enable long-term agent memory** on in Settings, each request first retrieves at
+most five relevant memory entries (global plus the current conversation) and injects them
+as a bounded background-context block. Saying “Remember that …” stores the stated fact for
+this conversation without a model call. After a completed exchange, opt-in automatic
+capture may store one concise durable fact; secret-shaped content is never stored and
+memory failures never interrupt chat. Management (list/remove/clear per scope) is exposed
+over IPC; see [Memory](MEMORY.md). Conversation state itself remains the existing SQLite
+history and is unrelated to memory.
+
+## Remembered model selection
+
+Choosing a provider/model manually in Chat remembers that pair for new chats and app
+restarts. No separate Save action is needed. Existing conversations retain their own
+selections. Opening a saved agent uses its configured provider/model without replacing the
+remembered chat choice. If the remembered provider is disabled/removed or its model is no
+longer available, new chats use the configured default when valid.
+
+## Chat skills with MCP, Tools and KB
+
+A selected skill can declare `tools`, `knowledgeSources`, or a `capabilityConfig`
+with `tools`, `mcpServers` and `knowledgeBases`. When it has permitted execution
+capabilities, Chat runs it through the configured standard/Deep agent engine with
+that skill's instructions and capability configuration. Enabled configured MCP
+servers start automatically. Eligible KB scopes fetch semantic RAG passages before
+agent generation; the model then calls permitted MCP/custom tools as needed.
+Existing approvals, relevance checks and limits apply. Separate Chat MCP/Tools/KB
+checkboxes do not need to be checked for capabilities declared by the skill itself.
+The Skills checkbox authorizes selecting this skill and its saved configuration.
+
+Instruction-only skills retain the existing plain-chat behavior. None mode or
+disabled type switches prevent granting those capabilities. The selected skill
+applies only to the sent turn, not subsequent ordinary messages. Skill files stay
+at `<userData>/skills/<skill-id>/SKILL.md`; YAML frontmatter stores the capabilities.
+
+```mermaid
+flowchart TD
+    Select[Select skill in Chat and send] --> Load[Load SKILL.md and saved capability configuration]
+    Load --> Has{Permitted tools, MCP or KB configured?}
+    Has -->|No| Plain[Apply skill instructions in normal Chat]
+    Has -->|Yes| Start[Start enabled configured MCP servers]
+    Start --> Agent[Run skill through configured standard/Deep engine]
+    Agent --> RAG[Fetch eligible KB RAG passages]
+    RAG --> Prompt[Attach passages and skill instructions before generation]
+    Prompt --> Model[Model chooses relevant permitted tools]
+    Model --> Approval[Capability checks and existing approvals]
+    Approval --> Execute[MCPAdapter or configured Tool execution]
+    Execute --> Result[Return real results to model]
+    Result --> Answer[Final answer and chat metadata]
+    Plain --> Answer
+```
+
+Code: `ChatCommands.prepare` in `src/main/services/ollama/commands.ts` builds the
+skill executor; `AgentService.loop` in `src/main/services/agents/agents.ts` attaches
+RAG and registers tools; `AgentLoopGraph.run` selects the engine and orchestrates
+calls. Regression coverage is in `tests/chat-commands.test.ts` and
+`tests/agent.integration.test.ts`.
+
+## Local Code conversations
+
+Ordinary messages with Code enabled and a linked folder use a persistent DeepAgents/ACP session and the selected local model. General Q&A remains available; project operations use the existing approval UI, including file diffs. Switching or disconnecting a folder stops its affected work before changing context. Explicit saved-agent commands retain their configured engine/provider support. See [Code](CODE.md) for model requirements and restart behavior.

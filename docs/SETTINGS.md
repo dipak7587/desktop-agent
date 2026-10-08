@@ -25,6 +25,15 @@ error dialog lists the names and count and offers **Manage agents**. Reassign th
 The main process enforces this rule for settings saves and imports too. With no agent references,
 deletion asks for confirmation and lists affected chats; historical messages remain readable.
 
+## Landing
+
+Open **Settings → Landing** to edit the empty-chat welcome label, heading, description,
+and the title, prompt and icon of each of the three suggestion cards. Each card inserts its
+prompt into the chat draft. Upload a PNG, JPEG or WebP logo up to 1 MB, or remove it to use
+the default mark. The preview updates while editing; **Save landing** applies your changes.
+**Reset landing to defaults** restores the original content in the form; save to apply it.
+Landing content and the embedded logo persist locally and are included in workspace backups.
+
 ## Models and retrieval
 
 Choose a provider such as Ollama, OpenAI, Anthropic Claude, Google Gemini, OpenRouter,
@@ -55,6 +64,24 @@ folder explicitly selected for that run; folder selection is optional for other 
 
 ## Credentials and local data
 
+Open **Settings → Credentials** to see stored credential names, add or replace a key,
+remove a key, or connect/disconnect a `.env` file. Stored values remain masked and are
+never returned to the interface. **General** contains the Local data directory information.
+
+## Workspace import and export
+
+Open **Settings → Import / Export** to export the workspace as JSON, YAML, or Markdown, or import
+a `.json`, `.yaml`, `.yml`, or `.md` backup. The archive includes settings, chat history, agents,
+skills, Saved Text, MCP definitions, custom Tool definitions and JavaScript, and workflows.
+Import merges by ID: matching definitions and conversations are replaced; local records absent
+from the archive remain.
+
+Backups include chat content and executable MCP/Tool definitions. Literal environment values saved
+inside MCP definitions are included; OS-stored credentials and selected `.env` file contents are
+not. Provider IDs that match the current installation retain their locally stored credentials.
+External project and server folders are not copied, including files excluded by `.gitignore` or
+the configured ignore patterns.
+
 Store supported credentials using OS encryption or explicitly select a `.env` file. MCP
 definitions reference environment variable names rather than containing secret values. Custom
 API Tool headers can use `${NAME}` references resolved at execution time. Keep literal credentials
@@ -75,3 +102,16 @@ See [Chat](CHAT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [Agents](AGENTS.md), [
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Memory and agent engine (General tab)
+
+- **Enable long-term agent memory** turns scoped long-term memory on or off
+  (`memoryEnabled`). With it off, nothing is retrieved or captured. See
+  [Memory](MEMORY.md).
+- **Allow automatic memory capture** opts into conservative model-driven
+  capture (`memoryAutomatic`); explicit “Remember that …” requests always work
+  while memory is enabled. Automatic capture never stores secret-shaped
+  content.
+- **Agent engine** chooses between LangChain `createAgent` (default, stored as `classic`) and
+  Deep Agents with todo planning (`deepAgentMode`). Approvals, permissions and execution limits apply
+  identically in both engines.

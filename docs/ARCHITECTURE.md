@@ -25,11 +25,54 @@ Each phase is checked before the next. No simulated application data or model re
 
 ## Data
 
-All runtime data lives beneath Electron `app.getPath('userData')` (a test-only
+All runtime data lives beneath Electron `app.getPath('userData')`, which defaults to
+`~/.local-ai-workspace` (a test-only
 environment override permits isolated smoke tests). `database/app.sqlite` stores
-conversations and messages. `database/agent-runs.sqlite` stores execution history. `saved-text/*.md`, `skills/*/SKILL.md`, `agents/*.md`,
+conversations and messages. `database/agent-runs.sqlite` stores execution history.
+`database/memory.sqlite` stores scoped long-term agent memory and
+`database/checkpoints.sqlite` stores LangGraph checkpoints, both with the same
+built-in SQLite engine. `saved-text/*.md`, `skills/*/SKILL.md`, `agents/*.md`,
 `tools/*.md`, and `mcp/*.json` remain portable files. Knowledge metadata and previews are files;
 vectors live in `rag/lancedb`. Settings and OS-encrypted credentials are separate.
+
+## AI stack layers
+
+`services/ai/langchain-model.ts` resolves official LangChain chat models from captured
+provider settings. `services/ai/native-models.ts` configures `ChatOllama`, `ChatOpenAI`
+(OpenAI/OpenRouter/Groq/custom compatible endpoints), `ChatAnthropic`, and `ChatGoogle`.
+These integrations own inference protocols, streaming, tool-call IDs and message conversion.
+`services/ollama/provider.ts` retains model discovery, embedding adapters and the guarded
+HTTP transport; credentials and settings remain main-process concerns. No custom
+`BaseChatModel` implementation ships in the application.
+
+The default agent runtime in `services/ai/agent-graph.ts` calls LangChain `createAgent`.
+LangChain owns the model/tool loop, argument validation, tool-result messages and graph
+state. `modelCallLimitMiddleware` enforces the configured number of agent model turns;
+application middleware supplies progress, bounded context and the capability boundary.
+Native tools carry schemas for workspace operations, custom Tools, MCP, skills and
+knowledge. Provider-safe tool names map deterministically to existing capability IDs.
+Execution still passes through `CapabilityRouter` and `AgentTools` for eligibility,
+relevance, approvals, hash checks, cancellation and redacted activity records.
+
+Deep mode calls `createDeepAgent` using the same captured model, capability tools,
+model-turn limit, lifecycle middleware and checkpointer. It adds LangChain todo planning.
+Default harness filesystem/shell/delegation tools are hidden and rejected: they cannot
+bypass the application's capability selections or execution limits. Multi-agent work
+continues through the configured Workflows feature. Both engines support folderless
+runs; only workspace capabilities require a selected project.
+
+Normal Chat remains a compiled LangGraph `StateGraph` (`services/ai/chat-graph.ts`):
+capability preparation → retrieval → memory → official model streaming → persistence.
+This application workflow does not need an autonomous tool loop. Chat uses the conversation
+ID as its checkpoint thread; agents use a fresh run ID. Both persist through
+`CheckpointDatabase` in `database/checkpoints.sqlite`. Deleting agent history removes
+its corresponding checkpoint thread. Interrupted runs are cancelled on restart; automatic
+replay of approved side effects is not implemented.
+
+Long-term memory (`services/ai/memory.ts`, [Memory](MEMORY.md)) remains scoped, bounded
+application data, separate from RAG and SQLite chat history. Model-driven relevance and
+memory extraction use LangChain models and schema parsers. No AI framework runs in the
+renderer. See [LangChain migration](LANGCHAIN_MIGRATION.md) for the analysis and boundaries.
 
 ## Boundaries
 
@@ -50,6 +93,14 @@ picker authorization at the IPC boundary; folderless runs cannot use built-in pr
 The same `FolderSelection` component serves Chat and Run Agent. The run stores the selected
 path for history without turning it into a default for future requests.
 
+Persistent Code workspace metadata is stored in `database/app.sqlite` alongside conversations,
+but in a separate `code_workspaces` table. Conversations have a nullable workspace ID; native
+folder selection and reconnection happen through validated main-process IPC. Workspace selection
+does not yet grant or inject project capabilities into normal Chat. Existing per-run agent folder
+selection remains a separate flow until workspace policy is connected to capability routing.
+Relinking a missing workspace uses another native folder selection, retains its ID and clears
+workspace policy/provider/agent preferences for the replacement path.
+
 The agent runtime snapshots the configured iteration maximum, counts model turns, and persists
 status, timestamps, request, tool/MCP activity and results through `AgentRunDatabase`. It emits
 safe progress labels rather than model planning fields. Interrupted persisted runs become
@@ -69,3 +120,19 @@ stores. Markdown renders without raw HTML. Dark/light/system color schemes use n
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## Linked coding conversations
+
+Chat resolves its persisted workspace in the main process. `ChatCommands.prepareCoding` creates
+a transient coding configuration using the captured provider/model and existing project tools;
+no agent definition is written. `AgentService` runs it through the same capability router,
+review UI, cancellation, iteration limits and persistent execution history as saved agents.
+`services/agents/coding.ts` supplies shared coding instructions, canonical-root validation and
+workspace/agent permission intersection. Recent conversation text is bounded context, not a
+permission grant. Project reads default to Ask for linked conversations; direct writes and
+commands are reviewed. Folderless chat and explicitly selected one-run folders retain their
+existing paths.
+
+## Code ACP runtime
+
+Direct workspace-linked Code chat is routed through `ChatService → ChatCommands → AgentService → CodeAgentManager → deepagents-acp → DeepAgent`. ACP SDK connections use an embedded main-process transport; the pinned package patch avoids process-global stdio handlers. Existing guarded capabilities own all file/command access. The renderer and preload API are unchanged. Session state is cached per conversation; durable Chat history seeds new sessions after restart. See [Code runtime](CODE.md) for lifecycle, local-provider restrictions and patch details.

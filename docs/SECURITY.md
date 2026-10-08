@@ -44,11 +44,27 @@ produce a diff, and recheck the hash after approval. The final written content i
 Default approval mode asks before every file change. Safe mode approves common source/document
 edits but asks for configuration/other file types; full auto permits allowed writes/scripts.
 
-Package scripts require approval except in full-auto mode. Only npm/pnpm/yarn test, lint, build,
-and typecheck commands are permitted. Shell interpreters, arbitrary arguments, destructive
-commands, git push/reset and deletion tools are unavailable through built-in tools. Child processes run with bounded
-output, a timeout, cancellation and a reduced environment. Project scripts themselves are
-arbitrary code: inspect/trust the selected project before approving them. MCP calls ask by default; per-capability Always allow skips approval.
+The existing npm/pnpm/yarn test, lint, build and typecheck categories follow configured
+approval settings. Additional package scripts, formatters and development executables
+(Node, Python/pytest/uv/ruff, Cargo, Go, .NET, Java/Maven/Gradle, Make/CMake/CTest,
+Ruby/Bundler and PHP/Composer) always require explicit approval of the executable,
+argument array, reason and working directory. Commands use argument arrays without a shell;
+their working directory must be inside the selected root. Child processes have bounded output,
+timeout, cancellation and a reduced environment. Approved development programs and scripts can
+execute arbitrary code; the working directory is not an OS sandbox. MCP calls ask by default.
+
+Individual text-file deletion requires a read hash, deletion diff and explicit approval even in
+full-auto mode. Directories, protected paths and symlinks are rejected, and the hash/path are
+checked again after approval. No recursive deletion or direct Git mutation tool is provided.
+
+The persistent Code registry uses native folder selection and canonical paths. Linked Chat now
+uses the existing agent capability router with the current provider/model, without requiring a
+saved agent. An empty workspace policy defaults project operations to Ask; selecting a folder
+alone does not execute or approve a tool. Direct coding always reviews writes and commands.
+Existing workspace denials and selected-agent denials win over allows. Selected agents inherit
+the linked folder if no one-run folder was explicitly selected. Missing or replaced roots must
+be relinked. Disconnecting restores ordinary folderless Chat. Workspace permission editing and
+conversation-scoped grants are not implemented.
 
 This is an application-level policy boundary, not an OS sandbox around agent child processes.
 The Electron renderer is sandboxed, but trusted MCP servers/package scripts run as the current
@@ -95,3 +111,21 @@ protection if needed. The local macOS package is ad-hoc signed; it is not Develo
 
 See [Capability decisions](CAPABILITIES.md) for Auto/Selected/None modes, restrictions,
 permissions, relevance checks and decision traces.
+
+## AI frameworks, memory and checkpointing
+
+The LangChain/LangGraph/Deep Agents layer adds no new privilege surface. Framework code
+runs only in the main process and reaches models, tools, MCP and credentials through the
+official model integrations and application permission checks; the renderer still instantiates nothing. Deep
+Agents mode hides and rejects its default filesystem, shell and delegation tools; only
+registered application capabilities and internal todo planning are exposed, and its approvals flow through the standard `agents:approve` IPC. Long-term memory
+(`database/memory.sqlite`) refuses secret-shaped values before storing, is never part of
+exports, and is retrieved only as bounded, untrusted-marked prompt context. LangGraph
+checkpoints persist only in `database/checkpoints.sqlite`. Model configuration and credential
+handles are not graph state. Checkpoints do contain conversation/task content and tool
+messages and are not encrypted at rest; they are not included in portable exports. Removing
+an agent history entry also deletes its checkpoint thread.
+
+## Code ACP boundary
+
+Direct Code chat only accepts local inference endpoints (loopback/private IPv4); saved-agent behavior is unchanged. ACP runs in Electron main over SDK streams. Native DeepAgents host filesystem/shell/delegation tools are excluded; the state-only backend cannot implicitly read host files. Registered application tools retain capability policy, symlink/secret checks, scoped paths, content hashes and command review. Generic ACP tool dispatch permission is not an operation grant: exact-operation requests pass through ACP into the existing approval UI before I/O. A selected cwd and application checks do not sandbox approved child processes. See [Code](CODE.md) for scope and remaining limitations.

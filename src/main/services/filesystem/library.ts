@@ -1,54 +1,230 @@
+import { assertUniqueName, SaveQueue } from './unique-name';
+import { expandEnvironment, isHttpUrlTemplate } from '../../../shared/environment';
+import type { SecretResolver } from '../mcp/mcp';
+import {
+  parseToolFile,
+  serializeToolFile,
+  toolItemFromSource,
+  legacyToolSource,
+} from '../tools/files';
+import { mcpConfigFromItem } from '../../../shared/mcp-schema';
 import { capabilityConfig } from '../../../shared/capabilities';
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
+import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import matter from 'gray-matter';
 import { randomUUID } from 'node:crypto';
 import { librarySchema, idSchema } from '../../../shared/schemas';
-import type { LibraryKind, LibraryItem } from '../../../shared/types';
-import { atomicWrite } from './storage';
+import { BUILT_IN_GROUP, type LibraryKind, type LibraryItem } from '../../../shared/types';
+import { atomicWrite, readJSON } from './storage';
+import { validateHookSource } from '../tools/typescript';
 export class LibraryService {
+  private saveQueue = new SaveQueue();
+  private builtIns = new Map<LibraryKind, Map<string, LibraryItem>>();
+  async loadBuiltIns(root: string) {
+    const bundled = new LibraryService(root);
+    const next = new Map<LibraryKind, Map<string, LibraryItem>>();
+    for (const kind of ['agents', 'skills', 'mcp', 'tools', 'hooks'] as const) {
+      const items = await bundled.list(kind);
+      next.set(
+        kind,
+        new Map(
+          items.map((item) => [
+            item.id,
+            {
+              ...item,
+              builtIn: true,
+              group: BUILT_IN_GROUP,
+            },
+          ]),
+        ),
+      );
+    }
+    this.builtIns = next;
+  }
+  assertWritable(kind: LibraryKind, id: string) {
+    idSchema.parse(id);
+    if (this.builtIns.get(kind)?.has(id))
+      throw new Error('Built-in items cannot be edited, moved, or deleted.');
+  }
+  async assertSaveAllowed(kind: LibraryKind, input: LibraryItem) {
+    if (!this.builtIns.get(kind)?.has(input.id)) return;
+    if (kind !== 'agents') throw new Error('Built-in items cannot be edited, moved, or deleted.');
+    const current = await this.get(kind, input.id);
+    const comparable = (item: LibraryItem) => {
+      const {
+        providerId: _provider,
+        model: _model,
+        hooks: _hooks,
+        updatedAt: _updated,
+        builtIn: _builtIn,
+        ...rest
+      } = item;
+      return rest;
+    };
+    if (JSON.stringify(comparable(current)) !== JSON.stringify(comparable(input)))
+      throw new Error(
+        'Built-in agents only allow changing the provider, model, and hook assignments.',
+      );
+  }
+
   constructor(
     private root: string,
     private onSavedTextChange?: () => Promise<void>,
+    private secrets?: SecretResolver,
   ) {}
+  resolveInstructions(content: string) {
+    return this.secrets
+      ? expandEnvironment(content, (name) => this.secrets!.resolve(name))
+      : content;
+  }
   path(kind: LibraryKind, id: string) {
     idSchema.parse(id);
     return kind === 'skills'
       ? join(this.root, kind, id, 'SKILL.md')
-      : join(this.root, kind, `${id}.${kind === 'mcp' ? 'json' : 'md'}`);
+      : join(
+          this.root,
+          kind,
+          `${id}.${kind === 'mcp' ? 'json' : kind === 'tools' || kind === 'hooks' ? 'ts' : 'md'}`,
+        );
+  }
+  private groupPath(kind: LibraryKind) {
+    return join(this.root, kind, 'groups.registry');
+  }
+  private async readGroups(kind: LibraryKind) {
+    const stored = await readJSON<unknown>(this.groupPath(kind), []);
+    if (!Array.isArray(stored)) throw new Error(`Invalid ${kind} group registry`);
+    const names = stored.map((name) => {
+      if (typeof name !== 'string') throw new Error(`Invalid ${kind} group registry`);
+      return librarySchema.shape.group.parse(name);
+    });
+    return [...new Set(names.filter((name): name is string => !!name))];
+  }
+  private async writeGroups(kind: LibraryKind, groups: string[]) {
+    await atomicWrite(
+      this.groupPath(kind),
+      JSON.stringify(
+        [...new Set(groups)].filter(Boolean).sort((a, b) => a.localeCompare(b)),
+        null,
+        2,
+      ),
+    );
+  }
+  async groups(kind: LibraryKind) {
+    const [stored, items] = await Promise.all([this.readGroups(kind), this.list(kind)]);
+    const assigned = items.map((item) => item.group).filter((name): name is string => !!name);
+    return [
+      ...new Set([...stored, ...assigned, ...(kind === 'saved-text' ? [] : [BUILT_IN_GROUP])]),
+    ].sort((a, b) => a.localeCompare(b));
   }
   async list(kind: LibraryKind): Promise<LibraryItem[]> {
-    await mkdir(join(this.root, kind), { recursive: true });
-    const entries = await readdir(join(this.root, kind), { withFileTypes: true });
+    const entries = await readdir(join(this.root, kind), { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
     const items: LibraryItem[] = [];
     for (const entry of entries) {
       if (
         kind === 'skills'
           ? !entry.isDirectory()
-          : !entry.name.endsWith(kind === 'mcp' ? '.json' : '.md')
+          : !(kind === 'tools' || kind === 'hooks'
+              ? /\.(ts|md)$/.test(entry.name)
+              : entry.name.endsWith(kind === 'mcp' ? '.json' : '.md'))
       )
         continue;
-      const id = kind === 'skills' ? entry.name : entry.name.replace(/\.(json|md)$/, '');
-      items.push(this.parse(kind, await readFile(this.path(kind, id), 'utf8'), id));
+      const id = kind === 'skills' ? entry.name : entry.name.replace(/\.(json|md|ts)$/, '');
+      if (
+        (kind === 'tools' || kind === 'hooks') &&
+        entry.name.endsWith('.md') &&
+        entries.some((candidate) => candidate.name === `${id}.ts`)
+      )
+        continue;
+      items.push(
+        this.parse(
+          kind,
+          await readFile(
+            kind === 'tools' || kind === 'hooks'
+              ? join(this.root, kind, entry.name)
+              : this.path(kind, id),
+            'utf8',
+          ),
+          id,
+        ),
+      );
     }
-    return items.sort((a, b) => b.updatedAt - a.updatedAt);
+    const bundled = this.builtIns.get(kind);
+    const bundledItems = [...(bundled?.values() ?? [])].map((item) => {
+      const override = items.find((candidate) => candidate.id === item.id);
+      return override && kind === 'agents'
+        ? { ...item, providerId: override.providerId, model: override.model, hooks: override.hooks }
+        : item;
+    });
+    return [
+      ...items.filter((item) => !bundled?.has(item.id)),
+      ...structuredClone(bundledItems),
+    ].sort((a, b) => b.updatedAt - a.updatedAt);
   }
   parse(kind: LibraryKind, raw: string, id: string = randomUUID()): LibraryItem {
-    if (kind === 'mcp') return librarySchema.parse({ ...JSON.parse(raw), id });
+    if (kind === 'tools' && !/^---\r?\n/.test(raw)) return parseToolFile(raw, id);
+    if (kind === 'mcp') {
+      const value = { ...JSON.parse(raw), id };
+      return librarySchema.parse(
+        value.connection ? { ...value, ...mcpConfigFromItem(value) } : value,
+      );
+    }
+    if (kind === 'hooks') {
+      const header = /^\/\/ @localai-hook ([^\r\n]+)\r?\n/.exec(raw);
+      if (header)
+        return librarySchema.parse({
+          ...JSON.parse(header[1]),
+          content: raw.slice(header[0].length),
+          id,
+        });
+      if (!/^---\r?\n/.test(raw))
+        return librarySchema.parse({ id, name: id, hookType: 'pre', content: raw });
+    }
     if (!/^---\r?\n/.test(raw))
       throw new Error('Markdown definitions require YAML frontmatter (--- on its own line)');
     const parsed = matter(raw);
-    return librarySchema.parse({
+    const item = librarySchema.parse({
       ...parsed.data,
       name: parsed.data.name ?? parsed.data.title,
       content: parsed.content.trim(),
       id,
     });
+    if (kind === 'tools' && item.toolConfig) item.toolSource = legacyToolSource(item);
+    return item;
   }
   serialize(kind: LibraryKind, item: LibraryItem) {
+    if (kind === 'tools') return serializeToolFile(item);
+    if (kind === 'hooks') {
+      const metadata = Object.fromEntries(
+        (
+          [
+            'id',
+            'name',
+            'group',
+            'description',
+            'version',
+            'enabled',
+            'createdAt',
+            'updatedAt',
+            'hookType',
+          ] as const
+        ).map((key) => [key, item[key]]),
+      );
+      return `// @localai-hook ${JSON.stringify(metadata)}\n${item.content}`;
+    }
     if (kind === 'mcp') {
-      const { content: _content, ...config } = item;
-      return JSON.stringify(config, null, 2);
+      return JSON.stringify(
+        {
+          ...mcpConfigFromItem({ ...item }),
+          group: item.group,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        },
+        null,
+        2,
+      );
     }
     const { content, ...meta } = item;
     const metadata = Object.fromEntries(
@@ -59,48 +235,155 @@ export class LibraryService {
       kind === 'saved-text' ? { ...metadata, title: item.name } : metadata,
     );
   }
-  async save(kind: LibraryKind, input: LibraryItem) {
+  save(kind: LibraryKind, input: LibraryItem) {
+    return this.saveQueue.run(() => this.saveItem(kind, input));
+  }
+  private async saveItem(kind: LibraryKind, input: LibraryItem) {
+    await this.assertSaveAllowed(kind, input);
+    if (!this.builtIns.get(kind)?.has(input.id)) this.assertWritable(kind, input.id);
     const value = librarySchema.parse(input);
     const now = Date.now();
     const item = { ...value, createdAt: value.createdAt || now, updatedAt: now };
     if (kind === 'tools') {
       if (!item.toolConfig) throw new Error('Configure the Tool execution type and parameters');
-      if (item.toolConfig.type === 'api') {
-        const url = new URL(item.toolConfig.url);
-        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+      if (item.toolConfig.type === 'langchain') {
+        Object.assign(item, toolItemFromSource(item.content, item));
+      } else if (item.toolConfig.type === 'api') {
+        if (!isHttpUrlTemplate(item.toolConfig.url))
           throw new Error('Use an HTTP(S) API URL without credentials');
       } else if (!item.content.trim())
         throw new Error('Add JavaScript logic before saving this Tool');
     }
-    if (kind === 'mcp' && !item.description.trim()) throw new Error('MCP description is required');
+    if (kind === 'hooks') {
+      if (!item.hookType) throw new Error('Choose a lifecycle type for this Hook');
+      validateHookSource(item.content);
+    }
+    if (kind === 'tools' && item.toolConfig?.type !== 'langchain')
+      item.toolSource = legacyToolSource(item);
+    if (kind === 'mcp') Object.assign(item, mcpConfigFromItem({ ...item }));
+    const labels: Record<LibraryKind, string> = {
+      agents: 'An agent',
+      mcp: 'An MCP server',
+      skills: 'A skill',
+      tools: 'A tool',
+      'saved-text': 'Saved text',
+      hooks: 'A Hook',
+    };
+    assertUniqueName(await this.list(kind), item, labels[kind]);
     await atomicWrite(this.path(kind, item.id), this.serialize(kind, item));
+    if (kind === 'tools' || kind === 'hooks')
+      await rm(join(this.root, kind, `${item.id}.md`), { force: true });
     if (kind === 'saved-text') await this.onSavedTextChange?.();
-    return item;
+    return kind === 'mcp' || kind === 'tools'
+      ? this.parse(kind, this.serialize(kind, item), item.id)
+      : item;
   }
   async assertRemovable(kind: LibraryKind, id: string) {
-    if (kind !== 'skills' && kind !== 'mcp' && kind !== 'tools') return;
+    this.assertWritable(kind, id);
+    if (!['skills', 'mcp', 'tools', 'hooks'].includes(kind)) return;
     const prefix = kind === 'mcp' ? `mcp:${id}:` : `custom:${id}`;
     const agents = (await this.list('agents')).filter(
       (a) =>
         (kind === 'skills'
           ? [...a.skills, ...capabilityConfig(a).skills].includes(id)
-          : [...a.tools, ...capabilityConfig(a).tools].some((t) =>
-              kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
-            )) ||
+          : kind === 'hooks'
+            ? (a.hooks ?? []).includes(id)
+            : [...a.tools, ...capabilityConfig(a).tools].some((t) =>
+                kind === 'mcp' ? t.startsWith(prefix) : t === prefix,
+              )) ||
         (kind === 'mcp' && capabilityConfig(a).mcpServers.includes(id)),
     );
-    if (agents.length)
+    const dependentSkills =
+      kind === 'skills'
+        ? (await this.list('skills')).filter(
+            (skill) =>
+              skill.id !== id && [...skill.skills, ...capabilityConfig(skill).skills].includes(id),
+          )
+        : [];
+    const dependents = [...agents, ...dependentSkills];
+    if (dependents.length)
       throw new Error(
-        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : 'Tool'}. It is currently used by: ${agents.map((a) => a.name).join(', ')}. Remove it from these Agents before deleting it.`,
+        `Cannot delete this ${kind === 'skills' ? 'skill' : kind === 'mcp' ? 'MCP server' : kind === 'hooks' ? 'Hook' : 'Tool'}. It is currently used by: ${dependents.map((item) => item.name).join(', ')}. Remove it from these definitions before deleting it.`,
       );
+  }
+  async setGroup(kind: LibraryKind, ids: string[], group: string) {
+    for (const id of ids) this.assertWritable(kind, id);
+    const name = librarySchema.shape.group.parse(group);
+    const items = await Promise.all([...new Set(ids)].map((id) => this.get(kind, id)));
+    const groups = new Set(await this.readGroups(kind));
+    for (const item of items) if (item.group) groups.add(item.group);
+    if (name) groups.add(name);
+    await this.writeGroups(kind, [...groups]);
+    // Grouping changes organization only, without restarting servers or changing runtime settings.
+    for (const item of items) {
+      await atomicWrite(
+        this.path(kind, item.id),
+        this.serialize(kind, {
+          ...item,
+          group: name,
+          updatedAt: Date.now(),
+        }),
+      );
+    }
+  }
+  async renameGroup(kind: LibraryKind, from: string, to: string) {
+    const previous = librarySchema.shape.group.parse(from);
+    const next = librarySchema.shape.group.parse(to);
+    if (!previous || !next) throw new Error('Group names cannot be empty');
+    if (previous === BUILT_IN_GROUP) throw new Error('The Built-in group cannot be renamed.');
+    const items = await this.list(kind);
+    const ids = items.filter((item) => item.group === previous).map((item) => item.id);
+    if (ids.length) await this.setGroup(kind, ids, next);
+    const groups = (await this.readGroups(kind)).filter((name) => name !== previous);
+    await this.writeGroups(kind, [...groups, next]);
+  }
+  async deleteGroup(kind: LibraryKind, group: string) {
+    const name = librarySchema.shape.group.parse(group);
+    if (!name) throw new Error('Group name cannot be empty');
+    if (name === BUILT_IN_GROUP) throw new Error('The Built-in group cannot be deleted.');
+    const items = await this.list(kind);
+    const ids = items.filter((item) => item.group === name).map((item) => item.id);
+    if (ids.length) await this.setGroup(kind, ids, '');
+    await this.writeGroups(
+      kind,
+      (await this.readGroups(kind)).filter((existing) => existing !== name),
+    );
   }
   async remove(kind: LibraryKind, id: string) {
     await this.assertRemovable(kind, id);
     await rm(this.path(kind, id), { force: true });
+    if (kind === 'tools' || kind === 'hooks')
+      await rm(join(this.root, kind, `${id}.md`), { force: true });
     if (kind === 'skills') await rm(join(this.root, kind, id), { recursive: true, force: true });
     if (kind === 'saved-text') await this.onSavedTextChange?.();
   }
   async get(kind: LibraryKind, id: string) {
-    return this.parse(kind, await readFile(this.path(kind, id), 'utf8'), id);
+    idSchema.parse(id);
+    const bundled = this.builtIns.get(kind)?.get(id);
+    if (bundled) {
+      if (kind === 'agents') {
+        try {
+          const override = this.parse(kind, await readFile(this.path(kind, id), 'utf8'), id);
+          return structuredClone({
+            ...bundled,
+            providerId: override.providerId,
+            model: override.model,
+            hooks: override.hooks,
+          });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+      return structuredClone(bundled);
+    }
+    let raw: string;
+    try {
+      raw = await readFile(this.path(kind, id), 'utf8');
+    } catch (error) {
+      if (!['tools', 'hooks'].includes(kind) || (error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw error;
+      raw = await readFile(join(this.root, kind, `${id}.md`), 'utf8');
+    }
+    return this.parse(kind, raw, id);
   }
 }

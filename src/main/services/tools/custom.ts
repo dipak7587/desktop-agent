@@ -1,4 +1,10 @@
+import ts from 'typescript';
+import { expandEnvironment } from '../../../shared/environment';
+import { analyzeToolSource, toolModuleBase, validateHookSource } from './typescript';
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
+import { toolItemFromSource } from './files';
+import type { LibraryItem } from '../../../shared/types';
 import type { LibraryService } from '../filesystem/library';
 import type { SecretResolver } from '../mcp/mcp';
 
@@ -10,7 +16,90 @@ export class CustomToolService {
     private secrets: SecretResolver,
     private timeout: () => number,
   ) {}
-  async run(id: string, input: Record<string, unknown>, signal?: AbortSignal, project?: string) {
+  async runSource(source: string, input: Record<string, unknown>) {
+    const item = toolItemFromSource(source, { id: 'preview', enabled: true });
+    return this.run(item.id, input, undefined, undefined, item);
+  }
+  async runHook(
+    source: string,
+    context: Record<string, unknown>,
+    signal?: AbortSignal,
+    project?: string,
+  ) {
+    validateHookSource(source);
+    if (this.active.size >= 3) throw new Error('At most three custom scripts may run at once');
+    if (JSON.stringify(context).length > 100_000) throw new Error('Hook context exceeds 100 KB');
+    const controller = new AbortController();
+    this.active.add(controller);
+    const combined = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(this.timeout()),
+      ...(signal ? [signal] : []),
+    ]);
+    try {
+      combined.throwIfAborted();
+      const code = ts.transpileModule(source, {
+        compilerOptions: {
+          target: ts.ScriptTarget.ES2023,
+          module: ts.ModuleKind.CommonJS,
+          esModuleInterop: true,
+        },
+      }).outputText;
+      await new Promise<void>((resolve, reject) => {
+        const wrapper = `let raw='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>raw+=c);process.stdin.on('end',async()=>{try{const {code,context,base}=JSON.parse(raw);const Module=require('node:module');const path=require('node:path');const instance=new Module(base);instance.filename=base;instance.paths=Module._nodeModulePaths(path.dirname(base));instance._compile(code,base);const hook=instance.exports.default??instance.exports.hook;if(typeof hook!=='function')throw new Error('Export a default async hook function');await hook(context);}catch(e){console.error(e.message);process.exitCode=1;}});`;
+        const cwd = project || process.cwd();
+        const base = join(cwd, 'agent-hook.cjs');
+        const child = spawn(process.execPath, ['-e', wrapper], {
+          cwd,
+          signal: combined,
+          killSignal: 'SIGKILL',
+          env: {
+            PATH: process.env.PATH,
+            TMPDIR: process.env.TMPDIR,
+            ELECTRON_RUN_AS_NODE: '1',
+          },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        let stderr = '';
+        let outputTooLarge = false;
+        let outputSize = 0;
+        const collect = (data: Buffer, isError: boolean) => {
+          outputSize += data.length;
+          if (outputSize > 100_000) {
+            outputTooLarge = true;
+            child.kill('SIGKILL');
+          } else if (isError) stderr += data.toString();
+        };
+        child.stdout.on('data', (data: Buffer) => collect(data, false));
+        child.stderr.on('data', (data: Buffer) => collect(data, true));
+        child.on('error', reject);
+        child.stdin.on('error', reject);
+        child.on('close', (code) =>
+          code === 0
+            ? resolve()
+            : reject(
+                new Error(
+                  outputTooLarge
+                    ? 'Hook output exceeds 100 KB'
+                    : stderr || 'Hook execution failed or timed out',
+                ),
+              ),
+        );
+        child.stdin.end(JSON.stringify({ code, context, base }));
+      });
+    } catch (error) {
+      throw new Error(this.secrets.redact((error as Error).message));
+    } finally {
+      this.active.delete(controller);
+    }
+  }
+  async run(
+    id: string,
+    input: Record<string, unknown>,
+    signal?: AbortSignal,
+    project?: string,
+    preview?: LibraryItem,
+  ) {
     if (this.active.size >= 3) throw new Error('At most three custom tools may run at once');
     const controller = new AbortController();
     this.active.add(controller);
@@ -21,12 +110,12 @@ export class CustomToolService {
     ]);
     try {
       combined.throwIfAborted();
-      const item = await this.library.get('tools', id);
+      const item = preview ?? (await this.library.get('tools', id));
       if (!item.enabled) throw new Error('Enable this Tool before running it');
       const config = item.toolConfig;
       if (!config) throw new Error('Configure the Tool before running it');
       if (JSON.stringify(input).length > 100000) throw new Error('Tool input exceeds 100 KB');
-      for (const parameter of config.parameters) {
+      for (const parameter of config.type === 'langchain' ? [] : config.parameters) {
         const value = input[parameter.name];
         if (value === undefined && !parameter.required) continue;
         const type = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
@@ -35,7 +124,7 @@ export class CustomToolService {
       }
       let output: string;
       if (config.type === 'api') {
-        const url = new URL(config.url);
+        const url = new URL(expandEnvironment(config.url, (name) => this.secrets.resolve(name)));
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
           throw new Error('Use an HTTP(S) URL without credentials');
         const headers = Object.fromEntries(
@@ -75,12 +164,41 @@ export class CustomToolService {
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${output.slice(0, 2000)}`);
       } else {
         output = await new Promise<string>((resolve, reject) => {
-          const wrapper = `let raw='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>raw+=c);process.stdin.on('end',async()=>{try{const {code,input}=JSON.parse(raw);const fn=new (Object.getPrototypeOf(async function(){}).constructor)('input','require',code);const result=await fn(input,require);process.stdout.write(JSON.stringify(result ?? null));}catch(e){console.error(e.message);process.exitCode=1;}});`;
+          const source =
+            item.toolSource ?? (config.type === 'langchain' ? item.content : undefined);
+          const analysis = source ? analyzeToolSource(source) : undefined;
+          const payload = analysis
+            ? {
+                code: ts.transpileModule(analysis.source, {
+                  compilerOptions: {
+                    target: ts.ScriptTarget.ES2023,
+                    module: ts.ModuleKind.CommonJS,
+                    esModuleInterop: true,
+                  },
+                }).outputText,
+                input,
+                exportName: analysis.exportName,
+                moduleBase: toolModuleBase,
+                schema: analysis.inputSchema,
+              }
+            : { code: item.content, input };
+          const wrapper = `let raw='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>raw+=c);process.stdin.on('end',async()=>{try{const {code,input,exportName,moduleBase,schema}=JSON.parse(raw);let result;if(exportName){const Module=require('node:module');const path=require('node:path');const instance=new Module(moduleBase);instance.filename=moduleBase;instance.paths=Module._nodeModulePaths(path.dirname(moduleBase));instance._compile(code,moduleBase);const selected=instance.exports[exportName];if(!selected||typeof selected.invoke!=='function')throw new Error('Exported LangChain tool is unavailable');for(const [key,property] of Object.entries(schema.properties||{})){if(property.format==='date-time'&&typeof input[key]==='string')input[key]=new Date(input[key]);}result=await selected.invoke(input);}else{const fn=new (Object.getPrototypeOf(async function(){}).constructor)('input','require',code);result=await fn(input,require);}process.stdout.write(exportName&&typeof result==='string'?JSON.stringify(result):JSON.stringify(result??null));}catch(e){console.error(e.message);process.exitCode=1;}});`;
           const child = spawn(process.execPath, ['-e', wrapper], {
             cwd: project,
             signal: combined,
             killSignal: 'SIGKILL',
-            env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR, ELECTRON_RUN_AS_NODE: '1' },
+            env: {
+              PATH: process.env.PATH,
+              TMPDIR: process.env.TMPDIR,
+              ...this.secrets.executionEnvironment?.(),
+              ...Object.fromEntries(
+                Object.entries(item.env).map(([key, value]) => [
+                  key,
+                  expandEnvironment(value, (name) => this.secrets.resolve(name)),
+                ]),
+              ),
+              ELECTRON_RUN_AS_NODE: '1',
+            },
             stdio: ['pipe', 'pipe', 'pipe'],
           });
           let stdout = '',
@@ -105,7 +223,7 @@ export class CustomToolService {
               ? resolve(stdout)
               : reject(new Error(stderr || 'Node.js tool failed or timed out')),
           );
-          child.stdin.end(JSON.stringify({ code: item.content, input }));
+          child.stdin.end(JSON.stringify(payload));
         });
       }
       return this.secrets.redact(output);

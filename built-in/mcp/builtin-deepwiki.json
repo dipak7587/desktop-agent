@@ -1,0 +1,23 @@
+{
+  "name": "DeepWiki — sample MCP",
+  "description": "Read documentation for public GitHub repositories through DeepWiki. Set DEEPWIKI_MCP_URL=https://mcp.deepwiki.com/mcp in your environment file and select it in Settings. Requires internet access. Click Start to connect.",
+  "enabled": true,
+  "transport": "streamable-http",
+  "connection": {
+    "type": "streamable-http",
+    "url": "${DEEPWIKI_MCP_URL}"
+  },
+  "capabilities": {
+    "tools": true
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "homepage": "https://docs.devin.ai/work-with-devin/deepwiki-mcp",
+    "tags": ["sample", "documentation", "public-repositories"]
+  },
+  "runtime": {
+    "autoConnect": false,
+    "reconnect": false,
+    "timeoutMs": 30000
+  }
+}
