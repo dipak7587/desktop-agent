@@ -1,4 +1,4 @@
-import { localTools } from './tools';
+import { localTools, readOnlyLocalTools } from './tools';
 import { StructuredOutputParser } from '@langchain/core/output_parsers';
 import { z } from 'zod';
 import type {
@@ -129,6 +129,9 @@ export class CapabilityDecisionEngine {
     ];
     // A broad deny cannot be overridden by a more specific allow.
     if (keys.some((key) => config.permissions[key] === 'deny')) return 'deny';
+    // Inspection is automatic even when a legacy agent/workspace policy says Ask.
+    // Explicit denials above and all eligibility checks remain authoritative.
+    if (capability.type === 'tool' && readOnlyLocalTools.has(capability.id)) return 'always_allow';
     // Skills and retrieval do not require approval, including legacy Ask settings.
     if (capability.type === 'skill' || capability.type === 'knowledge') return 'always_allow';
     return (

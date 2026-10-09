@@ -23,6 +23,17 @@ export const localTools = [
   'git.push',
   'shell.execute',
 ];
+/** Known inspection operations never mutate the selected workspace. */
+export const readOnlyLocalTools = new Set([
+  'filesystem.read',
+  'filesystem.list',
+  'filesystem.search',
+  'filesystem.exists',
+  'project.detect',
+  'git.status',
+  'git.diff',
+  'git.log',
+]);
 export type Approve = (tool: string, description: string, diff?: string) => Promise<boolean>;
 export async function safePath(root: string, input: string) {
   const base = await realpath(root);

@@ -76,7 +76,12 @@ characters of persisted conversation; unfinished operations are never automatica
 ACP session IDs themselves and full DeepAgent checkpoints are **not persisted across restarts**.
 
 **Permissions and tools.** All actual workspace operations retain the existing capability
-router and `AgentTools`; an empty workspace policy asks for project operations and deny wins.
+router and `AgentTools`; read-only inspection runs without approval, changes retain their approval policy, and explicit deny wins.
+Read-only operations are `filesystem.read`, `filesystem.list`, `filesystem.search`,
+`filesystem.exists`, `project.detect`, `git.status`, `git.diff`, and `git.log`.
+Legacy Ask settings do not prompt for these operations. Unselected tools, disabled capabilities,
+protected paths, missing workspace access, and explicit Deny settings remain blocked.
+Shell commands and custom/MCP tools are not assumed read-only; they retain their approval rules.
 For native Code workspace tool calls, the coding model's tool selection supplies relevance;
 there is no second JSON-only model request for `project.detect`, filesystem, Git, or shell tools.
 This also applies to configured agent profiles inside ACP. Mode, selection, enabled state,
