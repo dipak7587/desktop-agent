@@ -407,15 +407,6 @@ export class CodeAgentManager {
       workspaceRoot: input.project,
       authMethods: [],
       agents: configurations.map((agent) => {
-        console.log(
-          'Registering CodeAgent',
-          agent.id,
-          agent.name,
-          agent.modelId,
-          agent.tools.map((t) => {
-            return t.name;
-          }),
-        );
         return {
           name: agentNames.get(agent.id)!,
           description: agent.description,
