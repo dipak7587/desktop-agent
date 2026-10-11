@@ -201,3 +201,12 @@ including disabled agents. Groups and existing import/export, backup, and select
 stable tool IDs.
 
 See [Agents](AGENTS.md), [Security](SECURITY.md), and [Capability decisions](CAPABILITIES.md).
+
+## Global Chat command
+
+Type `/tools` in Chat to list configured tools, regardless of checkbox selection. Select a
+tool and enter your request, or type `/tools "Tool name" request`. Disabled tools appear
+with an explanation and must be enabled in Tools before running. The selected tool is the
+only custom tool granted by this command; normal approval and capability checks still apply.
+The removable command chip stays selected until removed or the conversation changes.
+See [Chat commands](CHAT.md#slash-commands) for `/mcp` tool selection, `/clear`, and `/help`.

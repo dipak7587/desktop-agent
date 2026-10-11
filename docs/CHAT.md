@@ -11,12 +11,13 @@ including the current user message, with no application system prompt, agent
 instructions, tool definitions, knowledge retrieval, or long-term memory retrieval
 or capture. A previously linked Code folder or remembered KB scope does not activate
 capabilities. Earlier conversation messages remain in context; start a fresh chat
-for an isolated test. Slash commands require their matching checkbox.
+for an isolated test. Explicit slash commands work with any checkbox selection, including none.
+The checkboxes control automatic capabilities for ordinary messages, not command availability.
 
 ```mermaid
 flowchart TD
     UI[Chat: select provider/model and send] --> Service[ChatService.send: validate selections]
-    Service --> Empty{modes array empty?}
+    Service --> Empty{No automatic modes and no explicit command?}
     Empty -->|Yes| Direct[ChatTurnGraph: START → generate]
     Direct --> History[Bounded conversation history only]
     History --> Model[createChatModel → selected LLM provider]
@@ -165,16 +166,51 @@ use **Sync / Re-index** in Knowledge Base.
 
 ## Slash commands
 
-Type `/` for command types, then `/mcp `, `/agent `, or `/skills ` for a searchable list of
-enabled items. Use Up/Down and Enter, or click an item. Escape dismisses suggestions.
-Selection creates a removable chip. Skills and MCP apply to the next message; an agent establishes a conversation context until removed. Enter your query
-and send with Enter or the arrow. Shift+Enter inserts a new line; Cmd/Ctrl+Enter also sends. Names with spaces can also be entered explicitly:
+Type `/` to show **all global commands**, regardless of which automatic-capability
+checkboxes are checked. Empty categories remain visible; their picker explains how to add
+resources. Disabled resources are listed with their status and cannot be run until enabled.
+Up/Down moves through suggestions, Enter selects, and Escape or **Back** goes up one level
+(or dismisses the root picker). A selected resource creates a removable command chip.
+Removing or changing a checkbox does not remove an explicit command selection.
+
+| Command     | Behavior                                                                                                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/clear`    | Stops the current run, clears only this conversation's messages and activity, and resets its runtime/checkpoint context. Keeps its model, folder, title, and other conversations. |
+| `/mcp`      | Lists configured MCP servers and connection status. Select a server to see its tools or **Ask this server**.                                                                      |
+| `/tools`    | Lists configured custom tools; select one and enter the request.                                                                                                                  |
+| `/agent`    | Lists saved agents; select one and enter an optional task.                                                                                                                        |
+| `/skills`   | Lists skills; select one and enter a request.                                                                                                                                     |
+| `/workflow` | Lists workflows; select one and enter an optional task.                                                                                                                           |
+| `/code`     | Lists saved project folders and **Open another folder**.                                                                                                                          |
+| `/kb`       | Lists Saved Text, All Knowledge, and knowledge folders.                                                                                                                           |
+| `/help`     | Shows command descriptions and syntax locally, without calling a model.                                                                                                           |
+
+`/clear` and `/help` do not require a provider or model. `/clear` also works during a run;
+it waits for cancellation before deleting messages. It does not delete saved memories,
+resource definitions, project files, or agent execution history. The header's **Clear history**
+button still starts a new conversation and preserves older conversations.
+
+MCP has two levels: `/mcp` → server → tool. **Ask this server** lets the model choose
+among that server's tools. Choosing a specific tool restricts the run to that one tool.
+For a disconnected server, **Connect and load tools** starts it and discovers its tools;
+errors appear through the normal error display. Sending a server-level request can also
+start the selected enabled server. Approvals and resource permissions still apply.
 
 ```text
 /mcp "My server" "Find the requested information"
-/agent "Code reviewer" "Review authentication"
-/skills "Documentation" "Explain this API"
+/mcp "My server" "search_repositories" Find repositories about Electron
+/tools "Search files" Find the configuration
+/agent "Code reviewer" Review authentication
+/skills "Documentation" Explain this API
 ```
+
+Quote names containing spaces. Existing `/mcp-name`, `/tools-name`, and other resource
+shortcuts remain supported. `/store-context`, `/all-kb`, and knowledge-folder shortcuts
+also remain available. Selecting a KB scope or Code folder activates its automatic
+checkbox so subsequent ordinary messages use that context; there is no prerequisite checkbox.
+
+Enter your query and send with Enter or the arrow. Shift+Enter inserts a new line;
+Cmd/Ctrl+Enter sends without accepting a suggestion.
 
 - **Skills:** applies the selected skill's instructions only when the capability decision finds
   its workflow relevant and necessary for the request.
@@ -296,11 +332,12 @@ servers start automatically. Eligible KB scopes fetch semantic RAG passages befo
 agent generation; the model then calls permitted MCP/custom tools as needed.
 Existing approvals, relevance checks and limits apply. Separate Chat MCP/Tools/KB
 checkboxes do not need to be checked for capabilities declared by the skill itself.
-The Skills checkbox authorizes selecting this skill and its saved configuration.
+An explicit `/skills` selection authorizes the selected skill and its saved configuration,
+regardless of the Skills checkbox.
 
 Instruction-only skills retain the existing plain-chat behavior. None mode or
 disabled type switches prevent granting those capabilities. The selected skill
-applies only to the sent turn, not subsequent ordinary messages. Skill files stay
+is applied while its command chip remains selected. Remove the chip for ordinary messages. Skill files stay
 at `<userData>/skills/<skill-id>/SKILL.md`; YAML frontmatter stores the capabilities.
 
 ```mermaid

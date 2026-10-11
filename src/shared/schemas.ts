@@ -220,6 +220,7 @@ export const sendSchema = z
       .object({
         kind: z.enum(['skills', 'agent', 'mcp', 'workflow', 'tools']),
         id: idSchema,
+        tool: z.string().min(1).max(200).optional(),
         project: z.string().max(4096).optional(),
       })
       .optional(),

@@ -340,6 +340,7 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     s.db.clear();
   });
   handle('chat:messages', id, (id) => s.db.messages(id));
+  handle('chat:clear-conversation', id, (id) => s.chat.clearConversation(id));
   handle('chat:send', z.tuple([sendSchema]), (input) => {
     if (
       ['agent', 'workflow'].includes(input.command?.kind ?? '') &&

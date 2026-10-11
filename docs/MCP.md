@@ -74,9 +74,13 @@ the approval prompt. Discovery/handshake, ping and tool calls
 have timeouts. MCP-reported tool failures become execution errors and are recorded in agent
 history with the tool input/output or error. Use Stop to cancel an in-progress connection.
 
-In Chat, type `/mcp ` and select a connected server, then enter your query. The chat model
-can use only that server's discovered tools. Approve or reject calls inline and inspect
-their results under Command activity. See [Chat](CHAT.md) for slash-command controls.
+In Chat, `/mcp` is always available, whether or not the MCP checkbox is checked.
+Choose a server, then **Ask this server** or one discovered tool. **Connect and load tools**
+starts a disconnected enabled server. `/mcp "Server" "Tool" request` selects a specific
+tool; the main process validates it and exposes only that tool. Server-level requests expose
+only that server's tools. Approve or reject calls inline and inspect their results under
+**Command activity**, which remains available after failure or cancellation.
+See [Chat](CHAT.md#slash-commands) for the complete command list.
 
 Only stdio MCP transport is implemented in this release. SSE/Streamable HTTP and OAuth are
 not advertised as working features.

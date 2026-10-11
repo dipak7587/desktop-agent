@@ -63,12 +63,9 @@ export function Chat() {
     end.current?.scrollIntoView({ behavior: 'instant' });
   }, [chat.messages, chat.stream]);
   async function send(regenerate = false) {
-    if (chat.generating || submitting.current) return;
-    if (!regenerate && modes.includes('code') && /^\/code(?:\s|$)/.test(draft)) {
-      commands.updateDraft(draft);
-      commands.inputRef.current?.focus();
-      return;
-    }
+    if (submitting.current) return;
+    if (!regenerate && (await commands.handleLocalCommand())) return;
+    if (chat.generating) return;
     submitting.current = true;
     setBusy(true);
     try {
@@ -102,8 +99,10 @@ export function Chat() {
         text,
         model: sendModel,
         providerId: sendProviderId || undefined,
-        knowledge: modes.includes('kb') ? useUI.getState().chatKnowledge : 'none',
-        modes,
+        knowledge: useUI.getState().chatModes.includes('kb')
+          ? useUI.getState().chatKnowledge
+          : 'none',
+        modes: useUI.getState().chatModes,
         regenerate,
         command: request.command
           ? { ...request.command }
@@ -437,7 +436,7 @@ export function Chat() {
               aria-expanded={commands.isMenu}
               aria-controls={commands.isMenu ? 'slash-options' : undefined}
               aria-activedescendant={commands.activeId}
-              placeholder="Ask anything, or enable a checkbox and type /…"
+              placeholder="Ask anything, or type / for commands…"
               value={draft}
               onChange={(e) => commands.updateDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -451,7 +450,7 @@ export function Chat() {
 
             <div className="composer-tools">
               <fieldset className="chat-modes">
-                <legend>Use in this chat</legend>
+                <legend>Automatic capabilities</legend>
                 {(['kb', 'mcp', 'tools', 'skills', 'code', 'agent', 'workflow'] as const).map(
                   (mode) => (
                     <label className="check" key={mode}>
@@ -463,9 +462,7 @@ export function Chat() {
                           const next = event.target.checked
                             ? [...modes, mode]
                             : modes.filter((item) => item !== mode);
-                          const selectedMode = commands.selected?.kind;
                           useUI.setState({ chatModes: next });
-                          if (selectedMode === mode && !event.target.checked) commands.clear();
                           commands.updateDraft(draft);
                         }}
                       />
@@ -499,9 +496,10 @@ export function Chat() {
                   className="send"
                   aria-label="Send message"
                   disabled={
-                    (!validSelection &&
+                    (!commands.localCommand &&
+                      !validSelection &&
                       commands.selected?.kind !== 'workflow' &&
-                      !/^\/workflow\s/.test(draft)) ||
+                      !/^\/(?:agent|workflow)(?:[-\s]|$)/.test(draft)) ||
                     (!draft.trim() &&
                       !['agent', 'workflow'].includes(commands.selected?.kind ?? '')) ||
                     busy

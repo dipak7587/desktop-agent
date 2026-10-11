@@ -307,6 +307,10 @@ export class ChatDatabase {
   clear() {
     this.db.exec('BEGIN IMMEDIATE; DELETE FROM messages; DELETE FROM conversations; COMMIT;');
   }
+  clearMessages(id: string) {
+    this.get(id);
+    this.db.prepare('DELETE FROM messages WHERE conversationId=?').run(id);
+  }
   messages(id: string): Message[] {
     this.get(id);
     return this.db

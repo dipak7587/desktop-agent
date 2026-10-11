@@ -724,14 +724,21 @@ it('uses only the model when every chat mode is unchecked, even with a workspace
   ]);
 });
 
-it('rejects commands from unchecked categories', async () => {
-  await expect(
-    chat.send({ ...input(), modes: ['kb'], command: { kind: 'mcp', id: 'server' } }),
-  ).rejects.toThrow('matching chat checkbox');
-  await expect(
-    chat.send({ ...input(), modes: ['tools'], command: { kind: 'skills', id: 'review' } }),
-  ).rejects.toThrow('matching chat checkbox');
-});
+it.each([{ modes: [] }, { modes: ['kb'] }, { modes: ['tools'] }] as const)(
+  'runs an explicit command with modes $modes',
+  async ({ modes }) => {
+    const request = input();
+    const execute = vi.fn().mockResolvedValue('Explicit command answer');
+    vi.spyOn(commands, 'prepare').mockResolvedValue({
+      command: { kind: 'mcp', id: 'server', name: 'Server' },
+      execute,
+    });
+    await chat.send({ ...request, modes: [...modes], command: { kind: 'mcp', id: 'server' } });
+    await settle(request.id);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(db.messages(request.id).at(-1)?.content).toBe('Explicit command answer');
+  },
+);
 
 it('always retrieves the selected KB and stops adding its context once KB is unchecked', async () => {
   const search = vi.fn().mockResolvedValue([
@@ -857,4 +864,70 @@ it('preserves structured model failure messages through the agent lifecycle', as
   await expect(
     agents.runInChat(agent, 'Say hello', root, new AbortController().signal, () => {}),
   ).rejects.toThrow('Ollama rejected this request');
+});
+
+it('restricts a nested MCP command to one discovered tool and rejects unknown tools', async () => {
+  await setupMCP();
+  vi.spyOn(mcp, 'states').mockReturnValue([
+    {
+      id: 'server',
+      status: 'connected',
+      logs: [],
+      tools: [
+        { name: 'echo', inputSchema: { type: 'object' } },
+        { name: 'other', inputSchema: { type: 'object' } },
+      ],
+    },
+  ]);
+  const run = vi.spyOn(agents, 'runInChat').mockResolvedValue('Result');
+  const prepared = await commands.prepare(
+    { kind: 'mcp', id: 'server', tool: 'echo' },
+    'test',
+    'none',
+  );
+  await prepared.execute!('Echo this', new AbortController().signal, () => {});
+  expect(run.mock.calls[0][0].tools).toEqual(['mcp:server:echo']);
+  await expect(
+    commands.prepare({ kind: 'mcp', id: 'server', tool: 'missing' }, 'test', 'none'),
+  ).rejects.toThrow('not available');
+});
+
+it('parses a nested MCP tool while preserving server query and legacy shortcut syntax', () => {
+  const items = [{ id: 'server', name: 'My server', enabled: true }];
+  expect(resolveSlash('/mcp "My server" "echo" hello', items, [{ name: 'echo' }])).toMatchObject({
+    command: { kind: 'mcp', id: 'server', tool: 'echo' },
+    query: 'hello',
+  });
+  expect(resolveSlash('/mcp-My server "hello world"', items, [{ name: 'echo' }])).toMatchObject({
+    command: { kind: 'mcp', id: 'server' },
+    query: 'hello world',
+  });
+});
+
+it('clears only the active conversation after stopping its run, keeping its folder and model', async () => {
+  const request = input();
+  const workspace = db.connectCodeWorkspace(request.id, root);
+  const other = db.create('other-model');
+  db.add(other.id, 'user', 'Keep me');
+  const started = vi.fn();
+  const close = vi.spyOn(commands, 'closeCodeSession').mockResolvedValue();
+  vi.spyOn(commands, 'prepare').mockResolvedValue({
+    command: { kind: 'tools', id: 'test-tool', name: 'Test tool' },
+    execute: async (_task, signal, observe) => {
+      observe({ type: 'agent', id: 'run', status: 'Running tools' });
+      started();
+      await new Promise((_resolve, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+      );
+      return 'Should not complete';
+    },
+  });
+  await chat.send({ ...request, modes: [], command: { kind: 'tools', id: 'test-tool' } });
+  await expect.poll(() => started.mock.calls.length).toBe(1);
+  await chat.clearConversation(request.id);
+  expect(chat.isActive(request.id)).toBe(false);
+  expect(close).toHaveBeenCalledWith(request.id);
+  expect(db.messages(request.id)).toEqual([]);
+  expect(db.get(request.id)).toMatchObject({ model: 'test', workspaceId: workspace.id });
+  expect(db.messages(other.id)[0].content).toBe('Keep me');
 });

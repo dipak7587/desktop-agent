@@ -24,6 +24,7 @@ export class ChatService {
   private active = new Map<string, AbortController>();
   private jobs = new Map<string, Promise<void>>();
   private turnActivity = new Map<string, AppEvent[]>();
+  private clearing = new Set<string>();
   private graph: ChatTurnGraph;
 
   constructor(
@@ -37,7 +38,7 @@ export class ChatService {
     private knowledgeSources?: () => KnowledgeSource[],
     private providers?: ProviderRouter,
     private memory?: MemoryService,
-    options?: ChatServiceOptions,
+    private options?: ChatServiceOptions,
   ) {
     this.graph = new ChatTurnGraph({
       db,
@@ -62,6 +63,18 @@ export class ChatService {
   stop(id: string) {
     this.active.get(id)?.abort();
   }
+  async clearConversation(id: string) {
+    this.db.get(id);
+    if (this.clearing.has(id)) throw new Error('This conversation is already being cleared');
+    this.clearing.add(id);
+    try {
+      await this.releaseWorkspace(id);
+      await this.options?.checkpointer?.deleteThread(id);
+      this.db.clearMessages(id);
+    } finally {
+      this.clearing.delete(id);
+    }
+  }
   async releaseWorkspace(id: string) {
     this.stop(id);
     await this.jobs.get(id);
@@ -75,13 +88,11 @@ export class ChatService {
     return this.active.has(id);
   }
   async send(input: ChatInput) {
+    if (this.clearing.has(input.id))
+      throw new Error('Wait for this conversation to finish clearing');
     if (this.active.has(input.id)) throw new Error('This conversation is already generating');
     if (input.modes) {
       if (!input.modes.includes('kb')) input = { ...input, knowledge: 'none' };
-      if (input.command) {
-        if (!input.modes?.includes(input.command.kind as import('../../../shared/types').ChatMode))
-          throw new Error('Enable the matching chat checkbox before using this command.');
-      }
     }
     const conversation = this.db.get(input.id);
     const workspace =
@@ -214,7 +225,7 @@ export class ChatService {
         id: input.id,
         question,
         knowledge: input.knowledge,
-        pureModel: input.modes?.length === 0,
+        pureModel: input.modes?.length === 0 && !prepared,
         forceKnowledge: input.modes?.includes('kb'),
         model: input.model,
         history,

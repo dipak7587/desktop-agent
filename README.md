@@ -53,7 +53,9 @@ does not retrieve saved notes.
 
 - **Chat:** select a provider/model in the chat header, send with the arrow or Cmd/Ctrl+Enter, stop, regenerate, copy,
   search history, rename, delete and continue conversations after restarting.
-  Type `/skills `, `/agent `, or `/mcp ` to select an enabled item and run it from Chat;
+  Type `/` for global commands, always available regardless of checkboxes. Use `/clear` to
+  clear the current conversation, `/help` for usage, and `/mcp` → server → tool or `/tools`
+  to select a capability;
   inspect activity and approve operations inline. See [CHAT.md](docs/CHAT.md).
 - **Saved Text:** create a title and Markdown/plain-text body; edit, copy, export,
   import or send it to a new chat. Notes automatically update the Saved Text RAG collection.

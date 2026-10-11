@@ -110,12 +110,12 @@ test('workflow builder saves, connects, validates cycles, duplicates, runs, and 
     await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
     await page.getByRole('checkbox', { name: 'Workflow', exact: true }).check();
     await page.getByLabel('Message', { exact: true }).fill('/');
-    await expect(page.getByRole('listbox').getByRole('option')).toContainText([
-      '/store-context',
-      '/all-kb',
-      '/workflow-Quality workflow',
-    ]);
-    await page.getByRole('option').filter({ hasText: '/workflow-Quality workflow' }).click();
+    await expect(page.getByRole('listbox')).toContainText('/workflow');
+    await page
+      .getByRole('option')
+      .filter({ has: page.locator('strong', { hasText: /^\/workflow$/ }) })
+      .click();
+    await page.getByRole('option').filter({ hasText: 'Quality workflow' }).click();
     await expect(page.locator('.command-chip')).toContainText('/workflow');
     await expect(page.locator('.composer .folder-selection')).toHaveCount(0);
     await page.getByRole('button', { name: 'Workflows', exact: true }).click();

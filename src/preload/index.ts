@@ -38,6 +38,7 @@ const api: WorkspaceAPI = {
     exportMarkdown: (id) => invoke('chat:export-markdown', id),
     remove: (id) => invoke('chat:remove', id),
     clear: () => invoke('chat:clear'),
+    clearConversation: (id) => invoke('chat:clear-conversation', id),
     messages: (id) => invoke('chat:messages', id),
     send: (i) => invoke('chat:send', i),
     stop: (id) => invoke('chat:stop', id),

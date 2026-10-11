@@ -1,31 +1,46 @@
 import { test, expect, _electron as electron } from '@playwright/test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { LibraryService } from '../../src/main/services/filesystem/library';
+import { librarySchema } from '../../src/shared/schemas';
+import { ChatDatabase } from '../../src/main/database/chat';
+import { toolItemFromSource } from '../../src/main/services/tools/files';
+import { generateToolSource, toolExamples } from '../../src/shared/tool-definition';
 
-test('checkboxes filter slash commands and keep KB scope alongside tool selection', async () => {
+test('global commands ignore checkbox filters, nest MCP tools, and clear only the current chat', async () => {
   const root = await mkdtemp(join(tmpdir(), 'chat-modes-ui-'));
-  await writeFile(
-    join(root, 'settings.json'),
-    JSON.stringify({ chatModel: 'test', ollamaUrl: 'http://127.0.0.1:1' }),
+  const library = new LibraryService(root);
+  await library.save(
+    'mcp',
+    librarySchema.parse({
+      id: 'test-server',
+      name: 'Test server',
+      description: 'Test MCP',
+      command: process.execPath,
+      args: [resolve('tests/fixtures/mcp-server.mjs')],
+    }),
   );
-  await writeFile(
-    join(root, 'knowledge.json'),
-    JSON.stringify([
-      {
-        id: 'project-docs',
-        name: 'Project Docs',
-        type: 'folder',
-        location: root,
-        status: 'idle',
-        collection: '',
-        documentCount: 0,
-        chunkCount: 0,
-        createdAt: 0,
-        updatedAt: 0,
-      },
-    ]),
+  await library.save(
+    'tools',
+    toolItemFromSource(
+      generateToolSource({
+        ...toolExamples.calculator,
+        name: 'command_test_calculator',
+        inputs: toolExamples.calculator.inputs,
+      }),
+      { id: 'command-test-calculator' },
+    ),
   );
+  await mkdir(join(root, 'database'), { recursive: true });
+  const db = new ChatDatabase(join(root, 'database', 'app.sqlite'));
+  const conversation = db.create('test-model');
+  db.rename(conversation.id, 'Clear this chat');
+  db.add(conversation.id, 'user', 'Temporary message');
+  const other = db.create('other-model');
+  db.rename(other.id, 'Keep this chat');
+  db.add(other.id, 'user', 'Keep this message');
+  db.close();
   const app = await electron.launch({
     args: ['.'],
     env: Object.fromEntries(
@@ -38,72 +53,75 @@ test('checkboxes filter slash commands and keep KB scope alongside tool selectio
   try {
     const page = await app.firstWindow();
     const input = page.getByLabel('Message', { exact: true });
-    await expect(page.getByLabel('Knowledge context')).toHaveCount(0);
-    for (const name of ['KB', 'MCP', 'Tools', 'Skills', 'Code', 'Agent', 'Workflow'])
-      await expect(page.getByRole('checkbox', { name, exact: true })).not.toBeChecked();
-    await input.fill('/');
-    const allOptions = page.getByRole('listbox');
-    for (const suggestion of [
-      '/store-context',
-      '/all-kb',
-      '/Project Docs',
+    const commands = [
       '/mcp',
       '/tools',
-      '/skills',
       '/agent',
+      '/skills',
       '/workflow',
       '/code',
-    ])
-      await expect(allOptions).toContainText(suggestion);
-    await page.getByRole('listbox').getByRole('option').filter({ hasText: '/skills' }).click();
-    await expect(page.getByRole('checkbox', { name: 'Skills', exact: true })).toBeChecked();
-    await page.getByRole('checkbox', { name: 'Skills', exact: true }).uncheck();
+      '/kb',
+      '/clear',
+      '/help',
+    ];
     await input.fill('/');
-    await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
-    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(3);
-    await expect(page.getByRole('listbox').getByRole('option')).toContainText([
-      '/store-context',
-      '/all-kb',
-      '/Project Docs',
-    ]);
-    await page
-      .getByRole('listbox')
-      .getByRole('option', { name: '/Project Docs KB folder · idle', exact: true })
-      .click();
-    await expect(page.getByRole('listbox')).toHaveCount(0);
-    await page.getByRole('checkbox', { name: 'Tools', exact: true }).check();
-    await input.fill('/');
-    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(4);
-    await expect(page.getByRole('listbox').getByRole('option', { name: /\/tools/ })).toBeVisible();
-    await expect(page.getByRole('listbox').getByRole('option', { name: /\/mcp/ })).toHaveCount(0);
-    await expect(page.getByRole('listbox').getByRole('option', { name: /\/code/ })).toHaveCount(0);
-    await page.getByRole('checkbox', { name: 'KB', exact: true }).uncheck();
-    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
-    await expect(page.getByRole('listbox').getByRole('option')).toContainText('/tools');
-    await page.getByRole('checkbox', { name: 'Tools', exact: true }).uncheck();
-    for (const [name, command] of [
-      ['MCP', '/mcp'],
-      ['Agent', '/agent'],
-      ['Workflow', '/workflow'],
-      ['Skills', '/skills'],
-      ['Code', '/code'],
-    ]) {
+    for (const command of commands)
+      await expect(
+        page
+          .getByRole('option')
+          .filter({ has: page.locator('strong', { hasText: new RegExp(`^${command}$`) }) }),
+      ).toBeVisible();
+    for (const name of ['KB', 'MCP', 'Tools', 'Skills', 'Code', 'Agent', 'Workflow']) {
       await page.getByRole('checkbox', { name, exact: true }).check();
-      await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
-      await expect(page.getByRole('listbox').getByRole('option')).toContainText(command);
-      if (name === 'Code') {
-        await input.fill('/code');
-        await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
-        await expect(page.getByRole('listbox').getByRole('option')).toContainText(
-          'Open another folder',
-        );
-        await input.fill('/');
-      }
+      for (const command of commands)
+        await expect(page.getByRole('listbox')).toContainText(command);
       await page.getByRole('checkbox', { name, exact: true }).uncheck();
     }
-    await page.getByRole('checkbox', { name: 'KB', exact: true }).check();
-    await page.getByRole('checkbox', { name: 'Tools', exact: true }).check();
-    await page.screenshot({ path: 'test-results/chat-modes.png' });
+    await input.fill('/mcp');
+    await page.getByRole('option', { name: /Test server/ }).click();
+    await expect(page.getByRole('listbox', { name: 'Tools from Test server' })).toBeVisible();
+    await page.getByRole('option', { name: /Connect and load tools/ }).click();
+    await expect(page.getByRole('option', { name: /^echo / })).toBeVisible();
+    await page.getByRole('option', { name: /^echo / }).click();
+    await expect(page.locator('.command-chip')).toContainText('Test server · echo');
+    await expect(page.getByRole('checkbox', { name: 'MCP', exact: true })).not.toBeChecked();
+    await page.getByRole('checkbox', { name: 'MCP', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'MCP', exact: true }).uncheck();
+    await expect(page.locator('.command-chip')).toContainText('echo');
+    await input.fill('/mcp "Test server" ');
+    await input.press('Escape');
+    await expect(input).toHaveValue('/mcp ');
+    await input.press('Escape');
+    await expect(input).toHaveValue('/');
+    await input.fill('/tools');
+    await page.getByRole('option', { name: /^command_test_calculator / }).click();
+    await expect(page.locator('.command-chip')).toContainText('calculator');
+    await expect(page.getByRole('checkbox', { name: 'Tools', exact: true })).not.toBeChecked();
+    await input.fill('/help');
+    await expect(page.getByRole('listbox', { name: 'Command help' })).toContainText(
+      '/mcp "Server" "Tool" request',
+    );
+    await input.fill('/code');
+    await expect(page.getByRole('option', { name: /Open another folder/ })).toBeVisible();
+    await input.fill('/kb');
+    await expect(page.getByRole('option', { name: /Saved Text context/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Clear this chat', exact: true }).click();
+    await expect(page.getByText('Temporary message', { exact: true })).toBeVisible();
+    await input.fill('/clear');
+    await input.press('Enter');
+    await expect(page.getByText('Temporary message', { exact: true })).toHaveCount(0);
+    const saved = await page.evaluate(
+      async (id) => ({
+        messages: await window.workspace.chat.messages(id),
+        chats: await window.workspace.chat.list(),
+      }),
+      conversation.id,
+    );
+    expect(saved.messages).toEqual([]);
+    expect(saved.chats.find((chat) => chat.id === conversation.id)?.model).toBe('test-model');
+    expect(saved.chats.some((chat) => chat.id === other.id)).toBe(true);
+    await input.fill('/');
+    await page.screenshot({ path: 'test-results/global-chat-commands.png' });
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

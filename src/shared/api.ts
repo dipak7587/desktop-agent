@@ -58,6 +58,7 @@ export interface WorkspaceAPI {
     exportMarkdown(id: string): Promise<void>;
     remove(id: string): Promise<void>;
     clear(): Promise<void>;
+    clearConversation(id: string): Promise<void>;
     messages(id: string): Promise<Message[]>;
     send(input: ChatInput): Promise<void>;
     stop(id: string): Promise<void>;

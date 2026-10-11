@@ -641,9 +641,12 @@ test('/code saves folders to Code and reconnects them from Chat', async () => {
   await expect(connect).toHaveCount(0);
   await expect(input).toHaveValue('');
   await input.fill('/');
-  const codeFolder = page.getByRole('option').filter({ hasText: '/code-localai-workflows-' });
+  await page
+    .getByRole('option')
+    .filter({ has: page.locator('strong', { hasText: /^\/code$/ }) })
+    .click();
+  const codeFolder = page.getByRole('option').filter({ hasText: 'localai-workflows-' });
   await expect(codeFolder).toBeVisible();
-  await expect(page.getByRole('option', { name: /Select a saved folder in Chat/ })).toHaveCount(0);
   await codeFolder.click();
   await expect(page.locator('.workspace-indicator')).toContainText('localai-workflows-');
   await input.fill('/code nonexistent-project');
@@ -860,9 +863,11 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
     await expect(
       page.getByRole('listbox').getByRole('option').filter({ hasText: entry.name }),
     ).toBeVisible();
-    await input.fill(`/${entry.command} ${entry.name.slice(0, 4)}`);
+    await input.fill(`/${entry.command} ${entry.name.slice(0, -1)}`);
     await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
     await input.press('Enter');
+    if (entry.command === 'mcp')
+      await page.getByRole('option', { name: /^Ask this server/ }).click();
     await expect(page.locator('.command-chip')).toContainText(entry.name);
     await expect(input).toHaveValue('');
     await input.fill('Keep this query');
@@ -873,7 +878,18 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
   const input = page.getByLabel('Message', { exact: true });
   await page.getByRole('checkbox', { name: 'Workflow', exact: true }).check();
   await input.fill('/');
-  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(5);
+  for (const command of [
+    '/mcp',
+    '/tools',
+    '/agent',
+    '/skills',
+    '/workflow',
+    '/code',
+    '/kb',
+    '/clear',
+    '/help',
+  ])
+    await expect(page.getByRole('listbox')).toContainText(command);
   await input.press('ArrowDown');
   await input.press('ArrowDown');
   await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toContainText(
@@ -881,6 +897,8 @@ test('chat slash commands offer searchable selections, keyboard navigation and r
   );
   await input.press('Enter');
   await expect(input).toHaveValue('/agent ');
+  await input.press('Escape');
+  await expect(input).toHaveValue('/');
   await input.press('Escape');
   await expect(page.getByRole('listbox')).toHaveCount(0);
 });

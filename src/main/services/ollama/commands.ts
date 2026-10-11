@@ -149,6 +149,8 @@ export class ChatCommands {
     workspace?: CodeWorkspace,
   ): Promise<PreparedCommand> {
     if (command.kind === 'code') throw new Error('Connect a workspace using /code first');
+    if (command.tool && command.kind !== 'mcp')
+      throw new Error('Only MCP commands support a nested tool');
     if (command.kind === 'workflow') {
       if (!this.workflows) throw new Error('Workflows are unavailable');
       const workflow = await this.workflows.definitions.get(command.id);
@@ -167,7 +169,10 @@ export class ChatCommands {
       command.id,
     );
     if (!item.enabled) throw new Error(`Enable ${item.name} before using it in Chat`);
-    const metadata = { ...command, name: item.name };
+    const metadata = {
+      ...command,
+      name: command.tool ? `${item.name} · ${command.tool}` : item.name,
+    };
     if (command.kind === 'skills') {
       const config = capabilityConfig(item);
       const hasCapabilities =
@@ -231,12 +236,17 @@ export class ChatCommands {
       if (state?.status !== 'connected')
         throw new Error(`Could not connect to ${item.name}. Check its MCP configuration.`);
       if (!state.tools.length) throw new Error(`${item.name} has no available tools`);
+      const selectedTools = command.tool
+        ? state.tools.filter((tool) => tool.name === command.tool)
+        : state.tools;
+      if (!selectedTools.length)
+        throw new Error(`Tool ${command.tool} is not available on ${item.name}`);
       agent = librarySchema.parse({
         id: item.id,
         name: item.name,
         model,
         content: `Answer the user's query directly when possible; use external data only when required from the selected MCP server: ${item.name}. You have only this server's tools. Do not attempt project file operations.`,
-        tools: state.tools.map((t) => `mcp:${item.id}:${t.name}`),
+        tools: selectedTools.map((t) => `mcp:${item.id}:${t.name}`),
         knowledgeSources: knowledge === 'none' ? [] : [knowledge],
       });
     }

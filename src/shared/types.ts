@@ -143,6 +143,7 @@ export interface ChatCommand {
   kind: 'skills' | 'agent' | 'mcp' | 'workflow' | 'code' | 'tools';
   id: string;
   project?: string;
+  tool?: string;
 }
 export interface ChatInput {
   modes?: ChatMode[];
