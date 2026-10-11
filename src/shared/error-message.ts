@@ -4,8 +4,11 @@ export function errorMessage(value: unknown): string {
   const extract = (input: unknown): string | undefined => {
     if (typeof input === 'string') {
       const text = input.trim();
-      if (!text) return undefined;
-      if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+      if (!text || text === '[object Object]') return undefined;
+      if (
+        (text.startsWith('{') && text.endsWith('}')) ||
+        (text.startsWith('[') && text.endsWith(']'))
+      ) {
         try {
           return extract(JSON.parse(text));
         } catch {
@@ -13,12 +16,6 @@ export function errorMessage(value: unknown): string {
         }
       }
       return text;
-    }
-    if (input instanceof Error) {
-      const message = input.message.trim();
-      if (message && message !== '[object Object]') return message;
-      seen.add(input);
-      return extract(input.cause) ?? (message || undefined);
     }
     if (!input || typeof input !== 'object' || seen.has(input)) return undefined;
     seen.add(input);
@@ -33,7 +30,8 @@ export function errorMessage(value: unknown): string {
       if (result) return result;
     }
     try {
-      return JSON.stringify(input);
+      const serialized = JSON.stringify(input);
+      return serialized === '{}' ? undefined : serialized;
     } catch {
       return undefined;
     }

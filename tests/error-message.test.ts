@@ -18,5 +18,15 @@ it('serializes structured errors instead of displaying [object Object]', () => {
   expect(errorMessage({ status: 400, parameter: 'tool_choice' })).toBe(
     '{"status":400,"parameter":"tool_choice"}',
   );
-  expect(errorMessage('[object Object]')).toBe('[object Object]');
+  expect(errorMessage('[object Object]')).toBe('An unknown error occurred.');
+});
+
+it('extracts structured data from error instances and handles cyclic causes', () => {
+  const error = Object.assign(new Error('[object Object]'), {
+    data: { error: { message: 'Ollama model failed' } },
+  });
+  expect(errorMessage(error)).toBe('Ollama model failed');
+  const cyclic = new Error('');
+  cyclic.cause = cyclic;
+  expect(errorMessage(cyclic)).toBe('An unknown error occurred.');
 });

@@ -1,4 +1,5 @@
 import { CodeAgentManager, type CodeSessionContext } from './code-agent-manager';
+import { errorMessage } from '../../../shared/error-message';
 import { CODING_INSTRUCTIONS, isLocalCodeProvider } from './coding';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ProviderRouter, SelectedProvider } from '../providers/router';
@@ -893,13 +894,13 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
         this.event({ type: 'agent', id, status: 'Max iterations reached', error });
       }
     } catch (e) {
-      let failure = e instanceof Error ? e.message : String(e);
+      let failure = errorMessage(e);
       if (!errorHookStarted && !signal.aborted) {
         errorHookStarted = true;
         try {
           await invokeHooks('error', { error: failure });
         } catch (hookError) {
-          failure += `\nError hook failed: ${(hookError as Error).message}`;
+          failure += `\nError hook failed: ${errorMessage(hookError)}`;
         }
       }
       if (!postHookStarted) {
@@ -910,7 +911,7 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
             error: failure,
           });
         } catch (hookError) {
-          failure += `\nPost hook failed: ${(hookError as Error).message}`;
+          failure += `\nPost hook failed: ${errorMessage(hookError)}`;
         }
       }
       this.event({

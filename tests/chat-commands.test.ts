@@ -810,3 +810,51 @@ it('combines selected KB passages with a tool command and limits the tool agent 
   expect(db.messages(request.id).at(-1)?.content).toBe('Tool answer');
   expect(db.messages(request.id).at(-1)?.metadata?.sources).toHaveLength(1);
 });
+
+it.each(['failed', 'canceled', 'completed'] as const)(
+  'preserves command activity after a %s turn and reload',
+  async (outcome) => {
+    const request = input();
+    const progress: AppEvent = {
+      type: 'agent',
+      id: 'progress-run',
+      status: 'Running tools',
+      content: 'Read package.json',
+    };
+    vi.spyOn(commands, 'prepare').mockResolvedValue({
+      command: { kind: 'agent', id: 'test-agent', name: 'Test agent' },
+      execute: async (_task, signal, observe) => {
+        observe(progress);
+        if (outcome === 'canceled') {
+          chat.stop(request.id);
+          signal.throwIfAborted();
+        }
+        if (outcome === 'failed') throw { error: { message: 'Provider rejected the request' } };
+        return 'Done';
+      },
+    });
+    await chat.send({ ...request, command: { kind: 'agent', id: 'test-agent' } });
+    await settle(request.id);
+    const message = db.messages(request.id).at(-1)!;
+    expect(message.metadata?.status).toBe(outcome);
+    expect(message.metadata?.activity).toEqual([progress]);
+    if (outcome === 'failed') expect(message.metadata?.error).toBe('Provider rejected the request');
+    expect(events.at(-1)?.message?.metadata?.activity).toEqual([progress]);
+    const reopened = new ChatDatabase(join(root, 'chat.sqlite'));
+    try {
+      expect(reopened.messages(request.id).at(-1)?.metadata?.activity).toEqual([progress]);
+    } finally {
+      reopened.close();
+    }
+  },
+);
+
+it('preserves structured model failure messages through the agent lifecycle', async () => {
+  const agent = librarySchema.parse({ id: 'failure-agent', name: 'Failure agent', model: 'test' });
+  vi.spyOn(llm, 'complete').mockRejectedValue({
+    error: { message: 'Ollama rejected this request' },
+  });
+  await expect(
+    agents.runInChat(agent, 'Say hello', root, new AbortController().signal, () => {}),
+  ).rejects.toThrow('Ollama rejected this request');
+});

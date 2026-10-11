@@ -23,6 +23,7 @@ export interface ChatServiceOptions {
 export class ChatService {
   private active = new Map<string, AbortController>();
   private jobs = new Map<string, Promise<void>>();
+  private turnActivity = new Map<string, AppEvent[]>();
   private graph: ChatTurnGraph;
 
   constructor(
@@ -41,7 +42,14 @@ export class ChatService {
     this.graph = new ChatTurnGraph({
       db,
       llm,
-      emit,
+      emit: (event) => {
+        const activity = this.turnActivity.get(event.id);
+        if (event.type === 'chat' && event.activity && activity) {
+          activity.push(event.activity);
+          if (activity.length > 100) activity.shift();
+        }
+        emit(event);
+      },
       search,
       contextSize,
       redact,
@@ -190,6 +198,8 @@ export class ChatService {
     let failure: string | undefined;
     let question = input.text;
     const activity: AppEvent[] = [];
+    // Collect events as they arrive: a failed graph never returns result.activity.
+    this.turnActivity.set(input.id, activity);
     const saved = this.db.add(input.id, 'assistant', '', {
       providerId: selected?.providerId,
       providerNameSnapshot: selected?.providerNameSnapshot,
@@ -219,11 +229,11 @@ export class ChatService {
       });
       if (result.content) content = result.content;
       sources = result.sources;
-      for (const event of result.activity) activity.push(event);
       if (!content) content = '';
     } catch (e) {
       if (!controller.signal.aborted) failure = this.redact(errorMessage(e));
     } finally {
+      this.turnActivity.delete(input.id);
       if (!controller.signal.aborted && content && input.modes?.length !== 0)
         void this.memory
           ?.maybeCapture(question, content, { conversationId: input.id }, controller.signal)

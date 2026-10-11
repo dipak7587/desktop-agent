@@ -420,7 +420,6 @@ export class CodeAgentManager {
         };
       }),
     });
-    console.log('Starting CodeAgent session', server);
     let agentInput!: ReadableStreamDefaultController<AnyMessage>;
     let clientInput!: ReadableStreamDefaultController<AnyMessage>;
     const clientToServer = {

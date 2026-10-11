@@ -15,6 +15,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import { createChatModel } from './langchain-model';
 import { createCapabilityTools } from './capability-tools';
+import { errorMessage } from '../../../shared/error-message';
 import type { DeepAgentEngine } from './deep-agents';
 
 export interface AgentLoopInput {
@@ -107,11 +108,17 @@ export class AgentLoopGraph {
             'The latest tool exchange exceeds the configured context size. Increase the context size or request a smaller result.',
           );
         const messages = [...(first ? [first] : []), ...recent];
-        return handler({
-          ...request,
-          messages,
-          tools: request.tools.filter((t) => 'name' in t && allowed.has(t.name as string)),
-        });
+        try {
+          return await handler({
+            ...request,
+            messages,
+            tools: request.tools.filter((t) => 'name' in t && allowed.has(t.name as string)),
+          });
+        } catch (error) {
+          // Normalize before middleware wraps non-Error provider responses and
+          // loses their structured message.
+          throw new Error(errorMessage(error), { cause: error });
+        }
       },
       wrapToolCall: async (request, handler) => {
         signal.throwIfAborted();
