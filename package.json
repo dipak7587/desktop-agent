@@ -79,7 +79,12 @@
     "files": [
       "out/**/*",
       "built-in/**/*",
-      "package.json"
+      "package.json",
+      {
+        "from": "node_modules/@langchain/langgraph-sdk/dist/node_modules",
+        "to": "node_modules/@langchain/langgraph-sdk/dist/node_modules",
+        "filter": ["**/*"]
+      }
     ],
     "asarUnpack": [
       "node_modules/@lancedb/**/*"

@@ -385,15 +385,10 @@ export function Chat() {
                 <article className="message assistant">
                   <div className="message-label">
                     AI Assistant · {chat.generatingSelection?.providerNameSnapshot} /{' '}
-                    {chat.generatingSelection?.modelId} <span className="pulse">Streaming</span>
+                    {chat.generatingSelection?.modelId}
                   </div>
-                  {chat.activity.length ? (
-                    <ChatActivity events={chat.activity} live />
-                  ) : chat.stream ? (
-                    <Markdown text={chat.stream} />
-                  ) : (
-                    <p className="muted">Preparing your response…</p>
-                  )}
+                  <ChatActivity events={chat.activity} live streaming={!!chat.stream} />
+                  {chat.stream && <Markdown text={chat.stream} />}
                 </article>
               )}
               <div ref={end} />

@@ -205,6 +205,10 @@ it.each([true, false])(
     );
     await manager.run(input(), provider, context(), approve);
     expect(approve).toHaveBeenCalledTimes(1);
+    expect(events.some((event) => event.status === 'Running tools')).toBe(true);
+    expect(
+      events.some((event) => event.status === 'Tool completed' || event.status === 'Tool failed'),
+    ).toBe(true);
     expect(approve.mock.calls[0][2]).toContain('+hello');
     if (approved) expect(await readFile(join(root, 'created.txt'), 'utf8')).toBe('hello');
     else await expect(readFile(join(root, 'created.txt'))).rejects.toThrow();

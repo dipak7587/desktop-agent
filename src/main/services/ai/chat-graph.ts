@@ -437,6 +437,12 @@ export class ChatTurnGraph {
         const safe = JSON.parse(this.deps.redact(JSON.stringify(event))) as AppEvent;
         if (safe.status === 'Streaming' && safe.content) {
           runtime.onToken?.(safe.content);
+          if (activity.at(-1)?.status !== 'Streaming') {
+            const progress = { ...safe, content: undefined };
+            activity.push(progress);
+            if (activity.length > 100) activity.shift();
+            this.deps.emit({ type: 'chat', id: state.id, status: 'activity', activity: progress });
+          }
           return;
         }
         activity.push(safe);

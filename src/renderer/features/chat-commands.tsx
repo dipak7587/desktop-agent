@@ -201,8 +201,7 @@ export function useChatCommands(draft: string) {
   };
   const enableMode = (mode: ChatMode) => {
     const currentModes = useUI.getState().chatModes;
-    if (!currentModes.includes(mode))
-      useUI.setState({ chatModes: [...currentModes, mode] });
+    if (!currentModes.includes(mode)) useUI.setState({ chatModes: [...currentModes, mode] });
   };
   const choose = (option: (typeof options)[number]) => {
     if (connecting || (isCode && loadingFolders)) return;
@@ -369,9 +368,27 @@ export function useChatCommands(draft: string) {
   };
 }
 
-export function ChatActivity({ events, live = false }: { events: AppEvent[]; live?: boolean }) {
+export function ChatActivity({
+  events,
+  live = false,
+  streaming = false,
+}: {
+  events: AppEvent[];
+  live?: boolean;
+  streaming?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const last = events.at(-1);
+  const label =
+    last?.status === 'Streaming' || (!last && streaming)
+      ? 'Writing response'
+      : last?.status === 'Running Tool'
+        ? 'Running tools'
+        : (last?.status ?? 'Preparing response');
+  const toolDetail =
+    live && /^(Running tools?|Tool completed|Tool failed)$/i.test(last?.status ?? '')
+      ? last?.content?.split('\n')[0]
+      : undefined;
   const runs = useRuns((s) => s.runs);
   const workflowRuns = useWorkflows((s) => s.runs);
   const childIds = new Set(events.filter((e) => e.type === 'agent').map((e) => e.id));
@@ -388,8 +405,22 @@ export function ChatActivity({ events, live = false }: { events: AppEvent[]; liv
 
   return (
     <div className="chat-activity">
-      <p role={live ? 'status' : undefined} className="small muted">
-        {last?.status ?? 'Preparing command…'}
+      <p
+        role={live ? 'status' : undefined}
+        className="small muted chat-progress"
+        aria-atomic="true"
+      >
+        <span>
+          {label}
+          {toolDetail ? ` · ${toolDetail}` : ''}
+        </span>
+        {live && (
+          <span className="progress-dots" aria-hidden="true">
+            <span>.</span>
+            <span>.</span>
+            <span>.</span>
+          </span>
+        )}
       </p>
       {!!events.length && (
         <details>

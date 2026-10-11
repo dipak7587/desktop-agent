@@ -412,9 +412,8 @@ export class CodeAgentManager {
           agent.id,
           agent.name,
           agent.modelId,
-          agent.tools.map((t) =>{
-            console.log('Registering CodeAgent tool', t);
-            return  t.name
+          agent.tools.map((t) => {
+            return t.name;
           }),
         );
         return {
@@ -476,6 +475,17 @@ export class CodeAgentManager {
             update.sessionUpdate === 'tool_call_update'
           ) {
             this.debug(update.sessionUpdate, session.id);
+            this.emit({
+              type: 'agent',
+              id: turn.input.run.id,
+              status:
+                update.status === 'completed'
+                  ? 'Tool completed'
+                  : update.status === 'failed'
+                    ? 'Tool failed'
+                    : 'Running tools',
+              content: update.title ? this.redact(update.title) : undefined,
+            });
           } else if (update.sessionUpdate === 'plan') {
             this.emit({
               type: 'agent',

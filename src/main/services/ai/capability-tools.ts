@@ -85,7 +85,7 @@ export function createCapabilityTools(context: ToolContext) {
           context.emit({
             type: 'agent',
             id: run.id,
-            status: 'Planning',
+            status: record.status === 'failed' ? 'Tool failed' : 'Tool completed',
             content: `${capability.name}\n${text.slice(0, 15000)}`,
           });
           return text;
