@@ -510,8 +510,10 @@ export function registerIPC(s: Services, getWindow: () => BrowserWindow | null) 
     return s.agents.run(input);
   });
   handle('agents:stop', id, (id) => s.agents.stop(id));
-  handle('agents:approve', z.tuple([idSchema, z.boolean()]), (id, approved) =>
-    s.agents.approve(id, approved),
+  handle(
+    'agents:approve',
+    z.tuple([idSchema, z.boolean(), z.boolean()]),
+    (id, approved, remember) => s.agents.approve(id, approved, remember),
   );
   handle('agents:remove-run', id, (id) => s.agents.removeRun(id));
   handle('agents:clear-runs', none, () => s.agents.clearRuns());

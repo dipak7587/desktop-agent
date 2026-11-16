@@ -61,6 +61,8 @@ interface Session {
   closeTransport: () => void;
 }
 
+const limitError = new Error('Maximum Code model iterations reached');
+
 /** ACP and DeepAgents live exclusively in main. One server per conversation keeps
  * the upstream server's single cancellation controller isolated between chats. */
 export class CodeAgentManager {
@@ -245,6 +247,10 @@ export class CodeAgentManager {
       this.debug('run completed', active.id);
       return { result: turn.output, reason: 'completed' as const };
     } catch (error) {
+      // The iteration limit is raised before a model call, so every tool exchange is
+      // complete. Keep the session (e.g. a long test-fix loop) so the chat continues.
+      if (turn.limitReached && !input.signal.aborted && turn.failure === limitError)
+        return { result: '', reason: 'max-iterations' as const };
       // Discard incomplete tool exchanges after failure/cancellation. Durable Chat
       // history seeds the next session instead of replaying unfinished side effects.
       this.sessions.delete(context.conversationId);
@@ -323,7 +329,7 @@ export class CodeAgentManager {
           signal.throwIfAborted();
           if (run.iterationsUsed >= maxIterations) {
             turn.limitReached = true;
-            throw new Error('Maximum Code model iterations reached');
+            throw limitError;
           }
           run.iterationsUsed += 1;
           turn.input.persist?.(run);

@@ -4,6 +4,31 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { attempt, useUI } from '../stores';
+/** Number of lines shown before long text is collapsed behind a toggle. */
+export const COLLAPSED_LINES = 2;
+export function needsCollapse(text: string, lines = COLLAPSED_LINES) {
+  return text.split('\n').length > lines || text.length > lines * 100;
+}
+/** Shows only the first lines of long text; the user clicks to see the rest. */
+export function CollapsibleText({ text, className = 'log' }: { text: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const collapsible = needsCollapse(text);
+  return (
+    <div className="collapsible">
+      <pre className={`${className}${collapsible && !open ? ' clamped' : ''}`}>{text}</pre>
+      {collapsible && (
+        <button
+          type="button"
+          className="link-button small"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  );
+}
 export function Markdown({ text }: { text: string }) {
   return (
     <div className="markdown">
@@ -95,7 +120,12 @@ export function Confirm({
                 await onConfirm();
                 onClose();
               } catch (e) {
-                setError((e as Error).message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
+                setError(
+                  (e as Error).message.replace(
+                    /^Error invoking remote method '[^']+': Error: /,
+                    '',
+                  ),
+                );
               } finally {
                 setBusy(false);
               }

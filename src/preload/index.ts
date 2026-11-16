@@ -88,7 +88,7 @@ const api: WorkspaceAPI = {
     project: () => invoke('agents:project'),
     run: (i) => invoke('agents:run', i),
     stop: (id) => invoke('agents:stop', id),
-    approve: (id, a) => invoke('agents:approve', id, a),
+    approve: (id, a, remember = false) => invoke('agents:approve', id, a, remember),
     runs: () => invoke('agents:runs'),
     removeRun: (id) => invoke('agents:remove-run', id),
     clearRuns: () => invoke('agents:clear-runs'),

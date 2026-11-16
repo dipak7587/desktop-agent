@@ -21,6 +21,7 @@ import {
   useRuns,
   attempt,
 } from '../stores';
+import { CollapsibleText } from '../components/common';
 
 type CommandOption = {
   key: string;
@@ -502,12 +503,14 @@ export function ChatActivity({
           {events.map((event, i) => (
             <div key={i} className="run-event">
               <strong>{event.status}</strong>
-              {event.content && <pre className="log">{event.content}</pre>}
+              {event.content && <CollapsibleText text={event.content} />}
               {event.error && <p className="error-text">{event.error}</p>}
               {event.approval && (
                 <>
-                  <p>{event.approval.description}</p>
-                  {event.approval.diff && <pre className="diff">{event.approval.diff}</pre>}
+                  <CollapsibleText text={event.approval.description} />
+                  {event.approval.diff && (
+                    <CollapsibleText text={event.approval.diff} className="diff" />
+                  )}
                 </>
               )}
             </div>
@@ -518,26 +521,41 @@ export function ChatActivity({
         pending.map((last) => (
           <div className="approval" key={last.approval.id}>
             <h3>Approval required</h3>
-            <pre className="log">{last.approval.description}</pre>
-            {last.approval.diff && <pre className="diff">{last.approval.diff}</pre>}
+            <CollapsibleText text={last.approval.description} />
+            {last.approval.diff && <CollapsibleText text={last.approval.diff} className="diff" />}
             <div className="actions">
-              {[false, true].map((approved) => (
+              {(
+                [
+                  { approved: false, remember: false, label: 'Reject' },
+                  { approved: true, remember: false, label: 'Approve operation' },
+                  { approved: true, remember: true, label: 'Approve all for this session' },
+                ] as const
+              ).map(({ approved, remember, label }) => (
                 <button
-                  key={String(approved)}
+                  key={label}
                   type="button"
                   disabled={busy}
+                  title={
+                    remember
+                      ? 'Approve this and every later request in this session without asking again'
+                      : undefined
+                  }
                   onClick={() => {
                     setBusy(true);
                     void attempt(async () => {
                       try {
-                        await window.workspace.agents.approve(last.approval!.id, approved);
+                        await window.workspace.agents.approve(
+                          last.approval!.id,
+                          approved,
+                          remember,
+                        );
                       } finally {
                         setBusy(false);
                       }
                     });
                   }}
                 >
-                  {approved ? 'Approve operation' : 'Reject'}
+                  {label}
                 </button>
               ))}
             </div>

@@ -124,7 +124,7 @@ export interface WorkspaceAPI {
     project(): Promise<string | null>;
     run(input: { agentId: string; task: string; project?: string }): Promise<string>;
     stop(id: string): Promise<void>;
-    approve(id: string, approved: boolean): Promise<void>;
+    approve(id: string, approved: boolean, rememberForSession?: boolean): Promise<void>;
     runs(): Promise<RunState[]>;
     removeRun(id: string): Promise<void>;
     clearRuns(): Promise<void>;

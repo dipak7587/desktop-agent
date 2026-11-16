@@ -45,7 +45,15 @@ import {
   useChat,
   attempt,
 } from '../stores';
-import { PageHeader, Empty, Modal, Confirm, Markdown, CopyButton } from '../components/common';
+import {
+  PageHeader,
+  Empty,
+  Modal,
+  Confirm,
+  Markdown,
+  CopyButton,
+  CollapsibleText,
+} from '../components/common';
 const descriptions = {
   tools: 'Reusable API calls and custom Node.js logic for your agents.',
   hooks: 'Run JavaScript or TypeScript at an agent’s lifecycle stages.',
@@ -1672,12 +1680,12 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
           {run.events.map((e, index) => (
             <div className="run-event" key={index}>
               <span className="small muted">{e.status}</span>
-              {e.content && <pre className="log">{e.content}</pre>}
+              {e.content && <CollapsibleText text={e.content} />}
               {e.error && <p className="error-text">{e.error}</p>}
               {e.approval && (
                 <div className="approval">
-                  <h3>{e.approval.description}</h3>
-                  {e.approval.diff && <pre className="diff">{e.approval.diff}</pre>}
+                  <CollapsibleText text={e.approval.description} />
+                  {e.approval.diff && <CollapsibleText text={e.approval.diff} className="diff" />}
                   {!resolved.includes(e.approval.id) &&
                   run.phase === 'Waiting for approval' &&
                   run.status === 'Running' ? (
@@ -1704,6 +1712,17 @@ export function AgentRuns({ ids }: { ids?: string[] } = {}) {
                         }
                       >
                         Approve {e.approval.diff ? 'change' : 'operation'}
+                      </button>
+                      <button
+                        onClick={() =>
+                          void attempt(async () => {
+                            await window.workspace.agents.approve(e.approval!.id, true, true);
+                            setResolved((r) => [...r, e.approval!.id]);
+                            await load();
+                          })
+                        }
+                      >
+                        Approve all for this session
                       </button>
                     </div>
                   ) : (

@@ -45,7 +45,12 @@ export class AgentService {
   private jobs = new Map<string, Promise<void>>();
   private history = new Map<string, RunState>();
   private observers = new Map<string, (event: AppEvent) => void>();
-  private pending = new Map<string, { runId: string; resolve: (approved: boolean) => void }>();
+  private pending = new Map<
+    string,
+    { runId: string; scope: string; resolve: (approved: boolean) => void }
+  >();
+  /** Approval scopes (Code conversation or single run) the user approved for the whole session. */
+  private autoApproved = new Set<string>();
   constructor(
     private library: LibraryService,
     private llm: LLMProvider,
@@ -91,6 +96,7 @@ export class AgentService {
     }
   }
   async closeCodeSession(conversationId: string) {
+    this.autoApproved.delete(conversationId);
     await this.codeAgents.closeConversation(conversationId);
   }
   runs() {
@@ -290,21 +296,35 @@ export class AgentService {
       }
   }
   async stopAll() {
+    this.autoApproved.clear();
     for (const id of this.controllers.keys()) this.stop(id);
     await Promise.allSettled(this.jobs.values());
     await this.codeAgents.closeAll();
   }
-  approve(id: string, approved: boolean) {
+  approve(id: string, approved: boolean, rememberForSession = false) {
     const pending = this.pending.get(id);
     if (!pending) throw new Error('This approval is no longer active');
+    const remember = approved && rememberForSession;
+    if (remember) this.autoApproved.add(pending.scope);
     this.event({
       type: 'agent',
       id: pending.runId,
       status: 'Planning',
-      content: approved ? 'Operation approved.' : 'Operation rejected.',
+      content: approved
+        ? remember
+          ? 'Operation approved. Further operations in this session are approved automatically.'
+          : 'Operation approved.'
+        : 'Operation rejected.',
     });
     pending.resolve(approved);
     this.pending.delete(id);
+    // Release other requests already waiting in the same session.
+    if (remember)
+      for (const [key, other] of this.pending)
+        if (other.scope === pending.scope) {
+          other.resolve(true);
+          this.pending.delete(key);
+        }
   }
   private async createCapabilityRouter(options: {
     id: string;
@@ -652,9 +672,19 @@ export class AgentService {
       const config = capabilityConfig(agent);
       const showApproval = async (tool: string, description: string, diff?: string) => {
         signal.throwIfAborted();
+        const scope = codeSession?.conversationId ?? id;
+        if (this.autoApproved.has(scope)) {
+          this.event({
+            type: 'agent',
+            id,
+            status: 'Planning',
+            content: `Auto-approved for this session: ${description.slice(0, 200)}`,
+          });
+          return true;
+        }
         const approvalId = randomUUID();
         return new Promise<boolean>((resolve) => {
-          this.pending.set(approvalId, { runId: id, resolve });
+          this.pending.set(approvalId, { runId: id, scope, resolve });
           this.event({
             type: 'agent',
             id,
