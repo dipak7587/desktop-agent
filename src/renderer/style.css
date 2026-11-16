@@ -325,6 +325,9 @@ p {
 .sidebar nav {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar nav button,
@@ -362,6 +365,22 @@ p {
 
 .sidebar-bottom {
   margin-top: auto;
+  flex-shrink: 0;
+}
+
+/* Short windows (e.g. a MacBook): drop the status card so the toggle stays reachable. */
+@media (max-height: 800px) {
+  .sidebar .local-card {
+    display: none;
+  }
+
+  .sidebar {
+    padding-top: 18px;
+  }
+
+  .brand {
+    margin-bottom: 16px;
+  }
 }
 
 .local-card {

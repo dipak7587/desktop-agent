@@ -93,6 +93,10 @@ export function App() {
         e.preventDefault();
         setSearch((s) => !s);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setCollapsed((c) => !c);
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         setSection('Chat');
@@ -192,7 +196,7 @@ export function App() {
             {!collapsed && 'Settings'}
           </button>
           <button
-            title="Toggle sidebar"
+            title="Toggle sidebar (⌘B)"
             aria-label="Toggle sidebar"
             onClick={() => setCollapsed((c) => !c)}
           >
