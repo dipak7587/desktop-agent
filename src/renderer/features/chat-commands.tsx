@@ -443,6 +443,72 @@ export function useChatCommands(draft: string) {
   };
 }
 
+function usePendingApprovals(events: AppEvent[]) {
+  const runs = useRuns((s) => s.runs);
+  const workflowRuns = useWorkflows((s) => s.runs);
+  const childIds = new Set(events.filter((e) => e.type === 'agent').map((e) => e.id));
+  for (const workflow of workflowRuns)
+    if (events.some((e) => e.type === 'workflow' && e.id === workflow.id))
+      for (const node of workflow.nodes) if (node.runId) childIds.add(node.runId);
+  return runs
+    .filter(
+      (run) =>
+        childIds.has(run.id) && run.status === 'Running' && run.phase === 'Waiting for approval',
+    )
+    .map((run) => run.events.at(-1))
+    .filter((e): e is AppEvent & { approval: NonNullable<AppEvent['approval']> } => !!e?.approval);
+}
+
+/** Approval requests docked above the composer so they never scroll out of view. */
+export function ApprovalPrompts({ events }: { events: AppEvent[] }) {
+  const [busy, setBusy] = useState(false);
+  const pending = usePendingApprovals(events);
+  if (!pending.length) return null;
+  return (
+    <div className="approval-dock" role="alert" aria-live="assertive">
+      {pending.map((last) => (
+        <div className="approval" key={last.approval.id}>
+          <h3>Approval required</h3>
+          <CollapsibleText text={last.approval.description} />
+          {last.approval.diff && <CollapsibleText text={last.approval.diff} className="diff" />}
+          <div className="actions">
+            {(
+              [
+                { approved: false, remember: false, label: 'Reject' },
+                { approved: true, remember: false, label: 'Approve operation' },
+                { approved: true, remember: true, label: 'Approve all for this session' },
+              ] as const
+            ).map(({ approved, remember, label }) => (
+              <button
+                key={label}
+                type="button"
+                disabled={busy}
+                title={
+                  remember
+                    ? 'Approve this and every later request in this session without asking again'
+                    : undefined
+                }
+                onClick={() => {
+                  setBusy(true);
+                  void attempt(async () => {
+                    try {
+                      await window.workspace.agents.approve(last.approval!.id, approved, remember);
+                    } finally {
+                      setBusy(false);
+                    }
+                  });
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ChatActivity({
   events,
   live = false,
@@ -452,7 +518,6 @@ export function ChatActivity({
   live?: boolean;
   streaming?: boolean;
 }) {
-  const [busy, setBusy] = useState(false);
   const last = events.at(-1);
   const label =
     last?.status === 'Streaming' || (!last && streaming)
@@ -464,19 +529,7 @@ export function ChatActivity({
     live && /^(Running tools?|Tool completed|Tool failed)$/i.test(last?.status ?? '')
       ? last?.content?.split('\n')[0]
       : undefined;
-  const runs = useRuns((s) => s.runs);
-  const workflowRuns = useWorkflows((s) => s.runs);
-  const childIds = new Set(events.filter((e) => e.type === 'agent').map((e) => e.id));
-  for (const workflow of workflowRuns)
-    if (events.some((e) => e.type === 'workflow' && e.id === workflow.id))
-      for (const node of workflow.nodes) if (node.runId) childIds.add(node.runId);
-  const pending = runs
-    .filter(
-      (run) =>
-        childIds.has(run.id) && run.status === 'Running' && run.phase === 'Waiting for approval',
-    )
-    .map((run) => run.events.at(-1))
-    .filter((e): e is AppEvent & { approval: NonNullable<AppEvent['approval']> } => !!e?.approval);
+  const pending = usePendingApprovals(events);
 
   return (
     <div className="chat-activity">
@@ -486,8 +539,8 @@ export function ChatActivity({
         aria-atomic="true"
       >
         <span>
-          {label}
-          {toolDetail ? ` · ${toolDetail}` : ''}
+          {pending.length ? 'Waiting for your approval below' : label}
+          {!pending.length && toolDetail ? ` · ${toolDetail}` : ''}
         </span>
         {live && (
           <span className="progress-dots" aria-hidden="true">
@@ -517,50 +570,6 @@ export function ChatActivity({
           ))}
         </details>
       )}
-      {live &&
-        pending.map((last) => (
-          <div className="approval" key={last.approval.id}>
-            <h3>Approval required</h3>
-            <CollapsibleText text={last.approval.description} />
-            {last.approval.diff && <CollapsibleText text={last.approval.diff} className="diff" />}
-            <div className="actions">
-              {(
-                [
-                  { approved: false, remember: false, label: 'Reject' },
-                  { approved: true, remember: false, label: 'Approve operation' },
-                  { approved: true, remember: true, label: 'Approve all for this session' },
-                ] as const
-              ).map(({ approved, remember, label }) => (
-                <button
-                  key={label}
-                  type="button"
-                  disabled={busy}
-                  title={
-                    remember
-                      ? 'Approve this and every later request in this session without asking again'
-                      : undefined
-                  }
-                  onClick={() => {
-                    setBusy(true);
-                    void attempt(async () => {
-                      try {
-                        await window.workspace.agents.approve(
-                          last.approval!.id,
-                          approved,
-                          remember,
-                        );
-                      } finally {
-                        setBusy(false);
-                      }
-                    });
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
     </div>
   );
 }

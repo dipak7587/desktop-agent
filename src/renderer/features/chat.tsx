@@ -20,7 +20,7 @@ import {
   PanelLeftOpen,
 } from 'lucide-react';
 import { useChat, useSettings, useUI, useAgents, attempt } from '../stores';
-import { ChatActivity, useChatCommands } from './chat-commands';
+import { ApprovalPrompts, ChatActivity, useChatCommands } from './chat-commands';
 import { Markdown, CopyButton, Confirm, Modal } from '../components/common';
 export function Chat() {
   const chat = useChat();
@@ -394,6 +394,7 @@ export function Chat() {
             </div>
           )}
         </div>
+        {chat.generating && <ApprovalPrompts events={chat.activity} />}
         <div className="composer-area">
           <form
             className="composer"

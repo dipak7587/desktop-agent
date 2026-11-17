@@ -1602,6 +1602,18 @@ legend {
   margin-block: 12px;
 }
 
+.approval-dock {
+  flex-shrink: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 0 28px;
+}
+
+.approval-dock .approval {
+  margin: 8px 0;
+  box-shadow: 0 -6px 20px #0002;
+}
+
 .mcp-config-heading > span {
   flex: 1 1 300px;
 }
