@@ -1,6 +1,6 @@
 # Documentation index
 
-Start with the [project README](../README.md) for install and first use. This folder holds the detailed guides.
+Start with the [project README](../README.md) for an overview and the [User guide](USER_GUIDE.md) for install and first use. This folder holds the detailed guides.
 
 ## Where to look
 
@@ -13,6 +13,9 @@ Start with the [project README](../README.md) for install and first use. This fo
 | Check security and permissions            | [Security](SECURITY.md), [Capabilities](CAPABILITIES.md)                         |
 
 ## Guides by area
+
+**Start here**
+[User guide](USER_GUIDE.md)
 
 **Using the app**
 [Chat](CHAT.md) · [Settings](SETTINGS.md) · [Memory](MEMORY.md) · [Saved Text](SAVED_TEXT.md) · [Multi-provider AI](MULTI_PROVIDER_AI.md)

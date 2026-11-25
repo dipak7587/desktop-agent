@@ -46,7 +46,7 @@ Analyst ────┤               ├──▶ Writer
 
 ## Long tasks in Code
 
-Single Code runs have their own iteration limit (**Settings → Maximum iterations**, default 15). When a run reaches it, the same session now continues automatically with a fresh budget, up to 20 times, instead of stopping. For very large jobs, raise **Context size** and ask the agent to keep a `docs/PROGRESS.md` checklist so it can resume cleanly.
+Single Code runs have their own iteration limit (**Settings → Maximum iterations**, default 15). When a run reaches it, the same session now continues automatically with a fresh budget, up to 20 times, instead of stopping. For very large jobs, raise **Context size** (default 8192 tokens, maximum 131072; older messages are trimmed to fit it) and ask the agent to keep a `docs/PROGRESS.md` checklist so it can resume cleanly.
 
 ## Where to go next
 

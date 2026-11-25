@@ -172,7 +172,7 @@ See [LangChain migration](LANGCHAIN_MIGRATION.md) and [Capability decisions](CAP
 
 ## Repository changes
 
-- Preserve the file-vs-database storage boundary from `desing.md`.
+- Preserve the file-vs-database storage boundary described in [Architecture](ARCHITECTURE.md).
 - Keep privileged behavior in main services and validate every IPC request.
 - Keep secrets out of API results, logs and portable exports.
 - Add relevant service/boundary tests for new privileged operations.

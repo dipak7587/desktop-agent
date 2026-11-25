@@ -1,5 +1,7 @@
 # LangChain runtime migration
 
+> **Status: historical record.** Describes how the project reached its current state; details may be outdated. Check the source and the feature guides for current behavior.
+
 ## Findings
 
 The previous implementation used LangChain models and LangGraph nodes, but the default

@@ -1,6 +1,8 @@
 # Coding requirements audit
 
-Compared `code-requirement.md` with the Code UI, Chat dispatch, main-process tools,
+> **Status: historical record.** Describes how the project reached its current state; details may be outdated. Check the source and the feature guides for current behavior.
+
+Compared the original Code requirements (not kept in the repository) with the Code UI, Chat dispatch, main-process tools,
 provider selection and execution tests.
 
 | Requirement | Result |

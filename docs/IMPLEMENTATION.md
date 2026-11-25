@@ -1,6 +1,8 @@
 # Implementation and verification record
 
-The original specification is preserved in `desing.md`.
+> **Status: historical record.** Describes how the project reached its current state; details may be outdated. Check the source and the feature guides for current behavior.
+
+The original specification was not kept in the repository; this record and the guides in this folder are the reference.
 
 | Phase | Completed implementation                                                           | Principal files                                                   | Verification                                                                  |
 | ----- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
