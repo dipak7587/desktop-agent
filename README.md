@@ -169,7 +169,7 @@ Run the agent from its section or select it with `/agent` in Chat. Inspect its a
 
 Use **Workflows → New workflow** to coordinate multiple steps. The **Default** editor provides an agent graph builder. **Dynamic** editors provide Form, Markdown, JSON, and YAML representations for structured workflows.
 
-Dynamic workflows support agent and tool steps, sequences, parallel branches, loops, conditions, switches, bounded repetition, retries, and hooks. Later steps can consume earlier outputs. See [Declarative workflows](docs/DECLARATIVE_WORKFLOWS.md) for exact syntax and execution limits.
+Dynamic workflows support agent and tool steps, sequences, parallel branches, loops, conditions, switches, bounded repetition, retries, and hooks. Later steps can consume earlier outputs. See [Workflows](docs/WORKFLOW.md) for how runs work and [Declarative workflows](docs/DECLARATIVE_WORKFLOWS.md) for exact syntax and execution limits.
 
 ### Code
 
@@ -178,6 +178,8 @@ Add a local folder through the native folder picker and link it to a conversatio
 Start with a request such as “Explain the structure of this project and identify its test command.” The runtime can inspect eligible project files and propose changes using guarded tools. Read-only inspection does not normally require approval; changes and commands retain their permission rules, and explicit denials remain enforced.
 
 Direct Code chat uses DeepAgents through ACP and requires a configured local inference endpoint. Folder links and conversation history persist, but the live ACP session itself does not survive an application restart. See [Code](docs/CODE.md) for supported endpoints, permissions, and implementation status.
+
+Long jobs, such as documenting a nested folder, do not stop at **Maximum iterations**: the run continues in the same session with a fresh budget, up to 20 times. For very large tasks also raise **Context size** in Settings, and ask the agent to keep a `docs/PROGRESS.md` checklist so older context can be recovered.
 
 ### Settings and memory
 
@@ -291,16 +293,31 @@ Notes, definitions, and settings remain usable when inference is unavailable; mo
 ### Project layout
 
 ```text
-src/main/       Electron lifecycle, services, databases, and privileged operations
-src/preload/    Restricted bridge between the desktop UI and main process
-src/renderer/  React interface, feature screens, and state stores
-src/shared/    Shared types, API contracts, and validation schemas
-built-in/      Content and defaults bundled with the application
-examples/      Example agents, tools, and workflows
-docs/          Feature guides and implementation documentation
-tests/         Service, integration, and Electron UI tests
-patches/       Tracked dependency patches
-scripts/       Supporting development and package checks
+src/
+  main/              Electron lifecycle and all privileged work
+    database/        SQLite stores: chat, agent runs, workflow runs, checkpoints
+    ipc/             Validated IPC handlers called by the renderer
+    security/        Credential storage
+    services/
+      agents/        Agents, capability policy, tools, Code (ACP) runtime
+      ai/            LangChain/LangGraph chat and agent graphs, memory
+      workflows/     Default and declarative workflow engines
+      providers/     Model provider routing (Ollama, OpenAI, Claude, ...)
+      rag/           Knowledge base indexing and retrieval (LanceDB)
+      mcp/ tools/    MCP connections and custom TypeScript tools
+      filesystem/    Library storage for agents, skills, workflows
+      ollama/ settings/
+  preload/           Restricted bridge between the UI and main process
+  renderer/          React UI
+    features/        One file per screen (chat, code, workflows, ...)
+    components/      Shared UI pieces
+    stores/          Client state
+  shared/            Types, schemas and contracts used by both sides
+built-in/            Content and defaults bundled with the app
+examples/            Example agents, tools, MCP configs and workflows
+docs/                Guides (start at docs/README.md); specs/ holds original requirements
+tests/               Service, integration and Electron UI tests
+patches/ scripts/    Dependency patches and packaging checks
 ```
 
 The React renderer has no direct Node.js access. It calls named preload methods through validated IPC. Main-process services own filesystem access, credentials, model requests, tool execution, SQLite, and LanceDB. LangChain and DeepAgents provide AI orchestration; application capability checks govern execution.
@@ -340,17 +357,19 @@ For isolated development, `LOCALAI_DATA_DIR` can point to a separate data direct
 
 ## Detailed documentation
 
-| Topic                                     | Guide                                                                                                      |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Chat modes, commands, and conversations   | [Chat](docs/CHAT.md)                                                                                       |
-| Local and hosted model configuration      | [Multi-provider AI](docs/MULTI_PROVIDER_AI.md)                                                             |
-| Notes and document retrieval              | [Saved Text](docs/SAVED_TEXT.md), [Knowledge Base](docs/KNOWLEDGE_BASE.md), [RAG](docs/RAG.md)             |
-| Reusable capabilities                     | [Skills](docs/SKILLS.md), [Tools](docs/TOOLS.md), [MCP](docs/MCP.md)                                       |
-| Agents, permissions, and hooks            | [Agents](docs/AGENTS.md), [Capability decisions](docs/CAPABILITIES.md), [Agent hooks](docs/AGENT_HOOKS.md) |
-| Multi-step automation                     | [Declarative workflows](docs/DECLARATIVE_WORKFLOWS.md)                                                     |
-| Project assistance                        | [Code workspaces and implementation status](docs/CODE.md)                                                  |
-| Preferences, backups, and memory          | [Settings](docs/SETTINGS.md), [Memory](docs/MEMORY.md)                                                     |
-| Bundled content and sample configurations | [Built-in content](built-in/README.md), [Examples](examples/README.md)                                     |
-| Engineering and security                  | [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), [Security](docs/SECURITY.md)     |
+The full index is in [docs/README.md](docs/README.md).
+
+| Topic                                     | Guide                                                                                                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chat modes, commands, and conversations   | [Chat](docs/CHAT.md)                                                                                                                               |
+| Local and hosted model configuration      | [Multi-provider AI](docs/MULTI_PROVIDER_AI.md)                                                                                                     |
+| Notes and document retrieval              | [Saved Text](docs/SAVED_TEXT.md), [Knowledge Base](docs/KNOWLEDGE_BASE.md), [RAG](docs/RAG.md)                                                     |
+| Reusable capabilities                     | [Skills](docs/SKILLS.md), [Tools](docs/TOOLS.md), [MCP](docs/MCP.md)                                                                               |
+| Agents, permissions, and hooks            | [Agents](docs/AGENTS.md), [Capability decisions](docs/CAPABILITIES.md), [Agent hooks](docs/AGENT_HOOKS.md)                                         |
+| Multi-step automation                     | [Workflows](docs/WORKFLOW.md), [Declarative workflows](docs/DECLARATIVE_WORKFLOWS.md)                                                              |
+| Project assistance                        | [Code workspaces and implementation status](docs/CODE.md)                                                                                          |
+| Preferences, backups, and memory          | [Settings](docs/SETTINGS.md), [Memory](docs/MEMORY.md)                                                                                             |
+| Bundled content and sample configurations | [Built-in content](built-in/README.md), [Examples](examples/README.md)                                                                             |
+| Engineering and security                  | [Architecture](docs/ARCHITECTURE.md), [Execution flows](docs/EXECUTION_FLOWS.md), [Development](docs/DEVELOPMENT.md), [Security](docs/SECURITY.md) |
 
 Some detailed documents retain earlier design notes or historical verification results. When a feature guide mixes specification and implementation, use its implementation-status section and current source/tests to distinguish shipped behavior from planned work.

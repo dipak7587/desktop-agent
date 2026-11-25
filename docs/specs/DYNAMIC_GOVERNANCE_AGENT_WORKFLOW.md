@@ -1,3 +1,5 @@
+> **Status: original requirements / design input, not current behavior.** For what ships today see [Workflows](../WORKFLOW.md) and [Declarative workflows](../DECLARATIVE_WORKFLOWS.md).
+
 # Dynamic Workflow Engine with Hooks
 
 ## Goal

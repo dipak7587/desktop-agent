@@ -1,3 +1,4 @@
+> **Status: original prompt for the Code workspace feature, kept for history.** For what ships today see [Code](../CODE.md).
 
 You are modifying an EXISTING Electron + TypeScript application.
 

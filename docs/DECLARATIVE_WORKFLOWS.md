@@ -1,7 +1,7 @@
 # Declarative workflows
 
 Open **Workflows → New workflow** to build the workflows described in
-`DYNAMIC_GOVERNANCE_AGENT_WORKFLOW.md`. The **Default** tab is selected for new workflows and contains the agent graph builder.
+[the governance design](specs/DYNAMIC_GOVERNANCE_AGENT_WORKFLOW.md). The **Default** tab is selected for new workflows and contains the agent graph builder.
 The other four tabs—**Form**, **Markdown**, **JSON**, and **YAML**—are grouped under a bordered **Dynamic** label.
 Saved workflows are grouped under **Default** and **Dynamic** border labels. Both kinds use the same persistence, run history, cancellation,
 and chat workflow command.
