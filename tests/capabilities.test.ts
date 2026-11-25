@@ -1,4 +1,4 @@
-import { useProviderBridge, toolReply } from './fixtures/scripted-provider';
+import { useProviderBridge, toolReply, scriptComplete } from './fixtures/scripted-provider';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -257,11 +257,13 @@ it.each(['none', 'selected'] as const)(
     const classify = vi.spyOn(llm, 'chat').mockImplementation(async function* () {
       yield { message: { content: JSON.stringify(yes) } };
     });
-    vi.spyOn(llm, 'complete')
-      .mockResolvedValueOnce(toolReply('skill:code-review'))
-      .mockResolvedValueOnce(toolReply('knowledge:carbon'))
-      .mockResolvedValueOnce(toolReply('filesystem.list'))
-      .mockResolvedValue({ role: 'assistant', content: 'Done' });
+    scriptComplete(
+      llm,
+      toolReply('skill:code-review'),
+      toolReply('knowledge:carbon'),
+      toolReply('filesystem.list'),
+      { role: 'assistant', content: 'Done' },
+    );
     const service = new AgentService(library, llm, knowledge, mcp, settings, () => {}, tools);
     try {
       await library.save(

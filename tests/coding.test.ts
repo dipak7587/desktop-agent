@@ -12,11 +12,12 @@ const workspace: CodeWorkspace = {
   selectedAgentId: null,
   permissions: { rules: {} },
 };
-it('defaults linked project operations to Ask without expanding agent selection', () => {
+it('lets read-only project operations run and defaults writes to Ask without expanding selection', () => {
   const agent = librarySchema.parse({ id: 'reader', name: 'Reader', tools: ['filesystem.read'] });
   const scoped = withWorkspacePolicy(agent, workspace);
   expect(scoped.capabilityConfig?.tools).toEqual(['filesystem.read']);
-  expect(scoped.capabilityConfig?.permissions['filesystem.read']).toBe('ask');
+  expect(scoped.capabilityConfig?.permissions['filesystem.read']).toBe('always_allow');
+  expect(scoped.capabilityConfig?.permissions['filesystem.write']).toBe('ask');
   expect(agent.capabilityConfig).toBeUndefined();
 });
 it('intersects workspace and agent denials with more specific allows', () => {

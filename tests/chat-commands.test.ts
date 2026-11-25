@@ -12,7 +12,11 @@ import { LibraryService } from '../src/main/services/filesystem/library';
 import { AgentService } from '../src/main/services/agents/agents';
 import { MCPService } from '../src/main/services/mcp/mcp';
 import { KnowledgeService } from '../src/main/services/rag/knowledge';
-import { OllamaLLMProvider, type ChatRequest } from '../src/main/services/ollama/provider';
+import {
+  OllamaLLMProvider,
+  type ChatMessage,
+  type ChatRequest,
+} from '../src/main/services/ollama/provider';
 import type { AppEvent } from '../src/shared/types';
 import type { MemoryService } from '../src/main/services/ai/memory';
 
@@ -26,6 +30,22 @@ let root: string,
   llm: OllamaLLMProvider,
   events: AppEvent[];
 const settings = () => settingsSchema.parse({ chatModel: 'test', maxIterations: 5 });
+/** Relevance verdicts come from each test's `llm.chat` script, as they did before the check became non-streaming. */
+async function relevanceVerdict(request: ChatRequest): Promise<ChatMessage> {
+  let content = '';
+  for await (const chunk of llm.chat(request)) content += chunk.message?.content ?? '';
+  return { role: 'assistant', content };
+}
+const isRelevanceCheck = (request: { messages: { content: string }[] }) =>
+  request.messages[0]?.content.includes('CAPABILITY_RELEVANCE_CHECK');
+/** Capability relevance checks use non-streaming `complete`; answer them without consuming scripted replies. */
+function scriptComplete(...replies: ChatMessage[]) {
+  const queue = [...replies];
+  return vi.spyOn(llm, 'complete').mockImplementation(async (request) => {
+    if (isRelevanceCheck(request)) return relevanceVerdict(request);
+    return queue.length > 1 ? queue.shift()! : queue[0];
+  });
+}
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'chat-command-'));
   for (const dir of ['agents', 'skills', 'mcp', 'project']) await mkdir(join(root, dir));
@@ -45,6 +65,9 @@ beforeEach(async () => {
       },
     };
   });
+  vi.spyOn(llm, 'complete').mockImplementation(async (request) =>
+    isRelevanceCheck(request) ? relevanceVerdict(request) : { role: 'assistant', content: '' },
+  );
   mcp = new MCPService(library, { resolve: () => '', redact: (s) => s }, () => {});
   const knowledge = new KnowledgeService(
     root,
@@ -284,10 +307,10 @@ it('routes an unselected MCP checkbox across connected enabled servers and prese
   ]);
   const prepare = vi.spyOn(commands, 'prepareAllMCP');
   const run = vi.spyOn(agents, 'runInChat');
-  const complete = vi
-    .spyOn(llm, 'complete')
-    .mockResolvedValueOnce(toolReply('mcp:second:search', { query: 'hello' }))
-    .mockResolvedValueOnce({ role: 'assistant', content: 'Answer from MCP results.' });
+  const complete = scriptComplete(toolReply('mcp:second:search', { query: 'hello' }), {
+    role: 'assistant',
+    content: 'Answer from MCP results.',
+  });
   const request = input();
   await chat.send({ ...request, modes: ['mcp'] });
   await expect.poll(() => events.some((event) => event.activity?.approval)).toBe(true);
@@ -324,14 +347,11 @@ it('rejects unselected MCP mode without a connected server before saving message
 
 it('restricts MCP calls to the chosen server and waits for approval before executing', async () => {
   const call = await setupMCP();
-  const complete = vi
-    .spyOn(llm, 'complete')
-    .mockResolvedValueOnce(toolReply('mcp:other:echo', {}))
-    .mockResolvedValueOnce(toolReply('mcp:server:echo', { message: 'hello' }))
-    .mockResolvedValueOnce({
-      role: 'assistant',
-      content: 'Used the tool result.',
-    });
+  const complete = scriptComplete(
+    toolReply('mcp:other:echo', {}),
+    toolReply('mcp:server:echo', { message: 'hello' }),
+    { role: 'assistant', content: 'Used the tool result.' },
+  );
   const request = input();
   const all = vi.spyOn(commands, 'prepareAllMCP');
   await chat.send({ ...request, modes: ['mcp'], command: { kind: 'mcp', id: 'server' } });
@@ -362,12 +382,10 @@ it.each(['reject', 'stop'] as const)(
   'does not execute an MCP operation after %s',
   async (action) => {
     const call = await setupMCP();
-    vi.spyOn(llm, 'complete')
-      .mockResolvedValueOnce(toolReply('mcp:server:echo', {}))
-      .mockResolvedValue({
-        role: 'assistant',
-        content: 'No operation performed.',
-      });
+    scriptComplete(toolReply('mcp:server:echo', {}), {
+      role: 'assistant',
+      content: 'No operation performed.',
+    });
     const request = input();
     await chat.send({ ...request, command: { kind: 'mcp', id: 'server' } });
     await expect.poll(() => events.some((e) => e.activity?.approval)).toBe(true);
@@ -391,19 +409,14 @@ it('runs an agent from chat with its configured model and applies a reviewed fil
       tools: ['filesystem.write'],
     }),
   );
-  const complete = vi
-    .spyOn(llm, 'complete')
-    .mockResolvedValueOnce(
-      toolReply('filesystem.write', {
-        path: 'hello.txt',
-        content: 'hello',
-        expectedHash: 'missing',
-      }),
-    )
-    .mockResolvedValueOnce({
-      role: 'assistant',
-      content: 'Created hello.txt',
-    });
+  const complete = scriptComplete(
+    toolReply('filesystem.write', {
+      path: 'hello.txt',
+      content: 'hello',
+      expectedHash: 'missing',
+    }),
+    { role: 'assistant', content: 'Created hello.txt' },
+  );
   const request = input();
   await chat.send({
     ...request,
@@ -621,16 +634,14 @@ it('codes in a persisted workspace without a configured agent and reviews writes
   const request = input();
   db.connectCodeWorkspace(request.id, project);
   db.add(request.id, 'user', 'Keep the existing public API.');
-  const complete = vi
-    .spyOn(llm, 'complete')
-    .mockResolvedValueOnce(
-      toolReply('filesystem.write', {
-        path: 'direct.txt',
-        content: 'direct coding works',
-        expectedHash: 'missing',
-      }),
-    )
-    .mockResolvedValueOnce({ role: 'assistant', content: 'Created direct.txt; tests not run.' });
+  const complete = scriptComplete(
+    toolReply('filesystem.write', {
+      path: 'direct.txt',
+      content: 'direct coding works',
+      expectedHash: 'missing',
+    }),
+    { role: 'assistant', content: 'Created direct.txt; tests not run.' },
+  );
   await chat.send({ ...request, modes: ['code'] });
   await expect.poll(() => events.some((event) => event.activity?.approval)).toBe(true);
   await expect(readFile(join(project, 'direct.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -662,7 +673,7 @@ it('restores linked folders for selected agents and rejects missing direct works
     'agents',
     librarySchema.parse({ id: 'reviewer', name: 'Reviewer', model: 'test' }),
   );
-  vi.spyOn(llm, 'complete').mockResolvedValue({ role: 'assistant', content: 'Reviewed.' });
+  scriptComplete({ role: 'assistant', content: 'Reviewed.' });
   await chat.send({ ...request, command: { kind: 'agent', id: 'reviewer' } });
   await settle(request.id);
   expect(agents.runs()[0].folderPath).toBe(project);

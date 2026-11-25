@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, realpath } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -218,7 +218,8 @@ it('stages only explicitly selected files after approval', async () => {
 });
 
 it('commits only explicitly selected files after approval', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agent-git-commit-'));
+  // Use the resolved path: macOS temp dirs are symlinked (/var -> /private/var).
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'agent-git-commit-')));
   const tools = new AgentTools(() => settingsSchema.parse({ approvalMode: 'auto' }));
   const signal = new AbortController().signal;
   try {

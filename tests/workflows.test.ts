@@ -508,6 +508,7 @@ it('executes declared tools through actual capability permissions and records re
     expect(rejected.error).toContain('not permitted');
     expect(rejected.tools).toHaveLength(0);
     const configured = await library.get('agents', 'a');
+    // Read-only inspection never prompts, even when a legacy policy says Ask.
     await library.save('agents', {
       ...configured,
       capabilityConfig: {
@@ -515,12 +516,39 @@ it('executes declared tools through actual capability permissions and records re
         permissions: { 'filesystem.exists': 'ask' },
       },
     });
-    const denied = await agents.runWorkflowNode(
+    const inspected = await agents.runWorkflowNode(
       {
         agentId: 'a',
         task: 'Check existence',
         project: root,
         tool: { id: 'filesystem.exists', input: { path: 'missing.txt' } },
+      },
+      new AbortController().signal,
+      (event) => {
+        expect(event.approval).toBeUndefined();
+      },
+    );
+    expect(inspected.status).toBe('Completed');
+    // Changes still require approval, and a rejection fails the node.
+    const writer = await library.get('agents', 'a');
+    await library.save('agents', {
+      ...writer,
+      tools: ['filesystem.exists', 'filesystem.write'],
+      capabilityConfig: {
+        ...capabilityConfig(writer),
+        tools: ['filesystem.exists', 'filesystem.write'],
+        permissions: { 'filesystem.write': 'ask' },
+      },
+    });
+    const denied = await agents.runWorkflowNode(
+      {
+        agentId: 'a',
+        task: 'Write file',
+        project: root,
+        tool: {
+          id: 'filesystem.write',
+          input: { path: 'denied.txt', content: 'x', expectedHash: 'missing' },
+        },
       },
       new AbortController().signal,
       (event) => {

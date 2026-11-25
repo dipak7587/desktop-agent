@@ -1,4 +1,4 @@
-import { useProviderBridge, toolReply } from './fixtures/scripted-provider';
+import { useProviderBridge, toolReply, scriptComplete } from './fixtures/scripted-provider';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -177,10 +177,10 @@ it('persists folderless agent runs, uses configured iterations and never publish
       },
     };
   });
-  const complete = vi
-    .spyOn(llm, 'complete')
-    .mockResolvedValueOnce(toolReply('custom:double', { value: 4 }))
-    .mockResolvedValue({ role: 'assistant', content: 'Done' });
+  const complete = scriptComplete(llm, toolReply('custom:double', { value: 4 }), {
+    role: 'assistant',
+    content: 'Done',
+  });
   const knowledge = new KnowledgeService(
     root,
     settings,

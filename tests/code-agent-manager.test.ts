@@ -51,7 +51,11 @@ afterEach(async () => {
   await manager.closeAll();
   await rm(root, { recursive: true, force: true });
 });
-function input(ctx = context(), controller = new AbortController()): AgentLoopInput {
+function input(
+  ctx = context(),
+  controller = new AbortController(),
+  permissions: Record<string, 'ask' | 'deny' | 'always_allow'> = { tool: 'ask' },
+): AgentLoopInput {
   const toolIds = [
     'filesystem.write',
     'filesystem.read',
@@ -64,7 +68,7 @@ function input(ctx = context(), controller = new AbortController()): AgentLoopIn
     id: 'code',
     name: 'Code',
     tools: toolIds,
-    capabilityConfig: { mode: 'selected', tools: toolIds, permissions: { tool: 'ask' } },
+    capabilityConfig: { mode: 'selected', tools: toolIds, permissions },
   });
   const tools = new AgentTools(settings);
   const confirm = (id: string, description: string, diff?: string) =>
@@ -432,17 +436,18 @@ it('reads an explicitly requested package before a model that makes no tool call
     }),
   ]);
   expect(JSON.stringify(complete.mock.calls)).toContain('workspace-proof');
-  expect(approve).toHaveBeenCalled();
+  // Read-only inspection runs without an approval prompt, even under an Ask policy.
+  expect(approve).not.toHaveBeenCalled();
 });
 
-it('honors a rejected explicit file read without exposing the file to the model', async () => {
+it('honors an explicitly denied file read without exposing the file to the model', async () => {
   await writeFile(join(root, 'package.json'), '{"name":"must-not-be-read"}');
-  approve.mockResolvedValue(false);
-  const request = input();
+  const request = input(context(), new AbortController(), { 'filesystem.read': 'deny' });
   request.task = 'read package.json';
   await manager.run(request, provider, context(), approve);
-  expect(request.run.tools[0].status).toBe('failed');
+  expect(request.run.tools.some((tool) => tool.status === 'completed')).toBe(false);
   expect(JSON.stringify(complete.mock.calls)).not.toContain('must-not-be-read');
+  expect(approve).not.toHaveBeenCalled();
 });
 
 it('lists the selected folder before answering a folder inspection request', async () => {

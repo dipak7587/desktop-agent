@@ -279,6 +279,16 @@ it('selects a saved TypeScript tool through the existing agent approval and invo
   });
   vi.spyOn(llm, 'complete')
     .mockResolvedValueOnce(toolReply('custom:calculator', { a: 10, b: 5, operation: 'multiply' }))
+    // The capability relevance check is a structured completion between the tool request and answer.
+    .mockResolvedValueOnce({
+      role: 'assistant',
+      content: JSON.stringify({
+        relevant: true,
+        necessary: true,
+        canAnswerDirectly: false,
+        userForbids: false,
+      }),
+    })
     .mockResolvedValue({ role: 'assistant', content: '50' });
   const kb = new KnowledgeService(
     root,

@@ -85,7 +85,11 @@ it('includes only enabled Code agents selected for the folder in chat ACP', asyn
   });
   expect(second.agentRuntime).toBeUndefined();
   const unselected = createCodeAgent('tests', 'unselected', 'local', 'local');
-  const disabled = { ...createCodeAgent('tests', 'disabled', 'local', 'local'), enabled: false };
+  const disabled = {
+    ...createCodeAgent('tests', 'disabled', 'local', 'local'),
+    name: 'Disabled Test Cases', // agent names must be unique
+    enabled: false,
+  };
   await Promise.all(
     [first, second, unselected, disabled].map((agent) => library.save('agents', agent)),
   );

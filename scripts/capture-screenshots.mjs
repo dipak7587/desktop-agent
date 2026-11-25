@@ -1,3 +1,4 @@
+/* global console, process */
 // Regenerates docs/assets/*.png from the compiled app using an isolated data directory.
 // Usage: pnpm build && node scripts/capture-screenshots.mjs
 import { _electron as electron } from '@playwright/test';
