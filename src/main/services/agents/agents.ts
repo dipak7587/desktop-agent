@@ -280,7 +280,8 @@ export class AgentService {
       await this.jobs.get(id);
       signal.throwIfAborted();
       const last = this.history.get(id)?.events.at(-1);
-      if (last?.status !== 'Completed') throw new Error(last?.error ?? 'Run stopped');
+      if (last?.status !== 'Completed')
+        throw new Error(last?.error ?? `Run stopped (last status: ${last?.status ?? 'none'})`);
       return last.content ?? '';
     } finally {
       signal.removeEventListener('abort', stop);
@@ -636,7 +637,14 @@ export class AgentService {
     codeSession?: CodeSessionContext,
     directTool?: { id: string; input: Record<string, unknown> },
   ) {
-    const timer = setTimeout(() => this.stop(id), 15 * 60 * 1000);
+    let timedOut = false;
+    const timer = setTimeout(
+      () => {
+        timedOut = true;
+        this.stop(id);
+      },
+      15 * 60 * 1000,
+    );
     const signal = controller.signal;
     const run = this.history.get(id)!;
     let errorHookStarted = false;
@@ -948,7 +956,11 @@ Tool arguments: filesystem.read: {path,offset?,limit?} returns up to 200 lines b
         type: 'agent',
         id,
         status: signal.aborted ? 'Cancelled' : 'Failed',
-        error: signal.aborted ? undefined : failure,
+        error: signal.aborted
+          ? timedOut
+            ? 'Run timed out after 15 minutes. Try a narrower task.'
+            : undefined
+          : failure,
       });
     } finally {
       const run = this.history.get(id)!;
