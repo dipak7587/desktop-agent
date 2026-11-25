@@ -6,6 +6,14 @@ Built with Electron, React and TypeScript. Your data stays on your machine. Use 
 
 > **Status:** development stage, not a signed public release. macOS is the verified platform; Windows and Linux need native QA.
 
+![LocalAI Workspace chat screen](docs/assets/chat.png)
+
+<p>
+  <img src="docs/assets/agents.png" width="32%" alt="Agents" />
+  <img src="docs/assets/workflows.png" width="32%" alt="Workflows" />
+  <img src="docs/assets/code.png" width="32%" alt="Code" />
+</p>
+
 ## What you can do
 
 | Goal                                   | Start in                       |
@@ -94,4 +102,4 @@ Live tests, packaging notes and isolated data directories are covered in [Develo
 
 ## License
 
-MIT, as declared in `package.json`.
+MIT. See [LICENSE](LICENSE).

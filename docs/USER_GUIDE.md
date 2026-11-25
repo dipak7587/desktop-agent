@@ -1,5 +1,7 @@
 # LocalAI Workspace: user guide
 
+![Chat screen](assets/chat.png)
+
 The full guide to installing and using the app. For a quick overview see the [project README](../README.md); for all other docs see the [index](README.md).
 
 LocalAI Workspace is a desktop application that brings AI chat, project assistance, personal knowledge, and reusable automation into one place. You can talk to a model, ask questions about your documents, create specialist agents, and connect tools that perform tasks.
@@ -107,19 +109,21 @@ Hosted inference needs network access and may incur charges from that provider. 
 2. Select your provider and chat model in the header.
 3. Leave the capability checkboxes unchecked for a simple model conversation.
 4. Enter a request, such as “Explain this application in simple terms.”
-5. Click the send arrow or press **Cmd/Ctrl+Enter**.
+5. Click the send arrow or press **Enter** (use **Shift+Enter** for a new line).
 
 With all modes unchecked, the model receives your message and bounded conversation history, without automatic tools, knowledge retrieval, agent instructions, or memory. Enable the relevant mode when you want those features. Explicit slash commands remain available regardless of the checkboxes.
 
 Conversations are saved locally and can be continued after restarting. You can rename, search, delete, copy responses, regenerate, or stop an active response.
 
-| Shortcut            | Action                        |
-| ------------------- | ----------------------------- |
-| Cmd/Ctrl+Enter      | Send the current message      |
-| Cmd/Ctrl+N          | Create a new chat             |
-| Cmd/Ctrl+K          | Open global search            |
-| Escape              | Cancel active chat/agent work |
-| `/` in the composer | Show available commands       |
+| Shortcut            | Action                         |
+| ------------------- | ------------------------------ |
+| Enter               | Send the current message       |
+| Shift+Enter         | Insert a new line              |
+| Cmd/Ctrl+N          | Create a new chat              |
+| Cmd/Ctrl+K          | Open global search             |
+| Cmd/Ctrl+B          | Collapse or expand the sidebar |
+| Escape              | Cancel active chat/agent work  |
+| `/` in the composer | Show available commands        |
 
 Use `/help` for command help, `/clear` to clear the current conversation, `/agent` to select an agent, `/tools` to select a tool, `/mcp` to select a server or tool, and `/code` to choose a saved project folder. See [Chat](CHAT.md) for command syntax and mode behavior.
 
@@ -143,15 +147,21 @@ Semantic search requires an embedding model. Re-index after changing the embeddi
 
 ### Skills
 
+![Skills screen](assets/skills.png)
+
 Store reusable Markdown instructions, such as “Use plain language and include a short example.” Enable the skill and select it when configuring an agent or using the relevant Chat capability. Skills guide behavior; tools perform actions.
 
 ### Tools
+
+![Tools screen](assets/tools.png)
 
 Create reusable logic or API calls, define input parameters, and test the result before attaching the tool to an agent. The current implementation includes a builder and TypeScript source editing, with TypeScript transpilation for supported tool modules.
 
 Custom tools execute trusted code or make network requests. They can have effects outside the built-in project tools' folder boundaries. Referenced tools cannot be deleted until their agent references are removed.
 
 ### MCP
+
+![MCP screen](assets/mcp.png)
 
 Connect local **stdio** servers or remote **Streamable HTTP** servers. Configure the connection, start or test it, and inspect discovered tools and logs. Local servers need their executable and dependencies installed separately. Remote servers need a reachable endpoint and any required authentication.
 
@@ -163,17 +173,23 @@ Configure reusable logic around agent execution events. Hooks are an advanced fe
 
 ### Agents
 
+![Agents screen](assets/agents.png)
+
 Create a specialist assistant with a name, instructions, provider/model, skills, tools, and knowledge sources. Set an iteration limit to bound the number of model turns. Choose a project folder when the task requires project operations; folderless tasks are also supported.
 
 Run the agent from its section or select it with `/agent` in Chat. Inspect its activity, results, status, and persisted run history. Review proposed changes when approval is requested. Capability modes **Auto**, **Selected**, and **None**, along with per-capability permissions, control what the agent may use.
 
 ### Workflows
 
+![Workflows screen](assets/workflows.png)
+
 Use **Workflows → New workflow** to coordinate multiple steps. The **Default** editor provides an agent graph builder. **Dynamic** editors provide Form, Markdown, JSON, and YAML representations for structured workflows.
 
 Dynamic workflows support agent and tool steps, sequences, parallel branches, loops, conditions, switches, bounded repetition, retries, and hooks. Later steps can consume earlier outputs. See [Workflows](WORKFLOW.md) for how runs work and [Declarative workflows](DECLARATIVE_WORKFLOWS.md) for exact syntax and execution limits.
 
 ### Code
+
+![Code screen](assets/code.png)
 
 Add a local folder through the native folder picker and link it to a conversation. Use `/code` in Chat to choose a saved folder without leaving the composer. Enable Code mode for ordinary project requests, or use the explicit command flow.
 
@@ -184,6 +200,8 @@ Direct Code chat uses DeepAgents through ACP and requires a configured local inf
 Long jobs, such as documenting a nested folder, do not stop at **Maximum iterations**: the run continues in the same session with a fresh budget, up to 20 times. For very large tasks also raise **Context size** in Settings (default 8192 tokens), and ask the agent to keep a `docs/PROGRESS.md` checklist so older context can be recovered.
 
 ### Settings and memory
+
+![Settings screen](assets/settings.png)
 
 Manage providers, credentials, appearance, application and landing-page preferences, knowledge settings, execution limits, import/export, and memory. Settings also shows the exact local data directory.
 
@@ -361,17 +379,17 @@ For isolated development, `LOCALAI_DATA_DIR` can point to a separate data direct
 
 The full index is in [README.md](README.md).
 
-| Topic                                     | Guide                                                                                                                                              |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chat modes, commands, and conversations   | [Chat](CHAT.md)                                                                                                                               |
-| Local and hosted model configuration      | [Multi-provider AI](MULTI_PROVIDER_AI.md)                                                                                                     |
-| Notes and document retrieval              | [Saved Text](SAVED_TEXT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [RAG](RAG.md)                                                     |
-| Reusable capabilities                     | [Skills](SKILLS.md), [Tools](TOOLS.md), [MCP](MCP.md)                                                                               |
-| Agents, permissions, and hooks            | [Agents](AGENTS.md), [Capability decisions](CAPABILITIES.md), [Agent hooks](AGENT_HOOKS.md)                                         |
-| Multi-step automation                     | [Workflows](WORKFLOW.md), [Declarative workflows](DECLARATIVE_WORKFLOWS.md)                                                              |
-| Project assistance                        | [Code workspaces and implementation status](CODE.md)                                                                                          |
-| Preferences, backups, and memory          | [Settings](SETTINGS.md), [Memory](MEMORY.md)                                                                                             |
-| Bundled content and sample configurations | [Built-in content](../built-in/README.md), [Examples](../examples/README.md)                                                                             |
+| Topic                                     | Guide                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Chat modes, commands, and conversations   | [Chat](CHAT.md)                                                                                                                |
+| Local and hosted model configuration      | [Multi-provider AI](MULTI_PROVIDER_AI.md)                                                                                      |
+| Notes and document retrieval              | [Saved Text](SAVED_TEXT.md), [Knowledge Base](KNOWLEDGE_BASE.md), [RAG](RAG.md)                                                |
+| Reusable capabilities                     | [Skills](SKILLS.md), [Tools](TOOLS.md), [MCP](MCP.md)                                                                          |
+| Agents, permissions, and hooks            | [Agents](AGENTS.md), [Capability decisions](CAPABILITIES.md), [Agent hooks](AGENT_HOOKS.md)                                    |
+| Multi-step automation                     | [Workflows](WORKFLOW.md), [Declarative workflows](DECLARATIVE_WORKFLOWS.md)                                                    |
+| Project assistance                        | [Code workspaces and implementation status](CODE.md)                                                                           |
+| Preferences, backups, and memory          | [Settings](SETTINGS.md), [Memory](MEMORY.md)                                                                                   |
+| Bundled content and sample configurations | [Built-in content](../built-in/README.md), [Examples](../examples/README.md)                                                   |
 | Engineering and security                  | [Architecture](ARCHITECTURE.md), [Execution flows](EXECUTION_FLOWS.md), [Development](DEVELOPMENT.md), [Security](SECURITY.md) |
 
 Some detailed documents retain earlier design notes or historical verification results. When a feature guide mixes specification and implementation, use its implementation-status section and current source/tests to distinguish shipped behavior from planned work.

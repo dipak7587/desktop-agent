@@ -87,3 +87,14 @@ Register agent capabilities with real JSON argument schemas via `CapabilityRoute
 `services/ai/agent-graph.ts` turns them into LangChain tools for both engines. Keep workspace
 validation and approval logic in privileged executors. Use `CheckpointDatabase` for graph
 state and `MemoryService` for scoped long-term memory. See [LangChain migration](LANGCHAIN_MIGRATION.md).
+
+## Screenshots
+
+Images in `docs/assets/` are generated from the compiled app with an isolated, empty data directory:
+
+```sh
+pnpm build
+node scripts/capture-screenshots.mjs
+```
+
+Re-run it after UI changes. It reuses the Playwright Electron driver from the UI tests.

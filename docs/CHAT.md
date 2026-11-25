@@ -210,7 +210,7 @@ also remain available. Selecting a KB scope or Code folder activates its automat
 checkbox so subsequent ordinary messages use that context; there is no prerequisite checkbox.
 
 Enter your query and send with Enter or the arrow. Shift+Enter inserts a new line;
-Cmd/Ctrl+Enter sends without accepting a suggestion.
+Holding Cmd/Ctrl while pressing Enter skips the suggestion list and sends the message as typed.
 
 - **Skills:** applies the selected skill's instructions only when the capability decision finds
   its workflow relevant and necessary for the request.
