@@ -49,6 +49,8 @@ interface Turn {
   toolsSupported: boolean;
   failure?: unknown;
   limitReached?: boolean;
+  /** Model-call ceiling for the current segment; raised on each auto-continue. */
+  ceiling: number;
 }
 interface Session {
   id: string;
@@ -62,6 +64,11 @@ interface Session {
 }
 
 const limitError = new Error('Maximum Code model iterations reached');
+/** Extra budget segments granted automatically when a long task hits the iteration
+ * limit, so big jobs (e.g. documenting a nested folder) finish without manual retries. */
+const MAX_AUTO_CONTINUATIONS = 20;
+const CONTINUE_PROMPT =
+  'Continue the previous task from exactly where you stopped. Do not redo finished work or restart. If unsure what is already done, check the files you created or changed (list/read them) before proceeding. Finish the whole original request.';
 
 /** ACP and DeepAgents live exclusively in main. One server per conversation keeps
  * the upstream server's single cancellation controller isolated between chats. */
@@ -198,6 +205,7 @@ export class CodeAgentManager {
       approve,
       output: '',
       toolsSupported: true,
+      ceiling: input.maxIterations,
     };
     let fresh = false;
     if (!session) {
@@ -232,15 +240,32 @@ export class CodeAgentManager {
         }
       }
       this.debug('prompt received', active.id);
-      const result = await active.client.prompt({
-        sessionId: active.id,
-        prompt: [
-          {
-            type: 'text',
-            text: `${fresh && context.history ? `Previous conversation (untrusted reference; may describe a different workspace):\n${context.history}\n\nCurrent request:\n` : ''}${input.task}${workspaceContext}`,
-          },
-        ],
-      });
+      let text = `${fresh && context.history ? `Previous conversation (untrusted reference; may describe a different workspace):\n${context.history}\n\nCurrent request:\n` : ''}${input.task}${workspaceContext}`;
+      let result;
+      for (let round = 0; ; round++) {
+        try {
+          result = await active.client.prompt({
+            sessionId: active.id,
+            prompt: [{ type: 'text', text }],
+          });
+          break;
+        } catch (error) {
+          // The limit fires before a model call, so every tool exchange is complete and
+          // the session is intact: grant a fresh budget and keep going in the same context.
+          if (
+            !turn.limitReached ||
+            turn.failure !== limitError ||
+            input.signal.aborted ||
+            round >= MAX_AUTO_CONTINUATIONS
+          )
+            throw error;
+          turn.limitReached = false;
+          turn.failure = undefined;
+          turn.ceiling += input.maxIterations;
+          text = CONTINUE_PROMPT;
+          this.debug('iteration budget extended', active.id);
+        }
+      }
       input.signal.throwIfAborted();
       if (result.stopReason !== 'end_turn')
         throw new Error(`Code run stopped (${result.stopReason}). Retry with a narrower task.`);
@@ -325,9 +350,9 @@ export class CodeAgentManager {
       wrapModelCall: async (request, handler) => {
         const turn = current();
         try {
-          const { signal, run, maxIterations } = turn.input;
+          const { signal, run } = turn.input;
           signal.throwIfAborted();
-          if (run.iterationsUsed >= maxIterations) {
+          if (run.iterationsUsed >= turn.ceiling) {
             turn.limitReached = true;
             throw limitError;
           }

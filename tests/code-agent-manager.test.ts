@@ -270,7 +270,20 @@ it('enforces model iteration limits', async () => {
   const run = input();
   run.maxIterations = 1;
   expect((await manager.run(run, provider, context(), approve)).reason).toBe('max-iterations');
-  expect(complete).toHaveBeenCalledTimes(1);
+  // One initial segment plus 20 automatic continuations, one model call each.
+  expect(complete).toHaveBeenCalledTimes(21);
+});
+it('auto-continues past the iteration limit and finishes the task', async () => {
+  complete
+    .mockResolvedValueOnce(
+      toolReply('filesystem.write', { path: '../escape', content: '', expectedHash: 'missing' }),
+    )
+    .mockResolvedValue({ content: 'Done', toolCalls: [] });
+  const run = input();
+  run.maxIterations = 1;
+  const result = await manager.run(run, provider, context(), approve);
+  expect(result.reason).toBe('completed');
+  expect(complete.mock.calls.length).toBeGreaterThan(1);
 });
 it('keeps text Q&A available when Ollama declares no tool support', async () => {
   provider.info = vi.fn().mockResolvedValue({ capabilities: ['completion'] });
